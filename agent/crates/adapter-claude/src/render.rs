@@ -188,7 +188,10 @@ mod tests {
         for action in [Action::Allow, Action::Deny, Action::Ask] {
             let d = decision(action, "r");
             let v = render(&d, "9.9.9");
-            assert_eq!(v["adapter_version"], "9.9.9", "adapter_version must be present for {action:?}");
+            assert_eq!(
+                v["adapter_version"], "9.9.9",
+                "adapter_version must be present for {action:?}"
+            );
         }
         // also for unknown schema path
         let d = decision(Action::Allow, "");
@@ -203,7 +206,10 @@ mod tests {
         let ask = decision(Action::Ask, "would be ask");
         for d in [&allow, &deny, &ask] {
             let v = render_with_schema(d, "0.1.0", Some("999"));
-            assert_eq!(v["decision"], "ask", "unknown schema must force ask even for allow/deny");
+            assert_eq!(
+                v["decision"], "ask",
+                "unknown schema must force ask even for allow/deny"
+            );
             assert_eq!(v["reason"], "unsupported_schema");
         }
     }
@@ -221,9 +227,22 @@ mod tests {
     #[test]
     fn known_schema_passes_through() {
         let allow = decision(Action::Allow, "");
-        for known in ["1", "1.0", "v1", "v0", "PreToolUse", "PostToolUse", "0", "0.1.0", "1.0.0"] {
+        for known in [
+            "1",
+            "1.0",
+            "v1",
+            "v0",
+            "PreToolUse",
+            "PostToolUse",
+            "0",
+            "0.1.0",
+            "1.0.0",
+        ] {
             let v = render_with_schema(&allow, "0.1.0", Some(known));
-            assert_eq!(v["decision"], "approve", "known schema {known} should pass through");
+            assert_eq!(
+                v["decision"], "approve",
+                "known schema {known} should pass through"
+            );
         }
         // None also passes through
         let v_none = render_with_schema(&allow, "0.1.0", None);

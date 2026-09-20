@@ -103,14 +103,12 @@ fn render_header(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         ),
         Span::styled(
             "  Live decision feed  ",
-            Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            if app.is_offline {
-                " (read-only)"
-            } else {
-                ""
-            },
+            if app.is_offline { " (read-only)" } else { "" },
             Style::default().fg(COLOR_MUTED),
         ),
     ]);
@@ -118,7 +116,9 @@ fn render_header(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let stats = Line::from(vec![
         Span::styled(
             " allow ",
-            Style::default().fg(COLOR_ALLOW).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(COLOR_ALLOW)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw(format!("{}", app.counts.allow)),
         Span::styled("  │  ", Style::default().fg(COLOR_BORDER)),
@@ -134,10 +134,7 @@ fn render_header(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         ),
         Span::raw(format!("{}", app.counts.deny)),
         Span::styled("  │  ", Style::default().fg(COLOR_BORDER)),
-        Span::styled(
-            " would-have-blocked ",
-            Style::default().fg(COLOR_MUTED),
-        ),
+        Span::styled(" would-have-blocked ", Style::default().fg(COLOR_MUTED)),
         Span::styled(
             format!("{}", app.counts.would_have_blocked),
             Style::default().fg(COLOR_DENY).add_modifier(Modifier::BOLD),
@@ -189,11 +186,31 @@ fn render_offline_banner(frame: &mut Frame, app: &App, area: ratatui::layout::Re
 
 fn render_table(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let header = Row::new(vec![
-        Cell::from("ts").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
-        Cell::from("action").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
-        Cell::from("reason").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
-        Cell::from("source").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
-        Cell::from("latency").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("ts").style(
+            Style::default()
+                .fg(COLOR_MUTED)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("action").style(
+            Style::default()
+                .fg(COLOR_MUTED)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("reason").style(
+            Style::default()
+                .fg(COLOR_MUTED)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("source").style(
+            Style::default()
+                .fg(COLOR_MUTED)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Cell::from("latency").style(
+            Style::default()
+                .fg(COLOR_MUTED)
+                .add_modifier(Modifier::BOLD),
+        ),
     ])
     .height(1)
     .style(Style::default().bg(Color::Rgb(22, 21, 31)));
@@ -247,7 +264,8 @@ fn render_table(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_policy(frame: &mut Frame, _app: &App, area: ratatui::layout::Rect) {
-    let text = vec![
+    let text =
+        vec![
         Line::from(Span::styled(
             "Policy editor — local rules, dry-run vs history (placeholder)",
             Style::default()
@@ -291,13 +309,37 @@ fn render_policy(frame: &mut Frame, _app: &App, area: ratatui::layout::Rect) {
 
 fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect) {
     let help = Line::from(vec![
-        Span::styled(" q ", Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " q ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("quit "),
-        Span::styled(" j/k ", Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " j/k ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("nav "),
-        Span::styled(" r ", Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " r ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("refresh "),
-        Span::styled(" p ", Style::default().fg(Color::Black).bg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " p ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("policy "),
         Span::styled(" ↑/↓ also navigates ", Style::default().fg(COLOR_MUTED)),
     ]);
@@ -350,7 +392,9 @@ mod tests {
         let db = dir.path().join("audit.db");
         let store = AuditStore::open(&db).unwrap();
         store.init().unwrap();
-        store.insert(&decision(Action::Allow), "fp1", false).unwrap();
+        store
+            .insert(&decision(Action::Allow), "fp1", false)
+            .unwrap();
         store.insert(&decision(Action::Deny), "fp2", true).unwrap();
         store.insert(&decision(Action::Ask), "fp3", false).unwrap();
 

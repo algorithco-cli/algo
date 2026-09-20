@@ -21,7 +21,11 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[derive(Parser, Debug)]
-#[command(name = "algo-daemon", version, about = "algorithco guard daemon (algo.sock, pipeline L0-L4)")]
+#[command(
+    name = "algo-daemon",
+    version,
+    about = "algorithco guard daemon (algo.sock, pipeline L0-L4)"
+)]
 struct Args {
     /// Socket path (Unix domain socket). Defaults to ~/.algo/algo.sock
     #[arg(long)]
@@ -415,8 +419,13 @@ fn spawn_writer_task(mut rx: tokio::sync::mpsc::Receiver<DbRecord>, db_path: Pat
                 Ok(Ok(Ok(()))) => {}
                 Ok(Ok(Err(e))) => {
                     // Map SQLITE_BUSY to ask fallback logging (but we just log)
-                    if e.to_string().contains("BUSY") || e.to_string().contains("busy") || e.to_string().contains("locked") {
-                        eprintln!("writer: db busy/locked → drop record (ask fallback already sent): {e}");
+                    if e.to_string().contains("BUSY")
+                        || e.to_string().contains("busy")
+                        || e.to_string().contains("locked")
+                    {
+                        eprintln!(
+                            "writer: db busy/locked → drop record (ask fallback already sent): {e}"
+                        );
                     } else {
                         eprintln!("writer db error: {e}");
                     }

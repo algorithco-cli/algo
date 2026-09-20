@@ -37,7 +37,7 @@ pub fn hard_deny_rules() -> &'static [Rule] {
             },
             Rule {
                 id: "DENY_DD_DEV",
-                pattern: r(r"\bdd\b[^|;]*\bof\s*=\s*/dev/(?:sda|nvme|mmcblk|hda|vda|sdb)\b"),
+                pattern: r(r"\bdd\b[^|;]*\bof\s*=\s*/dev/(?:sd[a-z]+|hd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+|sda|nvme|mmcblk|hda|vda|sdb)[0-9a-z]*\b"),
                 reason: "hard deny: dd of=/dev/* (rule DENY_DD_DEV)",
             },
             Rule {
@@ -124,7 +124,11 @@ mod tests {
         // No hard deny should match safe commands
         let safe = "ls -la";
         for rule in hard_deny_rules() {
-            assert!(!rule.pattern.is_match(safe), "rule {} matched safe", rule.id);
+            assert!(
+                !rule.pattern.is_match(safe),
+                "rule {} matched safe",
+                rule.id
+            );
         }
     }
 }

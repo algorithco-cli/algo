@@ -109,8 +109,8 @@ impl Pipeline {
                     shadow: false,
                 };
                 // Use try_send with 1s timeout; if it would block, we still return deny (hard deny outranks DB).
-                let _ = tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec))
-                    .await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec)).await;
                 return d;
             }
             algo_policy::PolicyDecision::Allow { reason, .. } => {
@@ -139,8 +139,8 @@ impl Pipeline {
                     profile: "balanced".into(),
                     shadow: false,
                 };
-                let _ = tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec))
-                    .await;
+                let _ =
+                    tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec)).await;
                 return d;
             }
             algo_policy::PolicyDecision::Abstain => {}
@@ -213,8 +213,7 @@ impl Pipeline {
 
         // Insert into cache if not fallback (to avoid caching fallback asks)
         if decision.source_level != SourceLevel::Fallback as i32 {
-            self.cache
-                .insert(&event.redacted_payload, decision.clone());
+            self.cache.insert(&event.redacted_payload, decision.clone());
         }
 
         // Audit write with 1s guard
@@ -259,13 +258,30 @@ fn map_answers_to_decision(
     let (action, confidence, reason, source) = if let Some(ans) = answers.first() {
         match ans {
             TypedAnswer::Choice {
-                choice, confidence: c, ..
+                choice,
+                confidence: c,
+                ..
             } => {
                 let conf = *c;
                 match choice.as_str() {
-                    "deny" => (Action::Deny as i32, conf, "jev deny".to_string(), SourceLevel::Jev as i32),
-                    "allow" => (Action::Allow as i32, conf, "jev allow".to_string(), SourceLevel::Jev as i32),
-                    "ask" => (Action::Ask as i32, conf, "jev ask".to_string(), SourceLevel::Jev as i32),
+                    "deny" => (
+                        Action::Deny as i32,
+                        conf,
+                        "jev deny".to_string(),
+                        SourceLevel::Jev as i32,
+                    ),
+                    "allow" => (
+                        Action::Allow as i32,
+                        conf,
+                        "jev allow".to_string(),
+                        SourceLevel::Jev as i32,
+                    ),
+                    "ask" => (
+                        Action::Ask as i32,
+                        conf,
+                        "jev ask".to_string(),
+                        SourceLevel::Jev as i32,
+                    ),
                     other => (
                         Action::Ask as i32,
                         conf,
@@ -275,25 +291,54 @@ fn map_answers_to_decision(
                 }
             }
             TypedAnswer::Bool {
-                value, confidence: c, ..
+                value,
+                confidence: c,
+                ..
             } => {
                 let conf = *c;
                 if *value {
-                    (Action::Allow as i32, conf, "jev bool true".to_string(), SourceLevel::Jev as i32)
+                    (
+                        Action::Allow as i32,
+                        conf,
+                        "jev bool true".to_string(),
+                        SourceLevel::Jev as i32,
+                    )
                 } else {
-                    (Action::Ask as i32, conf, "jev bool false → ask".to_string(), SourceLevel::Jev as i32)
+                    (
+                        Action::Ask as i32,
+                        conf,
+                        "jev bool false → ask".to_string(),
+                        SourceLevel::Jev as i32,
+                    )
                 }
             }
             TypedAnswer::Score {
-                score, confidence: c, ..
+                score,
+                confidence: c,
+                ..
             } => {
                 let conf = *c;
                 if *score > 0.7 {
-                    (Action::Deny as i32, conf, "jev score high → deny".to_string(), SourceLevel::Jev as i32)
+                    (
+                        Action::Deny as i32,
+                        conf,
+                        "jev score high → deny".to_string(),
+                        SourceLevel::Jev as i32,
+                    )
                 } else if *score < 0.3 {
-                    (Action::Allow as i32, conf, "jev score low → allow".to_string(), SourceLevel::Jev as i32)
+                    (
+                        Action::Allow as i32,
+                        conf,
+                        "jev score low → allow".to_string(),
+                        SourceLevel::Jev as i32,
+                    )
                 } else {
-                    (Action::Ask as i32, conf, "jev score uncertain → ask".to_string(), SourceLevel::Jev as i32)
+                    (
+                        Action::Ask as i32,
+                        conf,
+                        "jev score uncertain → ask".to_string(),
+                        SourceLevel::Jev as i32,
+                    )
                 }
             }
         }

@@ -1,0 +1,26 @@
+# .cargo-mutants.toml — repo-root mirror of core/.cargo-mutants.toml
+# Cargo-mutants looks for `mutants.toml` or `.cargo/mutants.toml` or `.cargo-mutants.toml`
+# depending on version. This file at the repo root ensures `cargo mutants` finds the
+# config whether invoked from `core/` or repo root. The canonical config is
+# `core/.cargo-mutants.toml`; this file is kept in sync and is allowed to be a
+# symlink on Unix (copy on Windows).
+
+[[examine]]
+file = "core/crates/policy/src/deny_list.rs"
+
+[[examine]]
+file = "core/crates/policy/src/engine.rs"
+
+[[examine]]
+path = "core/crates/policy/src/deny_list.rs"
+
+[[examine]]
+path = "core/crates/policy/src/engine.rs"
+
+[timeout]
+timeout = 30
+
+[mutants]
+minimum_killed = 90
+
+exclude_re = ["tests/regression.rs", "benches/policy_eval.rs"]

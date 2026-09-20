@@ -20,5 +20,7 @@ fn main() {
     let mut config = prost_build::Config::new();
     config.protoc_arg("--experimental_allow_proto3_optional");
     // prost_types for google.protobuf.Timestamp
-    config.compile_protos(&protos, &[proto_root]).expect("prost_build failed");
+    config
+        .compile_protos(&protos, &[proto_root])
+        .expect("prost_build failed");
 }

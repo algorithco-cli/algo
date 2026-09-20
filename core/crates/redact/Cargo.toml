@@ -13,8 +13,14 @@ regex = "1.12"
 aho-corasick = "1.1"
 smallvec = { version = "1.13", features = ["const_generics"] }
 
+[[bench]]
+name = "redact_10k"
+harness = false
+# hints: `redact_10k` group benches Redactor::redact on 10KB payload with secrets; see benches/redact_10k.rs
+
 [dev-dependencies]
 proptest = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

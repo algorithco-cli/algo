@@ -62,8 +62,14 @@ fn contains_secret(s: &str) -> Option<String> {
         (r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", "private_key"),
         (r"\bsk-(live|test)-[A-Za-z0-9]{16,}\b", "vendor_sk"),
         (r"\bAIza[A-Za-z0-9_-]{35}\b", "google_api"),
-        (r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "jwt"),
-        (r#"(?i)\b(password|passwd|pwd|token|secret)\b\s*[:=]\s*['"]?[^'"\s,}]{4,}"#, "credential_assignment"),
+        (
+            r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+            "jwt",
+        ),
+        (
+            r#"(?i)\b(password|passwd|pwd|token|secret)\b\s*[:=]\s*['"]?[^'"\s,}]{4,}"#,
+            "credential_assignment",
+        ),
     ];
     for (pat, kind) in patterns {
         let re = Regex::new(pat).expect("valid regex");
@@ -149,7 +155,9 @@ pub fn ingest_audit(mut raw: serde_json::Value) -> Result<AuditRecord, AuditErro
         .ok_or_else(|| AuditError::MissingField("latency_ms".to_string()))?;
 
     if latency_ms < 0 {
-        return Err(AuditError::InvalidLatency(format!("negative latency {latency_ms}")));
+        return Err(AuditError::InvalidLatency(format!(
+            "negative latency {latency_ms}"
+        )));
     }
 
     // Validate decision (case-insensitive).
@@ -200,10 +208,7 @@ pub fn ingest_audit(mut raw: serde_json::Value) -> Result<AuditRecord, AuditErro
 
 /// Get all audit records (for stats).
 pub fn all_records() -> Vec<AuditRecord> {
-    audit_store()
-        .lock()
-        .expect("audit store poisoned")
-        .clone()
+    audit_store().lock().expect("audit store poisoned").clone()
 }
 
 /// Drain WAL queue (simulates apalis/Postgres queue consumer).
@@ -220,8 +225,8 @@ pub fn clear_audit_store() {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_sync;
     use super::*;
+    use crate::test_sync;
     use serde_json::json;
 
     #[test]

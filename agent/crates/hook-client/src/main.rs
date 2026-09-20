@@ -10,7 +10,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[derive(Parser, Debug)]
-#[command(name = "algo-hook-client", version, about = "Tiny hook client (fail-safe, never non-zero)")]
+#[command(
+    name = "algo-hook-client",
+    version,
+    about = "Tiny hook client (fail-safe, never non-zero)"
+)]
 struct Args {
     /// Read JSON from stdin (if true, reads stdin; otherwise also reads stdin as fallback)
     #[arg(long, default_value_t = false)]
@@ -193,7 +197,10 @@ fn try_spawn_daemon_oneshot(socket_path: &str) -> Result<(), String> {
     // Try to spawn daemon --oneshot. Binary may be algo-daemon in PATH or sibling.
     let candidates = [
         "algo-daemon".to_string(),
-        format!("{}/algo-daemon", dirs_home().join(".algo").join("bin").to_string_lossy()),
+        format!(
+            "{}/algo-daemon",
+            dirs_home().join(".algo").join("bin").to_string_lossy()
+        ),
         // For dev: cargo run's binary nearby
         "./target/debug/algo-daemon".to_string(),
         "./target/release/algo-daemon".to_string(),

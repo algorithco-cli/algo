@@ -143,7 +143,11 @@ fn main() {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_status(&h)
         }
-        Commands::Log { home, limit, show_egress } => {
+        Commands::Log {
+            home,
+            limit,
+            show_egress,
+        } => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_log(&h, limit, show_egress)
         }
@@ -282,7 +286,8 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
         let ts = Utc::now().format("%Y%m%d%H%M%S").to_string();
         // also add millis to avoid collision
         let ts_full = format!("{}-{}", ts, Utc::now().timestamp_millis() % 1000);
-        let backup_path = PathBuf::from(format!("{}.algo-backup-{}", config_path.display(), ts_full));
+        let backup_path =
+            PathBuf::from(format!("{}.algo-backup-{}", config_path.display(), ts_full));
         fs::write(&backup_path, b).map_err(|e| format!("backup write {backup_path:?}: {e}"))?;
         // verify byte-identical
         let backup_bytes = fs::read(&backup_path).map_err(|e| format!("read backup: {e}"))?;
@@ -318,7 +323,8 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
     // Write merged config atomically: write to temp then rename? For now write directly
     // Ensure we preserve byte-identical for non-hook parts? Our pretty print may change formatting,
     // but additive merge is allowed to change file. For uninstall to restore byte-identical, backup suffices.
-    fs::write(&config_path, after_str.as_bytes()).map_err(|e| format!("write config {config_path:?}: {e}"))?;
+    fs::write(&config_path, after_str.as_bytes())
+        .map_err(|e| format!("write config {config_path:?}: {e}"))?;
     println!("wrote: {}", config_path.display());
 
     // Ensure ~/.algo/ exists, touch config.json with privacy
@@ -328,8 +334,11 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
         "version": env!("CARGO_PKG_VERSION"),
         "updated_at": Utc::now().to_rfc3339(),
     });
-    fs::write(&algo_config, serde_json::to_string_pretty(&cfg).unwrap().as_bytes())
-        .map_err(|e| format!("write algo config: {e}"))?;
+    fs::write(
+        &algo_config,
+        serde_json::to_string_pretty(&cfg).unwrap().as_bytes(),
+    )
+    .map_err(|e| format!("write algo config: {e}"))?;
     println!("privacy: {} -> {}", chosen_privacy, algo_config.display());
 
     // Ensure hooks dir and placeholder hook-client (for test, touch file)
@@ -361,9 +370,7 @@ fn merge_hook(json: &mut serde_json::Value, hook_cmd: &str) {
         *json = serde_json::json!({});
     }
     let obj = json.as_object_mut().unwrap();
-    let hooks = obj
-        .entry("hooks")
-        .or_insert_with(|| serde_json::json!({}));
+    let hooks = obj.entry("hooks").or_insert_with(|| serde_json::json!({}));
     if !hooks.is_object() {
         *hooks = serde_json::json!({});
     }
@@ -412,9 +419,7 @@ fn cmd_uninstall(home: &Path, keep_db: bool) -> Result<(), String> {
     let hook_cmd = hook_command_for_home(home);
 
     // Restore backup byte-identical (find latest *.algo-backup-*)
-    let parent = config_path
-        .parent()
-        .unwrap_or(home);
+    let parent = config_path.parent().unwrap_or(home);
     let file_name = config_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -443,7 +448,11 @@ fn cmd_uninstall(home: &Path, keep_db: bool) -> Result<(), String> {
         if restored != backup_bytes {
             return Err("restore not byte-identical".into());
         }
-        println!("restored backup {} -> {}", latest.display(), config_path.display());
+        println!(
+            "restored backup {} -> {}",
+            latest.display(),
+            config_path.display()
+        );
         // Optionally keep backup or remove? Keep for audit; not deleting.
     } else {
         // No backup: remove hooks added by init
@@ -459,16 +468,21 @@ fn cmd_uninstall(home: &Path, keep_db: bool) -> Result<(), String> {
                 // If original file was pre-existing and we removed hook, write back
                 // If json becomes {} and no backup existed, we could remove file if it was created by init?
                 // For now write back if file existed, else remove if empty
-                if json == serde_json::json!({}) || json == serde_json::json!({"hooks":{}}) || json == serde_json::json!({"hooks":{"PreToolUse":[]}}) {
+                if json == serde_json::json!({})
+                    || json == serde_json::json!({"hooks":{}})
+                    || json == serde_json::json!({"hooks":{"PreToolUse":[]}})
+                {
                     // If config was created by init and now empty, remove it to restore original non-existence?
                     // But original non-existence case had no file, so we should remove file to be byte-identical to pre-init (which was no file)
                     // However we can't know original absence vs empty file. We treat empty as removal candidate.
                     // For test, original was a file, so we will write back {}
                     // Let's write back pretty
-                    fs::write(&config_path, out.as_bytes()).map_err(|e| format!("write after hook removal: {e}"))?;
+                    fs::write(&config_path, out.as_bytes())
+                        .map_err(|e| format!("write after hook removal: {e}"))?;
                     println!("removed hook from {}", config_path.display());
                 } else {
-                    fs::write(&config_path, out.as_bytes()).map_err(|e| format!("write after hook removal: {e}"))?;
+                    fs::write(&config_path, out.as_bytes())
+                        .map_err(|e| format!("write after hook removal: {e}"))?;
                     println!("removed hook from {}", config_path.display());
                 }
                 // If json is empty and file didn't exist originally, we could delete file
@@ -611,7 +625,10 @@ fn cmd_doctor(home: &Path) -> Result<(), String> {
             println!("  perms: (skip on non-unix)");
         }
     } else {
-        println!("socket: {} missing (daemon not running - FAIL)", sock.display());
+        println!(
+            "socket: {} missing (daemon not running - FAIL)",
+            sock.display()
+        );
         ok = false;
     }
 
@@ -619,8 +636,10 @@ fn cmd_doctor(home: &Path) -> Result<(), String> {
     let config_path = detect_claude_config(home);
     let hook_cmd = hook_command_for_home(home);
     if config_path.exists() {
-        let bytes = fs::read(&config_path).map_err(|e| format!("read config {config_path:?}: {e}"))?;
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
+        let bytes =
+            fs::read(&config_path).map_err(|e| format!("read config {config_path:?}: {e}"))?;
+        let json: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
         let present = hook_present(&json, &hook_cmd);
         if present {
             println!("hook: present in {} OK", config_path.display());
@@ -654,7 +673,10 @@ fn cmd_doctor(home: &Path) -> Result<(), String> {
             }
         }
     } else {
-        println!("audit.db: {} missing (not yet created) - WARN", db_path.display());
+        println!(
+            "audit.db: {} missing (not yet created) - WARN",
+            db_path.display()
+        );
         // Not fatal for doctor? But mark warn not fail?
         // We'll not set ok false for missing db, as fresh init has no decisions yet
     }
@@ -753,7 +775,11 @@ fn cmd_why(home: &Path) -> Result<(), String> {
     match store.last().map_err(|e| e.to_string())? {
         Some(entry) => {
             println!("last decision:");
-            println!("  action: {} (reason: {})", entry.action_str(), entry.reason);
+            println!(
+                "  action: {} (reason: {})",
+                entry.action_str(),
+                entry.reason
+            );
             println!("  confidence: {:.2}", entry.confidence);
             println!("  source: {} ({} )", entry.source_str(), entry.source);
             println!("  latency: {}ms", entry.latency_ms);
@@ -785,7 +811,10 @@ fn cmd_status(home: &Path) -> Result<(), String> {
     println!("  asked: {}", c.ask);
     println!("  blocked (deny): {}", c.deny);
     println!("  shadow total: {}", c.shadow);
-    println!("  would-have-blocked {} (shadow deny)", c.would_have_blocked);
+    println!(
+        "  would-have-blocked {} (shadow deny)",
+        c.would_have_blocked
+    );
     // Also show would-have N digest
     println!("would-have-blocked {}", c.would_have_blocked);
     Ok(())
@@ -887,11 +916,7 @@ mod tests {
         let backups: Vec<_> = fs::read_dir(parent)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .contains(".algo-backup-")
-            })
+            .filter(|e| e.file_name().to_string_lossy().contains(".algo-backup-"))
             .collect();
         assert!(!backups.is_empty(), "backup not created");
         let latest = backups.last().unwrap().path();
@@ -911,10 +936,7 @@ mod tests {
 
         // Verify hook removed
         let restored_json: serde_json::Value = serde_json::from_slice(&restored).unwrap();
-        assert!(
-            !hook_present(&restored_json, &hook_cmd),
-            "hook not removed"
-        );
+        assert!(!hook_present(&restored_json, &hook_cmd), "hook not removed");
         // Keep tmp alive
         drop(tmp);
     }
@@ -1044,7 +1066,8 @@ mod tests {
         });
         fs::write(&claude_path, serde_json::to_string_pretty(&orig).unwrap()).unwrap();
         cmd_init(&home, Some("redacted"), true).unwrap();
-        let after: serde_json::Value = serde_json::from_slice(&fs::read(&claude_path).unwrap()).unwrap();
+        let after: serde_json::Value =
+            serde_json::from_slice(&fs::read(&claude_path).unwrap()).unwrap();
         // PostToolUse preserved
         assert!(after["hooks"]["PostToolUse"].is_array());
         assert_eq!(after["extra"], "keep");

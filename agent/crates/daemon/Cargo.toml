@@ -27,9 +27,15 @@ clap = { version = "4.5", features = ["derive"] }
 async-trait = "0.1"
 chrono = "0.4"
 
+[[bench]]
+name = "pipeline_L0L1"
+harness = false
+# hints: `pipeline_L0L1` group benches Pipeline::decide L0 deny + L1 cache hit (100 rps, <3ms p50); see benches/pipeline_L0L1.rs
+
 [dev-dependencies]
 tokio = { version = "1.53", features = ["full"] }
 tempfile = "3.10"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

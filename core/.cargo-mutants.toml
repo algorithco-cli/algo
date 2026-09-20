@@ -1,0 +1,34 @@
+# core/.cargo-mutants.toml — cargo-mutants config per P1-09 (P1-QUAL)
+# Gate: `cargo mutants --file deny_list.rs,engine.rs` ≥90% killed; survivors → new regression cases
+# in eval/regression-corpus/*.json. See plans/phase-1-09-quality-latency-eval.md:9 and
+# eval/regression-corpus/README.md.
+
+# Mutants examine only the hard-deny surface; other crates are excluded for speed.
+# The `[[examine]]` table is the stable config key for cargo-mutants 0.7+ (see `cargo mutants --help`
+# and https://mutants.rs). If your version uses `[[files]]`, add that section as well — both are
+# listed here for compatibility.
+
+[[examine]]
+file = "crates/policy/src/deny_list.rs"
+
+[[examine]]
+file = "crates/policy/src/engine.rs"
+
+# Compat alias for older cargo-mutants that expects `path` instead of `file`:
+[[examine]]
+path = "crates/policy/src/deny_list.rs"
+
+[[examine]]
+path = "crates/policy/src/engine.rs"
+
+[timeout]
+# L0/L1 budget is <3ms p50, so 30s per mutant is generous and avoids flakes on Windows.
+timeout = 30
+
+# Minimum killed threshold is enforced by scripts/mutants.{sh,ps1} (90%).
+# If your cargo-mutants supports `minimum_killed` in config, it is also set here:
+[mutants]
+minimum_killed = 90
+
+# Exclude integration tests and benches from mutation (they are not part of the hard-deny gate).
+exclude_re = ["tests/regression.rs", "benches/policy_eval.rs"]

@@ -20,7 +20,10 @@ pub fn facts(parsed: &ParsedCmd) -> Facts {
         bins.push(cmd.bin.clone());
         flags.extend(cmd.flags.clone());
         // Net indicators: curl, wget, ssh, nc, etc. — match on bin, not raw contains
-        if matches!(cmd.bin.as_str(), "curl" | "wget" | "ssh" | "nc" | "scp" | "rsync") {
+        if matches!(
+            cmd.bin.as_str(),
+            "curl" | "wget" | "ssh" | "nc" | "scp" | "rsync"
+        ) {
             net_indicators.push(cmd.bin.clone());
         }
     }
@@ -47,7 +50,9 @@ pub fn facts(parsed: &ParsedCmd) -> Facts {
             }
         }
         // Also check raw for pipe to shell pattern (fallback)
-        if parsed.raw.contains("|") && (parsed.raw.contains("| sh") || parsed.raw.contains("| bash")) {
+        if parsed.raw.contains("|")
+            && (parsed.raw.contains("| sh") || parsed.raw.contains("| bash"))
+        {
             has_pipe_to_shell = true;
         }
     }

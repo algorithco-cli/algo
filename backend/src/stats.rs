@@ -72,9 +72,9 @@ pub fn query_stats(org_id: Option<&str>) -> Stats {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_sync;
     use super::*;
     use crate::audit::{clear_audit_store, ingest_audit};
+    use crate::test_sync;
     use serde_json::json;
 
     #[test]

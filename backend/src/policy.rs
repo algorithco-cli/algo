@@ -174,8 +174,8 @@ impl Default for PolicyStore {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_sync;
     use super::*;
+    use crate::test_sync;
     use crate::verify::{clear_version_store, verify_bundle};
     use ed25519_dalek::Signer;
 
@@ -213,7 +213,10 @@ mod tests {
         bundle.signed_bytes[0] ^= 0xFF;
         let res = store.verify_and_apply("org-t", &bundle);
         assert!(res.is_err());
-        assert!(matches!(res.unwrap_err(), crate::verify::VerifyError::Tampered(_)));
+        assert!(matches!(
+            res.unwrap_err(),
+            crate::verify::VerifyError::Tampered(_)
+        ));
     }
 
     #[test]
@@ -223,7 +226,7 @@ mod tests {
         let store = PolicyStore::new();
         let _b1 = store.publish("org-r", "first");
         let _b2 = store.publish("org-r", "second"); // version 2
-        // Craft old bundle version 1 with valid sig for that payload.
+                                                    // Craft old bundle version 1 with valid sig for that payload.
         let sk = test_signing_key();
         let payload = json!({"org_id":"org-r","version":"1","content":"old","expires_at": Utc::now().timestamp()+3600})
             .to_string()
@@ -258,7 +261,10 @@ mod tests {
             sig,
         };
         let res = store.verify_and_apply("org-e", &bundle);
-        assert!(matches!(res.unwrap_err(), crate::verify::VerifyError::Expired { .. }));
+        assert!(matches!(
+            res.unwrap_err(),
+            crate::verify::VerifyError::Expired { .. }
+        ));
     }
 
     #[test]
@@ -278,7 +284,9 @@ mod tests {
         let _guard = test_sync::lock();
         clear_version_store();
         let store = PolicyStore::new();
-        let payload = json!({"content":"raw","expires_at": Utc::now().timestamp()+3600}).to_string().into_bytes();
+        let payload = json!({"content":"raw","expires_at": Utc::now().timestamp()+3600})
+            .to_string()
+            .into_bytes();
         let bundle = store.publish_raw("org-raw", "5", payload);
         assert_eq!(bundle.version, "5");
         assert!(store.verify_and_apply("org-raw", &bundle).is_ok());

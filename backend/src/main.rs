@@ -85,9 +85,7 @@ where
         {
             let mut store = rate_store().lock().expect("rate store poisoned");
             let now = Instant::now();
-            let entry = store
-                .entry("global".to_string())
-                .or_insert((0, now));
+            let entry = store.entry("global".to_string()).or_insert((0, now));
             if now.duration_since(entry.1) > Duration::from_secs(60) {
                 *entry = (0, now);
             }
@@ -172,19 +170,23 @@ async fn create_org_handler(
             .into_response();
     }
     let org_id = format!("org_{}", uuid::Uuid::new_v4());
-    let owner = payload.owner_id.unwrap_or_else(|| "owner_default".to_string());
+    let owner = payload
+        .owner_id
+        .unwrap_or_else(|| "owner_default".to_string());
     let resp = CreateOrgResponse {
         org_id: org_id.clone(),
         org_name: payload.org_name,
         owner_id: owner,
     };
     // In-memory: we don't persist org beyond response for MVP; stats/policy keyed by org_id still works.
-    (StatusCode::CREATED, Json(serde_json::to_value(resp).unwrap())).into_response()
+    (
+        StatusCode::CREATED,
+        Json(serde_json::to_value(resp).unwrap()),
+    )
+        .into_response()
 }
 
-async fn device_init_handler(
-    Json(payload): Json<DeviceInitPayload>,
-) -> impl IntoResponse {
+async fn device_init_handler(Json(payload): Json<DeviceInitPayload>) -> impl IntoResponse {
     let client_id = payload
         .client_id
         .unwrap_or_else(|| "default-client".to_string());
@@ -199,9 +201,7 @@ async fn device_init_handler(
     (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
 }
 
-async fn device_poll_handler(
-    Json(payload): Json<DevicePollPayload>,
-) -> impl IntoResponse {
+async fn device_poll_handler(Json(payload): Json<DevicePollPayload>) -> impl IntoResponse {
     match poll_device_flow(&payload.device_code) {
         Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err(e) => (
@@ -269,7 +269,9 @@ async fn publish_policy_handler(
                 .into_response(),
         }
     } else {
-        let content = payload.content.unwrap_or_else(|| "default policy".to_string());
+        let content = payload
+            .content
+            .unwrap_or_else(|| "default policy".to_string());
         let bundle = state.policy_store.publish(&org_id, &content);
         let resp = PublishPolicyResponse {
             version: bundle.version.clone(),
@@ -292,7 +294,10 @@ async fn get_policy_handler(
         )
             .into_response();
     }
-    let org_id = params.get("org_id").map(|s| s.as_str()).unwrap_or("default");
+    let org_id = params
+        .get("org_id")
+        .map(|s| s.as_str())
+        .unwrap_or("default");
     match state.policy_store.get(org_id, &version) {
         Some(bundle) => {
             use base64::{engine::general_purpose::STANDARD as B64, Engine};
@@ -384,7 +389,9 @@ async fn dry_run_handler(
         .unwrap_or(0);
     // Try to verify if bundle has version/signed_bytes/sig.
     // For MVP we don't enforce full verify here, just report.
-    let decisions: Vec<String> = (0..history_len).map(|i| format!("ask: history {i}")).collect();
+    let decisions: Vec<String> = (0..history_len)
+        .map(|i| format!("ask: history {i}"))
+        .collect();
     let body = serde_json::json!({
         "result": "dry-run ok",
         "decisions": decisions,
@@ -404,7 +411,11 @@ async fn wal_drain_handler(headers: HeaderMap) -> impl IntoResponse {
             .into_response();
     }
     let drained = audit::drain_wal();
-    (StatusCode::OK, Json(serde_json::json!({"drained": drained.len()}))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"drained": drained.len()})),
+    )
+        .into_response()
 }
 
 // ── Router ──────────────────────────────────────────────────────────
@@ -492,7 +503,9 @@ mod tests {
             .uri("/v1/audit/ingest")
             .method("POST")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"redacted_event":"hello","decision":"allow","latency_ms":5}"#))
+            .body(Body::from(
+                r#"{"redacted_event":"hello","decision":"allow","latency_ms":5}"#,
+            ))
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -601,7 +614,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body_bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
         let version = body.get("version").unwrap().as_str().unwrap().to_string();
         assert_eq!(version, "1");
@@ -650,7 +665,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let stats: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(stats.get("total").unwrap().as_i64().unwrap(), 2);
     }

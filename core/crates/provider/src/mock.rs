@@ -53,7 +53,6 @@ impl DecisionProvider for MockProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::trait_def::TypedQuestion;
     use algo_types::{AgentIdentity, PrivacyMode, ToolKind};
 
     fn tool_before(payload: &str) -> ToolBefore {
@@ -84,9 +83,7 @@ mod tests {
                 confidence: 0.99,
             }],
         );
-        let ans = mock
-            .judge(&tool_before("rm -rf /"), &[])
-            .unwrap();
+        let ans = mock.judge(&tool_before("rm -rf /"), &[]).unwrap();
         assert_eq!(
             ans[0],
             TypedAnswer::Choice {

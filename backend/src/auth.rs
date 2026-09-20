@@ -85,7 +85,9 @@ pub fn poll_device_flow(device_code: &str) -> Result<DevicePollResponse, AuthErr
         .ok_or_else(|| AuthError::InvalidDeviceCode(device_code.to_string()))?;
 
     // Expiry check.
-    let elapsed = Utc::now().signed_duration_since(flow.created_at).num_seconds();
+    let elapsed = Utc::now()
+        .signed_duration_since(flow.created_at)
+        .num_seconds();
     if elapsed > flow.expires_in as i64 {
         return Err(AuthError::Expired);
     }
@@ -164,13 +166,16 @@ pub fn require_auth(headers: &axum::http::HeaderMap) -> Result<String, AuthError
 
 /// Clear device store (tests).
 pub fn clear_device_store() {
-    device_store().lock().expect("device store poisoned").clear();
+    device_store()
+        .lock()
+        .expect("device store poisoned")
+        .clear();
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::test_sync;
     use super::*;
+    use crate::test_sync;
 
     #[test]
     fn device_flow_create_and_poll() {

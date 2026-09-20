@@ -1,0 +1,62 @@
+# deny.toml — cargo-deny config per P1-09 (fmt/lint/type + deny/audit/vet clean, fail on warn)
+# Gate: `cargo deny check` must be clean; see plans/phase-1-09-quality-latency-eval.md:5
+# This config is intentionally permissive on first private MVP and tightened before public release.
+# Ratify via ADR before adding bans.
+
+[graph]
+targets = [
+  { triple = "x86_64-pc-windows-msvc" },
+  { triple = "x86_64-unknown-linux-gnu" },
+  { triple = "aarch64-apple-darwin" },
+]
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rust-lang/crates.io-index"]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "warn"
+notice = "warn"
+ignore = []
+
+[licenses]
+# Workspace crates use LicenseRef-TBD-legal-signoff until ADR-0001 legal sign-off (see DEFERRED.md:5.2)
+# Allow it explicitly; otherwise cargo-deny would flag our own crates as unlicensed.
+unlicensed = "allow"
+allow-osi-fsf-free = "either"
+copyleft = "warn"
+# SPDX allowlist for dependencies (covers regex, aho-corasick, smallvec, tree-sitter, prost, criterion, serde, etc.)
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-DFS-2016",
+  "CC0-1.0",
+  "MPL-2.0",
+  "CDDL-1.0",
+  "OpenSSL",
+  "Zlib",
+  "LicenseRef-TBD-legal-signoff",
+]
+# Use `cargo deny list` to see actual license strings if this needs tightening
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "warn"
+highlight = "all"
+allow-wildcard-paths = false
+allow-build-scripts = true
+# No banned crates yet; add via ADR when needed (e.g., copyleft at public release)
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

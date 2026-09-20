@@ -7,11 +7,11 @@ pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/algorithco_guard.v0.rs"));
 }
 
+pub use prost_types::Timestamp;
 pub use proto::{
     Action, AgentIdentity, AgentQuestion, AgentStop, Decision, PrivacyMode, QuestionKind,
     SourceLevel, ToolAfter, ToolBefore, ToolKind,
 };
-pub use prost_types::Timestamp;
 
 // Re-export dataset types (they import events/decision, so they live in the same proto package).
 pub use proto::{DatasetRecord, RedactionCert};

@@ -9,8 +9,14 @@ pub enum Profile {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Decision {
-    Allow { rule_id: &'static str, reason: String },
-    Deny { rule_id: &'static str, reason: String },
+    Allow {
+        rule_id: &'static str,
+        reason: String,
+    },
+    Deny {
+        rule_id: &'static str,
+        reason: String,
+    },
     Abstain,
 }
 
@@ -83,7 +89,7 @@ mod tests {
         let e = Engine::new();
         for profile in [Profile::Strict, Profile::Balanced, Profile::Fast] {
             match e.evaluate("rm -rf /", profile) {
-                Decision::Deny { .. } => {},
+                Decision::Deny { .. } => {}
                 _ => panic!("profile must not override deny"),
             }
         }

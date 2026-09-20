@@ -123,7 +123,12 @@ impl AuditStore {
     /// Insert a decision with fingerprint and shadow flag.
     /// `redacted_command` is derived from decision trace/reason only — caller must have redacted.
     /// For full control use `insert_full`.
-    pub fn insert(&self, decision: &Decision, fingerprint: &str, shadow: bool) -> Result<(), AuditError> {
+    pub fn insert(
+        &self,
+        decision: &Decision,
+        fingerprint: &str,
+        shadow: bool,
+    ) -> Result<(), AuditError> {
         // Derive redacted_command from decision's trace? We use fingerprint as placeholder
         // but also store reason as redacted_command is not ideal. We choose to store
         // fingerprint as redacted_command's hash fallback, and also keep reason separate.
@@ -265,11 +270,10 @@ impl AuditStore {
             params![Action::Ask as i32, Action::Unspecified as i32],
             |r| r.get(0),
         )?;
-        let shadow_cnt: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM decisions WHERE shadow = 1",
-            [],
-            |r| r.get(0),
-        )?;
+        let shadow_cnt: i64 =
+            conn.query_row("SELECT COUNT(*) FROM decisions WHERE shadow = 1", [], |r| {
+                r.get(0)
+            })?;
         let would_have_blocked: i64 = conn.query_row(
             "SELECT COUNT(*) FROM decisions WHERE shadow = 1 AND action = ?1",
             params![Action::Deny as i32],

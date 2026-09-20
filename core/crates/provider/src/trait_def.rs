@@ -3,16 +3,39 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedQuestion {
-    Bool { id: String, prompt: String },
-    Choice { id: String, prompt: String, options: Vec<String> },
-    Score { id: String, prompt: String, levels: Vec<String> },
+    Bool {
+        id: String,
+        prompt: String,
+    },
+    Choice {
+        id: String,
+        prompt: String,
+        options: Vec<String>,
+    },
+    Score {
+        id: String,
+        prompt: String,
+        levels: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedAnswer {
-    Bool { id: String, value: bool, confidence: f64 },
-    Choice { id: String, choice: String, confidence: f64 },
-    Score { id: String, score: f64, confidence: f64 },
+    Bool {
+        id: String,
+        value: bool,
+        confidence: f64,
+    },
+    Choice {
+        id: String,
+        choice: String,
+        confidence: f64,
+    },
+    Score {
+        id: String,
+        score: f64,
+        confidence: f64,
+    },
 }
 
 pub type TypedAnswers = Vec<TypedAnswer>;

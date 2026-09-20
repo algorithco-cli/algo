@@ -1,0 +1,48 @@
+[package]
+name = "algorithco-guard-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+description = "Fuzz targets for algorithco guard (P1-09) - cargo fuzz shell/adapter/policy"
+license = "LicenseRef-TBD-legal-signoff"
+repository = "https://github.com/algorithcoguard/algorithco-guard"
+rust-version = "1.75"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.algo-shell-analysis]
+path = "../core/crates/shell-analysis"
+
+[dependencies.algo-policy]
+path = "../core/crates/policy"
+
+[dependencies.algo-adapter-claude]
+path = "../agent/crates/adapter-claude"
+
+[dependencies.algo-types]
+path = "../core/crates/types"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
+[[bin]]
+name = "fuzz_shell_parse"
+path = "fuzz_targets/fuzz_shell_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_policy_evaluate"
+path = "fuzz_targets/fuzz_policy_evaluate.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_adapter_parse"
+path = "fuzz_targets/fuzz_adapter_parse.rs"
+test = false
+doc = false

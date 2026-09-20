@@ -1,0 +1,7 @@
+# Fuzz artifacts - not committed
+target/
+corpus/
+artifacts/
+coverage/
+*.profraw
+*.profdata

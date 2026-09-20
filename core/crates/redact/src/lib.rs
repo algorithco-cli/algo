@@ -59,7 +59,8 @@ fn build_regexes() -> Vec<(&'static str, Regex, &'static str)> {
         ),
         (
             "aws_secret",
-            Regex::new(r#"(?i)\baws_secret_access_key\b\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?"#).unwrap(),
+            Regex::new(r#"(?i)\baws_secret_access_key\b\s*[:=]\s*['"]?[A-Za-z0-9/+=]{40}['"]?"#)
+                .unwrap(),
             "<REDACTED:AWS_SECRET>",
         ),
         (
@@ -99,7 +100,8 @@ fn build_regexes() -> Vec<(&'static str, Regex, &'static str)> {
         ),
         (
             "credential_assignment",
-            Regex::new(r#"(?i)\b(password|passwd|pwd|token|secret)\b\s*[:=]\s*['"]?[^'"\s,}]{4,}"#).unwrap(),
+            Regex::new(r#"(?i)\b(password|passwd|pwd|token|secret)\b\s*[:=]\s*['"]?[^'"\s,}]{4,}"#)
+                .unwrap(),
             "<REDACTED:CREDENTIAL>",
         ),
     ]
@@ -157,10 +159,7 @@ impl Redactor {
                     masked = new_masked;
                 }
                 if found {
-                    findings.push(Finding {
-                        kind,
-                        masked_as,
-                    });
+                    findings.push(Finding { kind, masked_as });
                 }
             }
         }
@@ -233,19 +232,34 @@ fn shannon_entropy(s: &str) -> f64 {
 
 fn high_entropy_tokens(s: &str) -> Vec<String> {
     let mut hits = Vec::new();
-    for tok in s.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}')) {
-        let stripped = tok.trim_matches(|c| matches!(c, '=' | '-' | '.' | '_' | ':' | '/' ));
+    for tok in s.split(|c: char| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\'' | ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}'
+            )
+    }) {
+        let stripped = tok.trim_matches(|c| matches!(c, '=' | '-' | '.' | '_' | ':' | '/'));
         if stripped.len() >= 24 && char_classes(stripped) >= 3 && shannon_entropy(stripped) > 4.5 {
             // Skip already-redacted placeholders and common non-secrets
-            if stripped.starts_with("<REDACTED") || stripped.contains("example") || stripped.contains("test") || stripped.contains("fake") {
+            if stripped.starts_with("<REDACTED")
+                || stripped.contains("example")
+                || stripped.contains("test")
+                || stripped.contains("fake")
+            {
                 continue;
             }
             hits.push(stripped.to_string());
         }
     }
     // Also check for long base64-like substrings inside the string
-    for caps in regex::Regex::new(r"[A-Za-z0-9+/=_.-]{24,}").unwrap().find_iter(s) {
-        let tok = caps.as_str().trim_matches(|c| matches!(c, '=' | '-' | '.' | '_' ));
+    for caps in regex::Regex::new(r"[A-Za-z0-9+/=_.-]{24,}")
+        .unwrap()
+        .find_iter(s)
+    {
+        let tok = caps
+            .as_str()
+            .trim_matches(|c| matches!(c, '=' | '-' | '.' | '_'));
         if tok.len() >= 24
             && char_classes(tok) >= 3
             && shannon_entropy(tok) > 4.5
@@ -290,7 +304,13 @@ mod tests {
     #[test]
     fn false_positive_guards_pass() {
         let r = Redactor::new();
-        for s in ["test", "example", "fake", "placeholder", "AKIAIOSFODNN7EXAMPLE"] {
+        for s in [
+            "test",
+            "example",
+            "fake",
+            "placeholder",
+            "AKIAIOSFODNN7EXAMPLE",
+        ] {
             let (masked, findings) = r.redact(s);
             // The docs example key should NOT be flagged as real (it's in the allowlist via the 'fake' check in high-entropy)
             // But AKIAIOSFODNN7EXAMPLE is actually a real-pattern match for AKIA — we intentionally do NOT suppress it here,

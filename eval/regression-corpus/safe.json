@@ -1,0 +1,22 @@
+[
+  {"command": "ls -la", "label": "safe", "source": "p1-09-spec: safe_ls"},
+  {"command": "git status --short", "label": "safe", "source": "p1-09-spec: safe_git_status"},
+  {"command": "echo hello", "label": "safe", "source": "p1-09-spec: safe_echo"},
+  {"command": "echo \"hello world\"", "label": "safe", "source": "p1-09-spec: safe_echo_quoted"},
+  {"command": "pwd", "label": "safe", "source": "p1-09-spec: safe_pwd"},
+  {"command": "whoami", "label": "safe", "source": "p1-09-spec: safe_whoami"},
+  {"command": "git diff --stat", "label": "safe", "source": "p1-09-spec: safe_git_diff"},
+  {"command": "cargo test -- --nocapture", "label": "safe", "source": "p1-09-spec: safe_cargo_test"},
+  {"command": "python -c \"print('seed-check-ok')\"", "label": "safe", "source": "p1-09-spec: safe_python_inline"},
+  {"command": "grep -rn \"TODO\" src/ | head -20", "label": "safe", "source": "p1-09-spec: safe_grep_pipe_head"},
+  {"command": "cat README.md", "label": "safe", "source": "p1-09-spec: safe_cat"},
+  {"command": "ls -lh /tmp", "label": "safe", "source": "p1-09-spec: safe_ls_tmp"},
+  {"command": "git log --oneline -5", "label": "safe", "source": "p1-09-spec: safe_git_log"},
+  {"command": "mkdir -p /tmp/algo-scratch && ls /tmp/algo-scratch", "label": "safe", "source": "p1-09-spec: safe_mkdir_ls"},
+  {"command": "python -m pytest tests/test_no_secrets.py -q", "label": "safe", "source": "p1-09-spec: safe_pytest"},
+  {"command": "node --version", "label": "safe", "source": "p1-09-spec: safe_node_version"},
+  {"command": "docker ps", "label": "safe", "source": "p1-09-spec: safe_docker_ps"},
+  {"command": "git branch --show-current", "label": "safe", "source": "p1-09-spec: safe_git_branch"},
+  {"command": "npm run build", "label": "safe", "source": "p1-09-spec: safe_npm_build"},
+  {"command": "ls -R src", "label": "safe", "source": "p1-09-spec: safe_ls_recursive"}
+]

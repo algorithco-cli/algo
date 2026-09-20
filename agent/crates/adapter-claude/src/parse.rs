@@ -177,7 +177,14 @@ mod tests {
 
     #[test]
     fn golden_safe_ls_la() {
-        let s = hook_payload("Bash", "ls -la", "/tmp", "sess-1", Some("PreToolUse"), Some("1"));
+        let s = hook_payload(
+            "Bash",
+            "ls -la",
+            "/tmp",
+            "sess-1",
+            Some("PreToolUse"),
+            Some("1"),
+        );
         let ev = parse_hook(&s).expect("should parse");
         assert_eq!(ev.tool_kind, ToolKind::Shell);
         assert_eq!(ev.command, "ls -la");
@@ -188,35 +195,70 @@ mod tests {
 
     #[test]
     fn golden_safe_ls_tmp() {
-        let s = hook_payload("Bash", "ls -la /tmp", "/tmp", "sess-2", Some("PreToolUse"), None);
+        let s = hook_payload(
+            "Bash",
+            "ls -la /tmp",
+            "/tmp",
+            "sess-2",
+            Some("PreToolUse"),
+            None,
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "ls -la /tmp");
     }
 
     #[test]
     fn golden_safe_echo() {
-        let s = hook_payload("Bash", "echo hello world", "/home/user", "sess-echo", None, None);
+        let s = hook_payload(
+            "Bash",
+            "echo hello world",
+            "/home/user",
+            "sess-echo",
+            None,
+            None,
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "echo hello world");
     }
 
     #[test]
     fn golden_safe_pwd() {
-        let s = hook_payload("Bash", "pwd", "/", "sess-pwd", Some("PreToolUse"), Some("1"));
+        let s = hook_payload(
+            "Bash",
+            "pwd",
+            "/",
+            "sess-pwd",
+            Some("PreToolUse"),
+            Some("1"),
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "pwd");
     }
 
     #[test]
     fn golden_safe_git_status() {
-        let s = hook_payload("Bash", "git status", "/repo", "sess-git", Some("PreToolUse"), Some("1"));
+        let s = hook_payload(
+            "Bash",
+            "git status",
+            "/repo",
+            "sess-git",
+            Some("PreToolUse"),
+            Some("1"),
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "git status");
     }
 
     #[test]
     fn golden_safe_find() {
-        let s = hook_payload("Bash", "find . -name \"*.rs\"", "/repo", "sess-find", None, None);
+        let s = hook_payload(
+            "Bash",
+            "find . -name \"*.rs\"",
+            "/repo",
+            "sess-find",
+            None,
+            None,
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "find . -name \"*.rs\"");
     }
@@ -259,7 +301,14 @@ mod tests {
     // Dangerous / deny-like (parse must still succeed – pure, no policy)
     #[test]
     fn golden_dangerous_rm_rf_root() {
-        let s = hook_payload("Bash", "rm -rf /", "/tmp", "sess-deny-1", Some("PreToolUse"), Some("1"));
+        let s = hook_payload(
+            "Bash",
+            "rm -rf /",
+            "/tmp",
+            "sess-deny-1",
+            Some("PreToolUse"),
+            Some("1"),
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "rm -rf /");
     }
@@ -330,7 +379,14 @@ mod tests {
     // Obfuscated / ask-like (parse still succeeds)
     #[test]
     fn golden_obfuscated_base64() {
-        let s = hook_payload("Bash", "base64 -d <<< \"cm0gLXJmIC8=\"", "/tmp", "sess-obf-1", None, None);
+        let s = hook_payload(
+            "Bash",
+            "base64 -d <<< \"cm0gLXJmIC8=\"",
+            "/tmp",
+            "sess-obf-1",
+            None,
+            None,
+        );
         let ev = parse_hook(&s).unwrap();
         assert!(ev.command.contains("base64"));
     }
@@ -351,7 +407,14 @@ mod tests {
 
     #[test]
     fn golden_obfuscated_bash_c() {
-        let s = hook_payload("Bash", "bash -c \"rm -rf /\"", "/tmp", "sess-obf-3", None, None);
+        let s = hook_payload(
+            "Bash",
+            "bash -c \"rm -rf /\"",
+            "/tmp",
+            "sess-obf-3",
+            None,
+            None,
+        );
         let ev = parse_hook(&s).unwrap();
         assert_eq!(ev.command, "bash -c \"rm -rf /\"");
     }
@@ -503,7 +566,8 @@ mod tests {
 
     #[test]
     fn proves_ask_with_trace_preserves_trace() {
-        let d = proves_ask_on_parse_fail_with_trace(ParseError::InvalidJson("bad".into()), "my-trace");
+        let d =
+            proves_ask_on_parse_fail_with_trace(ParseError::InvalidJson("bad".into()), "my-trace");
         assert_eq!(d.trace_id, "my-trace");
         assert_eq!(d.action, Action::Ask as i32);
     }

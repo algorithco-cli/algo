@@ -13,5 +13,11 @@ algo-types = { path = "../types" }
 blake3 = "1.5"
 regex = "1.12"
 
+[[bench]]
+name = "normalize"
+harness = false
+# hints: `fingerprint_normalize` group benches normalize + cache_key (10KB long command); see benches/normalize.rs
+
 [dev-dependencies]
 proptest = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }

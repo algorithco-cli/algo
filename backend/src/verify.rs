@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::Value;
 
 /// Mirrors proto `PolicyBundle{version,signed_bytes,sig}`.
@@ -33,7 +33,9 @@ impl std::fmt::Display for VerifyError {
             Self::InvalidKey(s) => write!(f, "invalid pubkey: {s}"),
             Self::InvalidSignature(s) => write!(f, "invalid signature: {s}"),
             Self::Tampered(s) => write!(f, "tampered bundle: {s}"),
-            Self::Expired { expires_at, now } => write!(f, "expired bundle: exp {expires_at} now {now}"),
+            Self::Expired { expires_at, now } => {
+                write!(f, "expired bundle: exp {expires_at} now {now}")
+            }
             Self::Rollback { current, got } => write!(f, "rollback: current {current} got {got}"),
             Self::BadVersion(s) => write!(f, "bad version: {s}"),
         }
@@ -136,11 +138,7 @@ pub fn verify_bundle(bundle: &PolicyBundle, pubkey: &[u8]) -> Result<(), VerifyE
     let vk_bytes: [u8; 32] = pubkey.try_into().expect("checked len");
     let vk = VerifyingKey::from_bytes(&vk_bytes)
         .map_err(|e| VerifyError::InvalidKey(format!("bad ed25519 pubkey: {e}")))?;
-    let sig_bytes: [u8; 64] = bundle
-        .sig
-        .as_slice()
-        .try_into()
-        .expect("checked len");
+    let sig_bytes: [u8; 64] = bundle.sig.as_slice().try_into().expect("checked len");
     let sig = Signature::from_bytes(&sig_bytes);
     vk.verify(&bundle.signed_bytes, &sig)
         .map_err(|e| VerifyError::Tampered(format!("ed25519 verify failed: {e}")))?;
@@ -199,7 +197,9 @@ mod tests {
     }
 
     fn payload_with_exp(exp: i64) -> Vec<u8> {
-        json!({"content":"hello policy","expires_at": exp, "version":"test"}).to_string().into_bytes()
+        json!({"content":"hello policy","expires_at": exp, "version":"test"})
+            .to_string()
+            .into_bytes()
     }
 
     #[test]

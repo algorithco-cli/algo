@@ -25,7 +25,9 @@ fn re_timestamp() -> &'static Regex {
     RE_TIMESTAMP.get_or_init(|| Regex::new(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}\b").unwrap())
 }
 fn re_uuid() -> &'static Regex {
-    RE_UUID.get_or_init(|| Regex::new(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").unwrap())
+    RE_UUID.get_or_init(|| {
+        Regex::new(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").unwrap()
+    })
 }
 fn re_num() -> &'static Regex {
     RE_NUM.get_or_init(|| Regex::new(r"\b\d{3,}\b").unwrap())
@@ -58,11 +60,13 @@ pub fn normalize(cmd: &str) -> String {
             break;
         }
         // VAR must be a valid shell variable name: [A-Za-z_][A-Za-z0-9_]*
-        if !before_eq
-            .chars()
-            .enumerate()
-            .all(|(i, c)| if i == 0 { c.is_ascii_alphabetic() || c == '_' } else { c.is_ascii_alphanumeric() || c == '_' })
-        {
+        if !before_eq.chars().enumerate().all(|(i, c)| {
+            if i == 0 {
+                c.is_ascii_alphabetic() || c == '_'
+            } else {
+                c.is_ascii_alphanumeric() || c == '_'
+            }
+        }) {
             break;
         }
         if let Some(space_pos) = rest[eq_pos..].find(' ') {
@@ -158,7 +162,10 @@ pub fn normalize(cmd: &str) -> String {
 }
 
 fn is_operator(tok: &str) -> bool {
-    matches!(tok, "|" | "||" | "&&" | ";" | "&" | ">" | ">>" | "<" | "2>&1" | "2>" | "1>" | "tee")
+    matches!(
+        tok,
+        "|" | "||" | "&&" | ";" | "&" | ">" | ">>" | "<" | "2>&1" | "2>" | "1>" | "tee"
+    )
 }
 
 fn tokenize(s: &str) -> Vec<String> {
@@ -266,7 +273,11 @@ mod tests {
 
     #[test]
     fn normalize_idempotent() {
-        let cases = vec!["ls -la /tmp/foo", "SUDO ls -la", "VAR=x curl https://example.com/a1"];
+        let cases = vec![
+            "ls -la /tmp/foo",
+            "SUDO ls -la",
+            "VAR=x curl https://example.com/a1",
+        ];
         for c in cases {
             assert_eq!(normalize(&normalize(c)), normalize(c));
         }
@@ -281,7 +292,11 @@ mod tests {
 
     #[test]
     fn never_emits_secret_substrings() {
-        let cases = vec!["AKIAIOSFODNN7EXAMPLE", "ghp_12345678901234567890", "secret123"];
+        let cases = vec![
+            "AKIAIOSFODNN7EXAMPLE",
+            "ghp_12345678901234567890",
+            "secret123",
+        ];
         for c in cases {
             let norm = normalize(c);
             // Should not contain raw secret patterns (our redact would catch them, but normalize shouldn't reintroduce)
@@ -294,11 +309,17 @@ mod tests {
         // `curl …/a1` vs `…/d4` same key after hash replacement
         let a = normalize("curl https://example.com/a1234567");
         let b = normalize("curl https://example.com/d4123456");
-        assert_eq!(cache_key(&a, "v1", "balanced"), cache_key(&b, "v1", "balanced"));
+        assert_eq!(
+            cache_key(&a, "v1", "balanced"),
+            cache_key(&b, "v1", "balanced")
+        );
         // `rm -rf /` vs `rm -rf /tmp/x` different
         let c = normalize("rm -rf /");
         let d = normalize("rm -rf /tmp/x");
-        assert_ne!(cache_key(&c, "v1", "balanced"), cache_key(&d, "v1", "balanced"));
+        assert_ne!(
+            cache_key(&c, "v1", "balanced"),
+            cache_key(&d, "v1", "balanced")
+        );
     }
 
     #[test]
