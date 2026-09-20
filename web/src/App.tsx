@@ -10,16 +10,17 @@ import {
   FlaskConical,
   LayoutGrid,
   Lock,
+  Menu,
   MessageCircle,
   Minus,
   Play,
   Plus,
   Rocket,
   ShieldAlert,
+  X,
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import RubberSegment from "./components/RubberSegment";
 import Aurora from "./components/Aurora";
 
 /* ---------- shared bits ---------- */
@@ -320,9 +321,9 @@ function Faq(): JSX.Element {
   );
 }
 
-/* ---------- nav segment (rubber-band, scroll-spy) ---------- */
+/* ---------- scroll-spy for nav highlight ---------- */
 
-function NavSegment(): JSX.Element {
+function useActiveSection(): string {
   const [active, setActive] = React.useState(NAV[0][1]);
   React.useEffect(() => {
     const ids = NAV.map(([, href]) => href.slice(1));
@@ -340,19 +341,7 @@ function NavSegment(): JSX.Element {
     });
     return () => obs.disconnect();
   }, []);
-  return (
-    <RubberSegment
-      items={NAV.map(([label, href]) => ({ value: href, label }))}
-      value={active}
-      size="sm"
-      aria-label="Primary"
-      onChange={(href) => {
-        setActive(href);
-        const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-        document.getElementById(href.slice(1))?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
-      }}
-    />
-  );
+  return active;
 }
 
 /* ---------- page ---------- */
@@ -448,6 +437,8 @@ const STEPS: Array<[string, string, string]> = [
 export default function App(): JSX.Element {
   const scrolled = useScrolled();
   useRevealOnMount();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const active = useActiveSection();
   const [calmMotion] = React.useState(
     () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
   );
@@ -465,28 +456,59 @@ export default function App(): JSX.Element {
             <span className="brand-name">algorithco guard</span>
             <span className="kbd">by algorithco</span>
           </a>
-          <nav className="nav-segment-wrap" aria-label="Primary">
-            <NavSegment />
+          <nav className="nav-desktop" aria-label="Primary">
+            {NAV.map(([label, href]) => (
+              <a key={href} href={href} className={active === href ? "active" : undefined} aria-current={active === href ? "true" : undefined}>
+                {label}
+              </a>
+            ))}
           </nav>
           <div className="header-cta">
-            <a href="#login" className="btn btn-ghost">
+            <a href="#login" className="btn btn-ghost cta-login">
               Log in
             </a>
             <a href="#pricing" className="btn btn-primary">
               Get started
             </a>
+            <button
+              className="burger"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-expanded={menuOpen}
+              aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+            >
+              {menuOpen ? <X size={22} aria-hidden /> : <Menu size={22} aria-hidden />}
+            </button>
           </div>
         </div>
+        {menuOpen ? (
+          <nav className="mobile-menu" aria-label="Mobile">
+            {NAV.map(([label, href]) => (
+              <a key={href} href={href} onClick={() => setMenuOpen(false)} className={active === href ? "active" : undefined}>
+                {label}
+              </a>
+            ))}
+            <div className="mobile-actions">
+              <a href="#login" className="btn btn-ghost" onClick={() => setMenuOpen(false)}>
+                Log in
+              </a>
+              <a href="#pricing" className="btn btn-primary" onClick={() => setMenuOpen(false)}>
+                Get started
+              </a>
+            </div>
+          </nav>
+        ) : null}
       </header>
 
-      <main id="main" className="wrap">
+      <main id="main">
         {/* Hero */}
-        <div className={`hero reveal${calmMotion ? " hero-calm" : ""}`} id="top">
-          {calmMotion ? null : (
-            <div className="hero-aurora" aria-hidden>
-              <Aurora amplitude={1.0} blend={0.55} speed={0.55} />
-            </div>
-          )}
+        <section className={`hero${calmMotion ? " hero-calm" : ""}`} id="top">
+          <div className="hero-bg" aria-hidden>
+            {calmMotion ? null : <Aurora amplitude={1.1} blend={0.6} speed={0.5} />}
+            <div className="glow glow-purple" />
+            <div className="glow glow-green" />
+            <div className="hero-fade" />
+          </div>
+          <div className="wrap hero-grid">
           <div className="hero-copy">
             <p className="hero-badge">
               <span className="pulse" aria-hidden /> Private MVP — shadow-first, free local tier
@@ -548,18 +570,22 @@ export default function App(): JSX.Element {
               </div>
             </div>
           </div>
-        </div>
+          </div>
+        </section>
 
-        {/* Compatibility strip */}
-        <div className="strip" aria-label="Compatible agents">
-          <span className="muted strip-label">Plugs into</span>
-          {["Claude Code", "OpenCode (P4)", "Codex (P4)", "MCP", "Bash hooks", "SQLite audit"].map((s) => (
-            <span key={s} className="strip-item">
-              {s}
-            </span>
-          ))}
-        </div>
+        {/* Integration strip */}
+        <section className="strip-section">
+          <div className="wrap strip" aria-label="Compatible agents">
+            <span className="strip-label">Plugs into</span>
+            {["Claude Code", "OpenCode (P4)", "Codex (P4)", "MCP", "Bash hooks", "SQLite audit"].map((s) => (
+              <span key={s} className="strip-item">
+                {s}
+              </span>
+            ))}
+          </div>
+        </section>
 
+        <div className="wrap">
         {/* Demo */}
         <Section id="demo" kicker="Live demo" title="See a verdict in your browser" lede="Type anything — destructive, routine, or weird. This demo mirrors the shipped deny list; the real daemon enforces it in under 3ms.">
           <VerdictDemo />
@@ -836,6 +862,7 @@ algo status  # allowed / asked / blocked, savings, profile`}</code>
               Log in
             </a>
           </div>
+        </div>
         </div>
       </main>
 
