@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="algorithco guard favicon">
+  <rect width="256" height="256" rx="56" fill="#131218"/>
+  <polyline points="78,70 140,128 78,186" fill="none" stroke="#F4F3FF" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="170" y="60" width="36" height="62" rx="18" fill="#6D4AFF"/>
+  <rect x="170" y="134" width="36" height="62" rx="18" fill="#6D4AFF"/>
+</svg>
