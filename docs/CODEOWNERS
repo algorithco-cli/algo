@@ -1,0 +1,26 @@
+# CODEOWNERS — algorithcoguard/docs
+# Human review is mandatory for security-critical paths.
+# Agent approval is never sufficient on these lines.
+
+# Hard deny list + threshold logic (eval gate, allow/deny tuning)
+/docs/threat-model-v0.md            @algorithcoguard/security
+/docs/security-model.md             @algorithcoguard/security
+/docs/adr/                         @algorithcoguard/security @algorithcoguard/core
+/docs/decision-log.md               @algorithcoguard/security @algorithcoguard/core
+
+# Redaction rules + privacy dataflow (redact-before-network)
+/docs/privacy-dataflow.md           @algorithcoguard/security @algorithcoguard/privacy
+
+# Signature verification (releases, policy bundles, SBOM)
+/docs/security-model.md             @algorithcoguard/security @algorithcoguard/release
+
+# Install / uninstall paths (algo init, file mods, backups, restore)
+/docs/security-model.md             @algorithcoguard/agent @algorithcoguard/security
+/docs/privacy-dataflow.md           @algorithcoguard/agent @algorithcoguard/security
+
+# Auth (device flow, orgs, tokens, GitHub App) — backend scope stub in Phase 0
+/docs/threat-model-v0.md            @algorithcoguard/backend @algorithcoguard/security
+/docs/roadmap.md                    @algorithcoguard/backend @algorithcoguard/security
+
+# Default: everything else needs one human
+*                                   @algorithcoguard/maintainers
