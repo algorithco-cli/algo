@@ -1,7 +1,7 @@
 ﻿# dashboard (Phase 0 — no product code yet)
 
-> Part of **algorithco guard** (CLI algo). Org repo plan: docs/github-org-plan.md.
-> Real code lives in algorithcoguard/dashboard starting its build phase. This dir is a scaffold stub.
+> Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard` (see docs/github-org-plan.md).
+> Real code lives in the monorepo subdirectory `dashboard/` starting its build phase. This dir is a scaffold stub.
 
 Scope: team web app (Phase 3 only) — React+Vite static SPA: history, findings, policy
 editor, stats. Colors ONLY from design-tokens.css (Variant 1, DECIDED).

@@ -1,7 +1,7 @@
 ﻿# core (Phase 0 — no product code yet)
 
-> Part of **algorithco guard** (CLI algo). Org repo plan: docs/github-org-plan.md.
-> Real code lives in algorithcoguard/core starting its build phase. This dir is a scaffold stub.
+> Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard` (see docs/github-org-plan.md).
+> Real code lives in the monorepo subdirectory `core/` starting its build phase. This dir is a scaffold stub.
 
 Scope: shared Rust libraries (algo-* crates): types, shell-analysis, policy, redact,
 provider, fingerprint. Heavy fuzz + property + mutation gates. Human review on deny

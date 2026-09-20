@@ -1,7 +1,7 @@
 ﻿# web (Phase 0 — no product code yet)
 
-> Part of **algorithco guard** (CLI algo). Org repo plan: docs/github-org-plan.md.
-> Real code lives in algorithcoguard/web starting its build phase. This dir is a scaffold stub.
+> Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard` (see docs/github-org-plan.md).
+> Real code lives in the monorepo subdirectory `web/` starting its build phase. This dir is a scaffold stub.
 
 Scope: marketing + docs site (Phase 2, P2-08) — Astro+Starlight static output, install
 script hosting. Starlight theme per plans/design-tokens.md section 4.

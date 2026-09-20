@@ -1,7 +1,7 @@
 ﻿# agent (Phase 0 — no product code yet)
 
-> Part of **algorithco guard** (CLI algo). Org repo plan: docs/github-org-plan.md.
-> Real code lives in algorithcoguard/agent starting its build phase. This dir is a scaffold stub.
+> Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard` (see docs/github-org-plan.md).
+> Real code lives in the monorepo subdirectory `agent/` starting its build phase. This dir is a scaffold stub.
 
 Scope: on-machine product — hook client, daemon (algo.sock), adapters (Claude-first),
 CLI (algo), TUI, verifier, loop controller, scanner, MCP. Shadow-first; ask on any error.

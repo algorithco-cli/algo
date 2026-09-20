@@ -95,6 +95,13 @@ Current verdicts (fill at gate review):
 - [ ] §1 ratification (names + dates) + §2 verdicts with evidence links + redesign owners/issues
 - [ ] Hook capability matrix §4 completed (doc-only; quotes or `[VERIFY-OPEN]`)
 
+> Measured evidence 2026-09-20 (agent-built, human review pending):
+> - `proto`: `buf lint` green; tagged `v0.0.1-alpha` (breaking baseline); Rust+TS codegen proven locally (`cargo check`, `tsc --noEmit` exit 0); `RedactionCert` shape aligned via `docs/adr/0003`.
+> - Dataset: 240 records (96 SAFE / 72 DANGEROUS / 72 AMBIGUOUS), 30.0% obfuscated (all 5 tags), shell-heavy + edit/write/read/net samples, secret-scan green, tagged `eval-data-v0.1`.
+> - Kappa pilot: κ = 0.9242 (19/20, threshold 0.7 PASS), recorded in `eval/datasets/v0.1/DATASET.md`.
+> - Harness: `ruff check` + `ruff format --check` + `mypy` + `pytest` (13 passed) green on full `eval/` tree; baselines run over 240 (rules_only false-allow 0.917 vs mock_ask_all 0.0 — headroom proven); A/B plumbing recorded in `eval/questions/AB-RESULTS.md`.
+> - Still TBD (need key + humans): Jev multi-region report, ECE/Brier/latency/cost, §1 ratification, §2 verdicts, all sign-offs, license/legal, AUP (official URL 404s — see `docs/verify/jev-api.md` recheck note).
+
 ### 3b. Must NOT exist (any present = gate fail)
 
 - [ ] No `core` / `agent` / `backend` product code (only `eval/jev_client/` throwaway probe)

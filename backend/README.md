@@ -1,7 +1,7 @@
 ﻿# backend (Phase 0 — no product code yet)
 
-> Part of **algorithco guard** (CLI algo). Org repo plan: docs/github-org-plan.md.
-> Real code lives in algorithcoguard/backend starting its build phase. This dir is a scaffold stub.
+> Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard` (see docs/github-org-plan.md).
+> Real code lives in the monorepo subdirectory `backend/` starting its build phase. This dir is a scaffold stub.
 
 Scope: team cloud API (Phase 3 only) — auth (device flow), orgs, signed policy sync,
 opt-in audit ingest, GitHub App. Local-first: useful with no cloud account.

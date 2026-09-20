@@ -1,4 +1,4 @@
-# Threat model v0 (draft — Phase 0)
+﻿# Threat model v0 (draft — Phase 0)
 
 > Status: draft. Needs human sign-off from `@algorithcoguard/security` before Phase 1. No product code depends on this yet.
 
@@ -38,6 +38,10 @@
 
 ### B4: agent adapter <-> agent (hook format)
 
+- Spoofing: rogue tool impersonates a trusted agent (forged agent id / hook envelope) to smuggle disallowed actions past the adapter. Mitigation: per-agent adapter allow-list; strict envelope validation behind the `parse` trait; unknown agent id or malformed envelope -> `ask`.
+- Tampering: hook payload mutated between agent and adapter (reordered args, injected flags, truncated JSON, unknown extra fields). Mitigation: schema validation + canonicalization; unknown fields -> `ask`; parse failure or depth/size over-limit -> `ask`, never `allow`.
+- Denial: agent emits malformed, oversized, or high-rate hook events that stall the adapter and block L0–L2. Mitigation: bounded parse (size/depth/time limits); malformed -> `ask` with fail-safe default; flood -> shed load + `ask`. `algo pause` always works adapter-stalled.
+- Info disclosure: hook event carries secrets, file contents, or prompt text that the adapter logs or forwards unredacted. Mitigation: treat args as data, never as policy; redact before audit preview and before any network path; no raw-payload logging.
 - Hook format per agent `[VERIFY]` — 2026-09-20 — Claude Code hooks docs, Codex CLI config docs, OpenCode plugin docs (links on verification). Build adapters behind `parse/render` traits; unknown fields -> `ask`.
 
 ## Abuse cases

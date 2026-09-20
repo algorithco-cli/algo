@@ -20,7 +20,7 @@
    pin exact versions.
 5. **ADR-before-code.** Any `[DECISION]` item (CEL vs DSL, BYOK vs proxy, ort vs candle,
    license, MoR, Windows scope, …) needs a merged ADR in `docs/adr/NNNN-title.md`
-   (Status/Context/Options/Decision/Consequences/Verification) before implementation.
+   (Status/Context/Decision/Alternatives/Consequences/Verification) before implementation.
    Branch `adr/D0X-*`. CI blocks `D-*` implementation without a merged ADR.
 6. **Fail-safe proves `ask`.** Every new I/O / timeout / parse path gets a
    `proves_ask_on_*` test (error → `ask`, never `allow`). Kill allow-on-error mutants.
@@ -58,6 +58,29 @@
 | agent E2E headless | agent | scripted incl. daemon-down/timeout/corrupt-model |
 | reproducible+signed+SBOM | agent, backend | SLSA provenance, cosign/minisign verify, CycloneDX |
 | human review CODEOWNERS | — | see §0.9 |
+
+## Runnable commands (mirror of docs/AGENTS.md — run the subset that applies to your change)
+
+```powershell
+# proto contracts (workdir proto/)
+buf lint
+buf breaking --against .git#branch=main
+
+# rust (core/, agent/, backend/)
+cargo test
+cargo clippy -- -D warnings
+cargo deny check
+cargo audit
+
+# python (eval/)
+pytest
+ruff check .
+mypy .
+
+# markdown links (docs/, web/)
+# [VERIFY] markdown-link-check version/pin — 2026-09-20 — https://github.com/tcort/markdown-link-check
+npx --yes markdown-link-check docs/**/*.md
+```
 
 ## 3. UX checklist (every user-facing PR, §7)
 

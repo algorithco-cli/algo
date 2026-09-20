@@ -1,4 +1,4 @@
-# ADRs — algorithco guard
+﻿# ADRs — algorithco guard
 
 ## When an ADR is required
 
@@ -27,3 +27,8 @@ CI blocks `D-*` implementation without a merged ADR.
 - [0000-template](./0000-template.md)
 - [0001-license](./0001-license.md)
 - [0002-naming](./0002-naming.md)
+- [0004-byok-vs-proxy](./0004-byok-vs-proxy.md) (D-A/D-01, draft 2026-09-20)
+- [0005-core-distribution](./0005-core-distribution.md) (D-D, draft 2026-09-20)
+- [0006-payments-mor](./0006-payments-mor.md) (D-E/D-08, draft 2026-09-20)
+- [0007-windows-scope](./0007-windows-scope.md) (D-F/D-09, draft 2026-09-20)
+- 0003 reserved (dataset-shape ADR, separate agent — do not touch)
