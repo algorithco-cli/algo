@@ -24,4 +24,14 @@ jobs:
           node-version: "22"
 
       - name: Check markdown links (docs/**/*.md)
-        run: npx --yes markdown-link-check "docs/**/*.md"
+        run: |
+          shopt -s globstar nullglob
+          files=(docs/**/*.md)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No markdown files found"
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            echo "Checking $f"
+            npx --yes markdown-link-check "$f" || exit 1
+          done

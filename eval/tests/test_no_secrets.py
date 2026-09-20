@@ -36,7 +36,20 @@ PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 SCAN_SUFFIXES = {".py", ".json", ".jsonl", ".yaml", ".yml", ".md", ".toml", ".txt"}
-SKIP_DIRS = {".git", "__pycache__", ".mypy_cache", ".ruff_cache", "reports", ".venv", "venv"}
+SKIP_DIRS = {
+    ".git",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    "reports",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "algorithco_guard_eval.egg-info",
+}
+# Also skip any directory ending with .egg-info (installed editable)
+SKIP_SUFFIXES = (".egg-info",)
 
 
 def shannon_entropy(text: str) -> float:
@@ -93,6 +106,8 @@ def scan_tree(root: Path = EVAL_ROOT) -> dict[str, list[str]]:
         if path.suffix.lower() not in SCAN_SUFFIXES:
             continue
         if any(part in SKIP_DIRS for part in path.parts):
+            continue
+        if any(part.endswith(SKIP_SUFFIXES) for part in path.parts):
             continue
         try:
             text = path.read_text(encoding="utf-8")
