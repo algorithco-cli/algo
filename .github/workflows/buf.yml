@@ -1,0 +1,60 @@
+name: buf
+
+on:
+  push:
+    tags:
+      - "v*"
+    paths:
+      - "proto/**"
+  pull_request:
+    paths:
+      - "proto/**"
+
+jobs:
+  lint-breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: buf lint
+        run: buf lint proto
+      - name: buf breaking (against latest tag)
+        run: |
+          LATEST="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo '')"
+          if [ -z "$LATEST" ]; then
+            echo "No v* tag yet; skipping breaking check (first tag will establish baseline)."
+          else
+            buf breaking proto --against ".git#tag=$LATEST"
+          fi
+
+  codegen-smoke:
+    runs-on: ubuntu-latest
+    needs: lint-breaking
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      PROTOC_GEN_PROST_VERSION: v0.4.0
+      PROTOC_GEN_ES_VERSION: v2.2.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install protoc plugins (pinned)
+        run: |
+          cargo install protoc-gen-prost --version "${PROTOC_GEN_PROST_VERSION}" --locked
+          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}"
+      - name: buf generate (Rust prost + TS es)
+        run: buf generate proto --template proto/buf.gen.yaml
+      - name: Rust smoke (scratch consumer)
+        run: echo "TODO(P0-PROTO-6): cargo check against gen/rust from tag"
+      - name: TS smoke (scratch consumer)
+        run: echo "TODO(P0-PROTO-6): npm run build against gen/ts from tag"

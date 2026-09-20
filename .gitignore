@@ -1,0 +1,30 @@
+# Python (eval/)
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.venv/
+venv/
+eval/reports/
+
+# Rust (core/, agent/, backend/ — Phase 1+)
+target/
+Cargo.lock
+
+# Node (dashboard/, web/ — Phase 2+)
+node_modules/
+dist/
+build/
+
+# Secrets / local env — never commit
+.env
+*.pem
+*.key
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
