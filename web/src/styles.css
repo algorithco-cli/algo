@@ -48,10 +48,13 @@ h1, h2, h3 { line-height: 1.25; letter-spacing: -0.015em; }
 .site-header { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(14px); background: color-mix(in srgb, var(--ag-bg) 78%, transparent); border-bottom: 1px solid var(--ag-border); }
 .site-header.scrolled { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }
 .header-inner { display: flex; align-items: center; gap: 32px; height: 76px; padding-top: 0; padding-bottom: 0; }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--ag-text); font-weight: 700; letter-spacing: -0.02em; flex: none; }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--ag-text); flex: none; }
 .brand:hover { text-decoration: none; }
-.brand-logo { border-radius: 8px; }
-.brand-name { font-size: 16px; }
+.brand-logo { width: 38px; height: 38px; border-radius: 10px; flex: none; }
+.brand-text { display: flex; align-items: center; gap: 10px; }
+.brand-name { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; white-space: nowrap; }
+.brand-by { font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; color: var(--ag-text-muted); border: 1px solid var(--ag-border); background: var(--ag-bg); border-radius: 999px; padding: 4px 10px; line-height: 1.4; white-space: nowrap; }
+.brand-by strong { color: var(--ag-text); font-weight: 600; }
 .nav-desktop { display: none; align-items: center; gap: 28px; margin: 0 auto; }
 .nav-desktop a { position: relative; font-size: 14px; font-weight: 500; color: var(--ag-text-muted); padding: 8px 0; }
 .nav-desktop a:hover { color: var(--ag-text); text-decoration: none; }
@@ -218,7 +221,9 @@ body::-webkit-scrollbar-thumb { background: var(--ag-border); border-radius: 8px
   .wrap { padding: 0 18px; }
   .header-inner { height: 68px; }
   .cta-login { display: none; }
-  .brand .kbd { display: none; }
+  .brand-by { display: none; }
+  .brand-logo { width: 34px; height: 34px; }
+  .brand-name { font-size: 16px; }
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-actions .btn { justify-content: center; }
   .terminal-body { min-height: 0; font-size: 13px; padding: 20px 18px; }

@@ -451,10 +451,14 @@ export default function App(): JSX.Element {
       {/* Header */}
       <header className={`site-header${scrolled ? " scrolled" : ""}`}>
         <div className="wrap header-inner">
-          <a href="#top" className="brand">
-            <img src="/logo.png" alt="algorithco guard logo" width={32} height={32} className="brand-logo" />
-            <span className="brand-name">algorithco guard</span>
-            <span className="kbd">by algorithco</span>
+          <a href="#top" className="brand" aria-label="Algorithco Guard — home">
+            <img src="/logo.svg" alt="" width={38} height={38} className="brand-logo" aria-hidden />
+            <span className="brand-text">
+              <span className="brand-name">Algorithco Guard</span>
+              <span className="brand-by">
+                by <strong>Algorithco</strong>
+              </span>
+            </span>
           </a>
           <nav className="nav-desktop" aria-label="Primary">
             {NAV.map(([label, href]) => (
@@ -849,7 +853,7 @@ algo status  # allowed / asked / blocked, savings, profile`}</code>
 
         {/* Final CTA */}
         <div className="card cta">
-          <img src="/logo.png" alt="" width={56} height={56} aria-hidden />
+          <img src="/logo.svg" alt="" width={56} height={56} aria-hidden />
           <div>
             <h2>Ship agents you don&apos;t have to babysit.</h2>
             <p className="muted">Free local MVP. ~30s install. Shadow-first, reversible, explained.</p>
@@ -869,8 +873,8 @@ algo status  # allowed / asked / blocked, savings, profile`}</code>
       <footer className="site-footer">
         <div className="wrap footer-inner muted">
           <div className="footer-brand">
-            <img src="/logo.png" alt="algorithco guard logo" width={24} height={24} />
-            <strong>algorithco guard</strong>
+            <img src="/logo.svg" alt="" width={24} height={24} aria-hidden />
+            <strong>Algorithco Guard</strong>
             <span>
               CLI <code>algo</code> · Tokens Variant 1 · Colors <span className="c-allow">allow</span> / <span className="c-ask">ask</span> /{" "}
               <span className="c-deny">deny</span> only for decisions.
