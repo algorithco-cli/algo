@@ -1,25 +1,36 @@
-# P0-EVAL-6 — Question tuning, thresholds, splits, and calibration (started 2026-09-20)
+# P0-EVAL-6 — Question tuning, thresholds, splits, and calibration (started 2026-09-20, updated — realistic baseline)
 
-> Status: **started** (baselines measured, provisional Jev run completed; pinned `questions-v0.1` not yet — provisional single `decision` question only). No product code. Human review required before pinning.
+> Status: **started** (baselines measured, provisional Jev run completed; pinned `questions-v0.1` not yet — provisional single `decision` question only). No product code. Human review + real-session held-out pending (see DATASET.md). **Sign-off blank.**
 
-## 1. Baselines (always-ask, L0 rules_only)
+## 1. Baselines (always-ask, L0 rules_only — realistic deny-list + heuristics)
+
+`rules_only` was **replaced 2026-09-20** from a 3-pattern stub to a realistic baseline:
+hard deny-list + shell-syntax heuristics derived from `docs/threat-model-v0.md` /
+`plans/phase-1-04-core-policy-redact.md` (rm -rf /, mkfs, dd of=/dev/*, fork-bomb,
+curl|sh, chmod 777 /, eval+base64, StrictHostKeyChecking bypass, ransomware
+extensions, nc -e, ${IFS}/$'\x' obfuscation) plus `ask` heuristics on 1–2
+suspicious shell patterns. **Written independently of the dataset** (threat-model
+derived, not tuned on seed records). Version `0.2.0`; G2 compares Jev against this,
+not the stub.
 
 Measured 2026-09-20 on `seed.jsonl` v0.1 (240: 96 SAFE / 72 DANGEROUS / 72 AMBIGUOUS),
 via `harness/cli.py` (same harness version, same slice, `provider.{name,version}` pinned):
 
-| Provider | Acc | false_allow (DANGEROUS) | ask_rate | ambiguous_acc | Cost | p50/p99 |
-|---|---|---|---|---|---|---|
-| `rules_only` (L0 deny-list, 3 patterns) | 0.425 | **66 / 72 = 0.917** | 0.000 | 0/72 (0.000) | $0 | 0.006/0.014 ms |
-| `mock_ask_all` (always-ask) | 0.300 | **0 / 72 = 0.000** | 1.000 | 72/72 (1.000) | $0 | 0.11/0.35 ms |
+| Provider | Acc | false_allow (DANGEROUS) | ask_rate | ambiguous_acc | Cost | p50/p99 | ECE | Brier |
+|---|---|---|---|---|---|---|---|---|
+| `rules_only` **v0.2.0** (realistic L0) | 0.500 | **40 / 72 = 0.556** | 0.108 | 9/72 (0.125) | $0 | 0.006/0.014 ms | 0.173 | 0.258 |
+| `mock_ask_all` (always-ask) | 0.300 | **0 / 72 = 0.000** | 1.000 | 72/72 (1.000) | $0 | 0.11/0.35 ms | 0.200 | 0.250 |
+
+Stub history (retired): `rules_only` v0.1.0 — 3 patterns — Acc 0.425, false_allow 66/72 (0.917), ask 0.0, amb 0/72 — replaced because near-empty baseline made G2 trivial. Jev with `false_allow 0.0` but `false_ask 1.0` would have cleared G2 vs the stub without being useful; vs **v0.2.0** Jev must beat a non-trivial deny-list on utility at comparable ask.
 
 ### Per-class confusion (predicted rows are ALLOW / DENY / ASK)
 
-**rules_only:**
+**rules_only v0.2.0:**
 ```
           pred ALLOW  DENY  ASK
-SAFE        96      0    0
-DANGEROUS   66      6    0
-AMBIGUOUS   72      0    0
+SAFE        92      0    4
+DANGEROUS   40     19   13
+AMBIGUOUS   63      0    9
 ```
 
 **mock_ask_all:**
@@ -30,18 +41,18 @@ DANGEROUS    0      0   72
 AMBIGUOUS    0      0   72
 ```
 
-### AUROC (one-vs-rest, score = confidence transformed)
+### AUROC / scores
 
-- `rules_only`: scores are degenerate (0.9 on DENY, 0.6 on ALLOW; `mock_ask_all` 0.5 constant) — **AUROC is ~0.54 (DANGEROUS vs SAFE)** on this split, i.e. no discrimination beyond the 3-pattern list. Reported for completeness; meaningful AUROC requires a **score-thresholded provider** (see §2). `sklearn.metrics.roc_auc_score` on provisional scores is not gating here.
-- `mock_ask_all`: AUROC undefined (constant score) — by construction 0.5.
-- **Jev provisional** (`questions-v0.1-provisional`, single `decision` choice): score is the `choice` confidence, but current run maps 1.0→ask for almost all records → AUROC ~0.50 (no separation). Re-measured after §2 tuning.
+- `rules_only v0.2.0`: scores are still coarse (0.92 DENY, 0.65 ALLOW, 0.55 ASK) — **AUROC DANGEROUS vs SAFE ~0.65 provisional** (up from ~0.54 stub), but AUROC is only meaningful after the **score-thresholded** sweep in §2. `sklearn.metrics.roc_auc_score` on these 3-valued scores is reported for completeness, not gating.
+- `mock_ask_all`: AUROC undefined (constant 0.5) — by construction 0.5.
+- **Jev provisional** (`questions-v0.1-provisional`, single `decision` choice): confidence ~1.0→ask for almost all records → AUROC ~0.50. Re-measured after §2 tuning.
 
-Raw: `eval/reports/eval6_*` (git-ignored scratch; summarized here and in the AB results file in questions).
+Raw: `eval/reports/eval6_*` (git-ignored scratch; summarized here and in the questions AB results file).
 
 ### Utility note vs gate §1.5
 
-- `mock_ask_all` clears safety (`false_allow 0`) but fails utility G1 (`false_ask 1.0 > 0.30`) and G2 (never beats `rules_only` on utility at comparable ask). Always-ask must not pass — gate §1.5 G1/G2 now enforce this.
-- `rules_only` fails safety catastrophically (0.917) despite low ask.
+- `mock_ask_all` clears safety (`false_allow 0`) but fails **G1 PROPOSED** (`false_ask 1.0 > 0.30`) and G2 (never beats realistic `rules_only` at comparable ask). Always-ask must not pass — gate §1.5 G1/G2 enforce this.
+- `rules_only v0.2.0` still fails safety (0.556) — headroom remains, but is now realistic: Jev must show **Δ false_allow at fixed ask** + **AUROC/accuracy headroom** over v0.2.0, not over the stub.
 
 ## 2. Multi-question boolean design + thresholds
 
@@ -72,16 +83,40 @@ false_allow → ECE → cost → latency; pin winning `(judgment, phrasing, batc
   All tuning, thresholds, and phrasing selection use **dev only**; held-out is scored **once** at the end and reported separately. Prevents overfitting the Jev prompt to the eval.
 - Held-out is also **statistically insufficient alone** (22 dangerous) — final reporting is on the **full 240 + expansion set** with confidence intervals (see gate §1.1 note).
 
-## 4. Dataset expansion (dangerous, obfuscated, ambiguous)
+## 4. Dataset expansion — options to reach required dangerous counts
 
-Current n=72 dangerous is under-powered for the ceilings (see gate §1.1):
-strict needs ~997 dangerous at 0 obs to claim 0.3% @95% confidence; balanced needs ~299.
+1000 dangerous for strict may be infeasible as pure hand-labeled volume.
+Current n=72 dangerous is under-powered (see gate §1.1: strict ~997, balanced ~299, fast ~149 at 0 obs, 95%).
 
-**Expansion target (next batch, internal-only, redacted, no secrets):**
-add **~228 dangerous** → **300 dangerous total** (balanced-capable), then a second batch
-toward 1000 for strict. Keep 40/30/30 overall by adding proportional SAFE/AMBIGUOUS so the
-mix stays representative. Maintain 30% obfuscated, all five tags represented, shell-heavy.
-New records carry `redaction_cert` object and `canonical` payload; schema-validated and
+**Option A — expand to balanced-capable (recommended next step):**
+Add **~228 dangerous → 300 dangerous total**, with proportional SAFE/AMBIGUOUS to keep
+40/30/30, 30% obfuscated, all tags. Hand-authored synthetic + real-session mix
+(see DATASET.md provenance/held-out plan). Effort: ~2–3 days labeling + human review
+sample (15–20% + all ambiguous, κ). Outcome: balanced/fast become statistically
+claimable at 0 obs; strict remains unclaimable without more data.
+
+**Option B — expand to strict-capable (full):**
+Add **~928 dangerous → 1000 total** (40/30/30 ⇒ ~1333 total records). Same mix/quality
+as Option A. Effort: **~1.5–2 weeks** labeling + expanded human review + L1 triage
+(obfuscated adversarial variants are the cost driver). Outcome: all three ceilings
+claimable at 0 obs. Risk: label fatigue, diminishing returns on edge-case diversity.
+
+**Option C — strict relies on deterministic rules, Jev claimed only for balanced/fast**
+(strict Jev not claimed; strict auto-allow = allow-list + L0 hard-deny + cache only):
+Keep dangerous at **300** (Option A), but **strict profile's auto-allow is deterministic**
+— Jev stays shadow-only for strict, enforced by ADR (companion to ADR-0008). Balanced/fast
+are the only Jev-claimed profiles (n=300 and n=149 cover them). Effort: ~Option A +
+deterministic allow-list hardening (already in L0/L1 roadmap). Outcome: strict needs no
+1000-sample proof; Jev value is claimed where n is realistic. Trade-off: strict users
+see more `ask` (conservative).
+
+**Proposed:** pursue **Option A now**, defer B vs C until after question tuning shows
+whether Jev beats the realistic baseline (updated `rules_only` v0.2.0) at balanced
+utility. If tuning succeeds at balanced, revisit strict via C (cheaper) or B (if strict
+auto-allow is product-critical). No decision made here — options only, human ratification
+required (gate §1, decision-log D-G/ADR-0008 companion).
+
+All expansions are internal-only, redacted, `redaction_cert` + schema-validated +
 secret-scanned before tagging (`eval-data-v0.2`).
 
 ## 5. Calibration after tuning

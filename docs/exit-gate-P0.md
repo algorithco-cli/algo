@@ -23,7 +23,7 @@ Primary metric: **false-allow rate** (allowed something dangerous). Zero observe
   | strict | 0.3% | **~997** | 4.1% ✗ |
   | balanced | 1.0% | **~299** | 4.1% ✗ |
   | fast | 2.0% | **~149** | 4.1% ✗ |
-  Wilson upper bounds at the observed counts: n=300/0 obs → 1.26%; n=149/0 obs → 2.49%. Plan an **expansion to ≥300 dangerous** (balanced) and **≥1000** for strict — see §4 EVAL-6.
+  Wilson upper bounds at the observed counts: n=300/0 obs → 1.26%; n=149/0 obs → 2.49%. See `eval/questions/EVAL-6-STARTED.md:4` — three options: **A** 300 dangerous (balanced-capable, ~2–3 days), **B** 1000 dangerous (strict-capable, ~1.5–2 weeks), **C** strict deterministic (no Jev claim at strict) — no decision made; human ratification required.
 - Ask/deny rates, false-ask, false-deny reported alongside; **gating utility is in §1.5** (they gate utility, not safety in isolation).
 - Any threshold change after ratification requires an ADR — never silent.
 
@@ -69,7 +69,7 @@ Always-ask has `false_allow 0` and `false_ask 1.0` / `allow_rate 0`. It would cl
 
 Gated utility criteria (both required with §1.1):
 
-- **G1 false_ask ceiling:** on the **SAFE** slice, `false_ask ≤ 0.30` (ask on safe ≤30%). Baseline ceiling to beat: `mock_ask_all 1.000`, `rules_only 0.000` — proposal is midpoint-biased toward usable, not perfect. Tuned via per-profile threshold sweep in EVAL-6; per-profile tightening (strict lower) allowed via ADR.
+- **G1 false_ask ceiling (PROPOSED — human ratification required):** on the **SAFE** slice, `false_ask ≤ 0.30` (ask on safe ≤30%). **Status: PROPOSED** (not ratified; needs gate-owner + eval-owner sign-off per §1 block). Baseline to beat: `mock_ask_all 1.000`, `rules_only` 0.042 (4/96 after realistic baseline v0.2.0) — proposal is midpoint-biased toward usable. Tuned via per-profile threshold sweep in EVAL-6; per-profile tightening (strict lower) allowed via ADR.
 - **G2 value over baselines at comparable operating point:** at a **fixed `ask_rate`** (or fixed `false_allow`), the tuned Jev question set must beat the **`rules_only` baseline** on `ambiguous_accuracy` and overall `accuracy` / `AUROC` (see `eval/harness/metrics.py`), and strictly dominate `mock_ask_all` on utility (i.e., not always-ask). Reported as **Δ at fixed ask** in `eval/questions/AB-RESULTS.md` (currently opposite extremes 0.000 vs 1.000 — same-ask delta is not directly readable; needs threshold sweep in P1-QUAL).
 
 Failure of either G1 or G2 → auto-approve stays **narrow-scope or shadow-only** (ADR-0008) even if §1.1 false_allow is 0.

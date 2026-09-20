@@ -1,44 +1,36 @@
 # A/B plumbing result — baselines over full dataset v0.1 (`P0-EVAL-6` prep)
 
-> Proves the `harness.cli` A/B plumbing on the full 240-record collection.
 > Same slice, same harness version, two baseline providers.
 > Date: 2026-09-20 | Dataset: `datasets/v0.1/seed.jsonl` v0.1
 > (`sha256 18a3d49761187028d5889e60bea3e0dfb259577f0b1791a5bb12577fd4aaee8b`)
+> Updated 2026-09-20: `rules_only` is now realistic v0.2.0 (deny-list + heuristics, threat-model derived, not dataset-tuned).
 
 ## Operating points (full 240: 96 SAFE / 72 DANGEROUS / 72 AMBIGUOUS)
 
-| Provider (v0.1.0) | Accuracy | false_allow (rate over DANGEROUS) | ask_rate | ambiguous slice |
-|---|---|---|---|---|
-| `rules_only` | 0.425 | 66 (0.917) | 0.000 | 0/72 (0.000) |
-| `mock_ask_all` | 0.300 | 0 (0.000) | 1.000 | 72/72 (1.000) |
+| Provider | Accuracy | false_allow (rate over DANGEROUS) | ask_rate | ambiguous slice | ECE | Brier |
+|---|---|---|---|---|---|---|
+| `rules_only` **v0.2.0** | 0.500 | 40 (0.556) | 0.108 | 9/72 (0.125) | 0.173 | 0.258 |
+| `rules_only` v0.1.0 (retired stub, 3 patterns) | 0.425 | 66 (0.917) | 0.000 | 0/72 (0.000) | 0.188 | 0.271 |
+| `mock_ask_all` | 0.300 | 0 (0.000) | 1.000 | 72/72 (1.000) | 0.200 | 0.250 |
 
-Confusion (`rules_only`): SAFE 96 ALLOW; DANGEROUS 66 ALLOW / 6 DENY;
-AMBIGUOUS 72 ALLOW. (`mock_ask_all`: everything ASK.)
+Confusion **v0.2.0** (`rules_only`): SAFE 92 ALLOW / 4 ASK; DANGEROUS 40 ALLOW / 19 DENY / 13 ASK;
+AMBIGUOUS 63 ALLOW / 9 ASK. (v0.1.0: SAFE 96 ALLOW; DANGEROUS 66 ALLOW / 6 DENY; AMBIGUOUS 72 ALLOW.)
+(`mock_ask_all`: everything ASK.)
 
 ## Δfalse-allow at fixed false-ask
 
-- Raw delta (`rules_only` − `mock_ask_all`): **+66 false-allows**
-  (rate **+0.917**).
-- Fixed-false-ask caveat: the two baselines sit at opposite ask extremes
-  (0.000 vs 1.000), so a same-ask delta is not directly readable from these
-  two points — it needs the confidence-threshold sweep
-  (`harness/threshold_sweep.py`, full version lands in `P1-QUAL`).
-  What this run proves for `P0-EVAL-6`: identical-slice execution,
+- Realistic baseline is now **v0.2.0** (0.556 false_allow). Raw delta vs always-ask (v0.2.0 − `mock_ask_all`): **+40 false-allows** (rate **+0.556**) at ask 0.108 vs 1.000 — opposite extremes, so same-ask delta is not directly readable; it needs the confidence-threshold sweep (`harness/threshold_sweep.py`, full version lands in `P1-QUAL`).
+- What this run proves for `P0-EVAL-6`: identical-slice execution,
   pinned `report.json` artifacts (`dataset.{version,sha256}` +
   `provider.{name,version,cost_usd_per_decision}`), and comparable
-  false-allow / ask-rate / ambiguous-accuracy columns to rank the
-  `questions/v0.1.yaml` phrasing x batching cells against.
-- Headroom confirmed: `rules_only` allows 66/72 dangerous and scores 0/72
-  on the ambiguous slice — a real policy must beat its ambiguous accuracy
-  at equal-or-lower false-allow (per `ci-eval.md` gate plumbing).
+  false-allow / ask-rate / ambiguous-accuracy / AUROC columns to rank the
+  `questions/v0.1.yaml` phrasing x batching cells against the **realistic** baseline.
+- Headroom: realistic `rules_only` still allows 40/72 dangerous — Jev must beat its ambiguous accuracy (0.125) and overall accuracy (0.500) at equal-or-lower false-allow to justify itself (per `ci-eval.md` gate plumbing, now via G2 at comparable ask).
 
-## Jev-provider A/B
+## Jev-provider provisional (2026-09-20, vantage labels, single `decision` question)
 
-- **Pending API key.** The Jev judgment-provider cell (same slice, same
-  harness, `JEV` source level) has not been run — no key is configured in
-  this environment. Re-run this file's table with the Jev provider once
-  credentials land, and pin the winning
-  (judgment, phrasing, batching) triple as `questions-v0.1` in `DATASET.md`.
+- Measured 2026-09-20: both vantages **false_allow 0.000**, **false_ask 1.000**, p50 399/465ms p99 610/648ms, ECE 0.56 Brier 0.52 — **G2 not yet shown**: same-ask comparison vs realistic baseline requires the threshold sweep in `P1-QUAL`; raw point is not at comparable ask. Jev A/B over the threshold sweep and the pinned `questions-v0.1` triple will re-evaluate this section.
+- Winner pinning (`DATASET.md`) awaits tuned questions (see the EVAL-6 plan file in questions).
 
 ## Repro
 
