@@ -4,8 +4,11 @@
 > "Last updated Sep 19, 2026" (fetched 2026-09-20 + re-fetched for this update).
 > DPA: https://typesafe.ai/data-processing — "Last updated Apr 24, 2026"
 > (fetched 2026-09-20, summarized below).
-> AUP: https://typesafe.ai/legal/aup — 404 (https + http, 2026-09-20; still
-> dangling from MCA §2.3(l) — see [VERIFY-OPEN-1]).
+> Privacy Policy: https://typesafe.ai/legal/privacy-policy — "Last updated Nov 19, 2025"
+> (fetched 2026-09-20 — retention/ZDR/training commitments below).
+> Legal index (2026-09-20, owner-confirmed): lists **only DPA, MCA, Privacy Policy** —
+> **no AUP exists**; `typesafe.ai/legal/aup` returns 404 (still cited at MCA §2.3(l);
+> confirmed dangling). Owner facts recorded 2026-09-20 (see [VERIFY-OPEN-1] updated).
 > Quotes are verbatim excerpts under fair-use for compliance review.
 > **Gates L2** — distillation is PROHIBITED on standard terms absent a written exception.
 > **All sign-off fields blank** — human act.
@@ -26,10 +29,20 @@
 | **§13.1** | TypeSafe indemnifies us for IP infringement of the Services as delivered (patent/copyright/trademark/trade secret, U.S.) | Limited to their IP, not our Input pipeline |
 | **§16.4** | **Publicity / branding:** neither party may use the other's name/brand/logo or announce the agreement **without prior consent**, except TypeSafe may list Customer as a customer on its site/materials (customer may request cessation) | **No "powered by Jev" / logo / announcement without consent** — see §5 flag |
 
-AUP location: **https://typesafe.ai/legal/aup** (cited at MCA §2.3(l): "TypeSafe's Acceptable Use Policy (located at typesafe.ai/legal/aup)").
-Status 2026-09-20: 404 (https + http, re-fetched for this update) — see [VERIFY-OPEN-1].
+AUP location: **https://typesafe.ai/legal/aup** (cited at MCA §2.3(l)) — **does not exist**
+(2026-09-20, owner-confirmed: legal index lists only DPA, MCA, Privacy Policy;
+`typesafe.ai/legal/aup` 404 https+http, re-fetched for this update) — see
+[VERIFY-OPEN-1] (written confirmation requested, **not a blocker** per owner).
 
 DPA location: **https://typesafe.ai/data-processing** (Apr 24, 2026), incorporated via §4.4 — summarized below.
+Privacy Policy location: **https://typesafe.ai/legal/privacy-policy** (Nov 19, 2025) —
+commitments on training/disclosure/retention/hosting (see below + §4.4 summary).
+
+Subprocessors (owner-confirmed 2026-09-20 from `https://trust.typesafe.ai/subprocessors`):
+**AWS** (stores live-request data), **Modal / Nebius / CoreWeave** (process, do **not**
+store), **Slack + Google Workspace** (support) — **all USA**. Hosted in the US
+(Privacy Policy "International Visitors"); retention is "as long as reasonably
+necessary" with no fixed SLA; ZDR is enterprise-only via `privacy@typesafe.ai`.
 
 ## Quoted sections + verdicts
 
@@ -177,19 +190,22 @@ Until answered in writing: the PROHIBITED verdict (Q1) **stands**; the redesign 
 ## DPA summary (https://typesafe.ai/data-processing — Apr 24, 2026, fetched 2026-09-20)
 
 > Incorporated into the MCA via §4.4. Summary here is informational; the DPA itself controls.
+> **Owner facts added 2026-09-20** for subprocessors/retention/hosting (see below).
 
 - **Roles (§1.1):** Customer = controller/business, TypeSafe = processor/service provider for Customer Personal Data.
 - **Scope of processing (§2.1):** only to provide Services per Documented Instructions (DPA + MCA + written instructions); must inform Customer if a legal obligation requires deviation.
 - **Restrictions (§2.2):** will not sell/share, retain/use/disclose outside Documented Instructions or the direct business relationship, nor combine Customer Personal Data with third-party data (except as Data Protection Law permits).
-- **Subprocessors (§3):** general authorization; list at **https://trust.typesafe.ai/subprocessors**; contractual protections must be substantially as protective; Typesafe remains responsible; **15-day notice + objection window** for new subprocessors (§3.2).
+- **Subprocessors (§3):** general authorization; list at **https://trust.typesafe.ai/subprocessors** — **owner-confirmed 2026-09-20:** **AWS** (stores live-request data), **Modal / Nebius / CoreWeave** (process, do **not** store), **Slack + Google Workspace** (support) — **all USA**; contractual protections must be substantially as protective; Typesafe remains responsible; **15-day notice + objection window** for new subprocessors (§3.2).
 - **Assistance (§4):** forward data-subject requests, reasonable assistance for impact assessments / regulatory consultations (may charge reasonable fee, §4.2).
 - **Security (§5.1):** reasonable technical/organizational measures; may update if not materially decreasing security.
 - **Security incident (§5.2):** notify **within 72 hours** of awareness, plus investigation/mitigation assistance.
 - **Audits (§5.3):** Customer may audit **once per 12 months**, at Customer cost, confidential auditor, normal business hours, minimal disruption, mutually agreed scope — may use results only for regulatory/compliance confirmation.
-- **International transfers (§6):** authorized with **EU SCCs Module 2/3** (controller→processor, processor→subprocessor) + **UK Addendum**; governing law Ireland (EU SCCs Clause 17 option 1), courts Dublin; Switzerland → Swiss courts / FDPIC. Frequency: **continuous**.
-- **Duration (Schedule I §8):** retain **as long as necessary** for the purpose, in compliance with statute-of-limitations and Data Protection Law — no fixed retention period.
+- **International transfers (§6):** authorized with **EU SCCs Module 2/3** (controller→processor, processor→subprocessor) + **UK Addendum**; governing law Ireland (EU SCCs Clause 17 option 1), courts Dublin; Switzerland → Swiss courts / FDPIC. Frequency: **continuous**. **Hosting is in the US** (Privacy Policy "International Visitors," Nov 19, 2025 — see below); all subprocessors USA per owner.
+- **Duration (Schedule I §8):** retain **as long as necessary** for the purpose, in compliance with statute-of-limitations and Data Protection Law — no fixed retention period. **Privacy Policy "Retention" (Nov 19, 2025, owner-confirmed) restates: "for as long as reasonably necessary" — no fixed SLA.** Deletion on request is best-efforts ("take measures to delete … when no longer reasonably necessary"), unless law requires longer.
 - **Data categories (Schedule I):** "Customer Personal Data, the content of which is determined and controlled by Customer" (i.e., what we send), including sensitive data if we send it; categories are customer-controlled.
-- **Not in the DPA (still [VERIFY-OPEN]):** fixed retention days, deletion SLA after termination, subprocessors list currency, whether standard-plan Telemetry opt-out or ZDR is needed to avoid the §4.1 perpetual license — DPA describes processor duties but does not answer these; keep the audit/retention questions open.
+- **Privacy Policy training commitment (Nov 19, 2025, owner-confirmed):** TypeSafe **will not train or fine-tune any AI/ML models on Input (your prompts / other Input)** and **will not disclose any Input to a third party other than our service providers** (see Privacy Policy "Services" + "How We Disclose"). This sits alongside MCA §4.1/§4.3 (no weight training without prior consent + perpetual telemetry license on the *other* telemetry).
+- **ZDR:** **enterprise-only via `privacy@typesafe.ai`** (Privacy Policy + MCA; owner-confirmed) — standard plans have no ZDR.
+- **Not in the DPA (still [VERIFY-OPEN]):** fixed retention days, deletion SLA after termination, subprocessors list currency beyond today's snapshot — see [VERIFY-OPEN-2]; keep the audit question open.
 
 ## L2 redesign (human-only)
 
@@ -199,32 +215,38 @@ confirmations** — never on Jev outputs (see §3). Ensure no dataset label or
 training feature is derived from Jev outputs (see §3 checklist). L2 ships only
 if it meets the same eval gate as Jev on its share (master plan §4.1 caveat).
 
-## Access mode (BYOK)
+## Access mode (BYOK — only real-data mode, Jev off by default)
 
-Bring your own Jev API key is the **default** Jev mode. No embedded key in
-distributed binaries (§2.4). Proxy mode through our servers stays **blocked**
-until legal review (see §4 and ADR-0004).
+**Bring your own Jev API key (BYOK) is the only real-data mode.** No embedded
+key in distributed binaries (§2.4). **Jev is off by default** — `local-only`
+(default) never sends; `redacted` (BYOK, user-supplied key, explicit opt-in
+consent) is the only path that sends real user commands to Jev. Proxy mode
+through our servers stays **blocked** until legal review (see §4 and ADR-0004).
+
+Consent must disclose that commands go to **TypeSafe's US infrastructure** with
+**unspecified retention** ("as long as reasonably necessary") and that
+**non-US users' data is transferred to the US** (Privacy Policy "International
+Visitors" + subprocessors all USA) — see `docs/privacy-dataflow.md` + `docs/redact-consent-readiness.md`.
 
 ## [VERIFY-OPEN] items
 
-- [VERIFY-OPEN-1] Read full AUP (`typesafe.ai/legal/aup`) — confirm redacted
-  dangerous-command eval traffic is acceptable use. Owner: product/legal.
-  Recheck: 2026-10-04 (before any live measurement beyond the 3×240 already run).
-   [recheck 2026-09-20: `https://typesafe.ai/legal/aup` returns 404 (https + http) —
-  DEAD/CHANGED as cited; locate current AUP URL before live measurement].
-  [AUP relocation hunt 2026-09-20: NOT FOUND after thorough search. Sources checked:
-  `https://typesafe.ai/legal/aup` (404 https + http, re-verified 2026-09-20 and
-  re-verified for this update);
-  `https://docs.typesafe.ai/legal` index (lists DPA/MCA/Privacy Policy only, no AUP);
-  `https://docs.typesafe.ai/llms.txt` legal section (no AUP page); MCA footer links
-  (Terms of Use + Privacy Policy only); `https://trust.typesafe.ai/` (no AUP content);
-  3 search-engine sweeps for TypeSafe "acceptable use"/AUP (no AUP URL surfaced).
-  Live MCA ("Last updated Sep 19, 2026", fetched 2026-09-20) §2.3(l) still cites
-  `typesafe.ai/legal/aup` — dangling reference. AUP NOT read; full read still required
-  before **any further** live measurement].
-- [VERIFY-OPEN-2] Confirm DPA open items: fixed retention/deletion SLA, subprocessors
-  list at `trust.typesafe.ai/subprocessors` currency, Telemetry opt-out/ZDR need.
-  Owner: product/legal. Recheck: 2026-10-20.
+- [VERIFY-OPEN-1] AUP — **does not exist** (owner-confirmed 2026-09-20: legal index
+  lists **only DPA, MCA, Privacy Policy**; `typesafe.ai/legal/aup` 404 https+http
+  re-fetched for this update; still cited at MCA §2.3(l) as dangling ref) — **not a
+  blocker** per owner. Action: request **written confirmation from TypeSafe that no
+  AUP exists / that eval traffic is not subject to an unpublished AUP**, record
+  the email/ticket ID + date here. Prior hunt: `https://typesafe.ai/legal/aup`
+  (404), `https://docs.typesafe.ai/legal` (DPA/MCA/Privacy Policy only),
+  `https://docs.typesafe.ai/llms.txt` (no AUP), MCA footer (Terms/Privacy only),
+  `https://trust.typesafe.ai/` (no AUP) — 2026-09-20. Owner: product/legal.
+  Recheck: written confirmation, not a URL search.
+- [VERIFY-OPEN-2] Confirm DPA open items: fixed retention/deletion SLA beyond
+  "as long as reasonably necessary" (DPA Schedule I §8 + Privacy Policy Retention;
+  no fixed SLA), subprocessors list currency beyond 2026-09-20 snapshot
+  (AWS / Modal / Nebius / CoreWeave / Slack / Google Workspace — all USA),
+  Telemetry opt-out / ZDR need on standard plans (ZDR enterprise-only via
+  `privacy@typesafe.ai` per Privacy Policy). Owner: product/legal. Recheck:
+  2026-10-20.
 - [VERIFY-OPEN-3] Distillation exception ticket (see Q7) — file + record ID.
   Owner: product. Recheck: 2026-10-20.
 

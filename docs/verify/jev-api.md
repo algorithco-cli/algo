@@ -66,32 +66,34 @@ Test/probe client (`eval/jev_client/`) is built ONLY from the spec below — no 
   every report (limits may have moved). Owner: eval lead. Recheck: 2026-10-04
   (and at each measurement run).
 
-## 4. Zero-retention / data handling
+## 4. Zero-retention / data handling (updated with owner-confirmed Privacy Policy + subprocessors 2026-09-20)
 
 - "Jev is not trained on customer requests or responses."
   Source: https://docs.typesafe.ai/models ("Data handling", verified 2026-09-20).
 - "Jev is not fine-tuned or LoRA-adapted with customer data… the same weights serve
   every account." Source: https://docs.typesafe.ai/models (verified 2026-09-20).
-- Zero data retention (ZDR) is ENTERPRISE-ONLY: "We also offer zero data retention
-  (ZDR) for enterprise customers. Contact privacy@typesafe.ai."
-  Source: https://docs.typesafe.ai/legal (verified 2026-09-20).
+- Privacy Policy (https://typesafe.ai/legal/privacy-policy, Nov 19, 2025, fetched 2026-09-20, owner-confirmed): TypeSafe **will not train or fine-tune any AI/ML models on Input** (prompts/other Input) and **will not disclose Input to a third party other than service providers**.
+- Zero data retention (ZDR) is ENTERPRISE-ONLY via `privacy@typesafe.ai`:
+  "We also offer zero data retention (ZDR) for enterprise customers. Contact privacy@typesafe.ai."
+  Source: https://docs.typesafe.ai/legal + Privacy Policy (verified 2026-09-20, owner-confirmed).
 - MCA §4.3: vendor may process "Telemetry… without restriction, including to improve
   the Services" — see `jev-tos.md` (quoted, verified 2026-09-20).
-- [VERIFY-OPEN] DPA details (retention periods, subprocessors, deletion SLA).
-  Source index: https://docs.typesafe.ai/legal → https://typesafe.ai/legal/data-processing.
-  Owner: product/legal. Recheck: 2026-10-20.
-- [VERIFY-OPEN] Whether Telemetry collection is opt-out-able on standard plans.
+- Retention: DPA Schedule I §8 "as long as necessary" + Privacy Policy "Retention" — **"for as long as reasonably necessary" with no fixed SLA** (owner-confirmed 2026-09-20). No deletion SLA is published.
+- Hosting: **US** — Privacy Policy "International Visitors": Services are **hosted in the US**; non-US users transfer data to the US. All subprocessors USA (see below).
+- Subprocessors (owner-confirmed 2026-09-20 from https://trust.typesafe.ai/subprocessors): **AWS** (stores live-request data), **Modal / Nebius / CoreWeave** (process, do **not** store), **Slack + Google Workspace** (support) — **all USA**.
+- [VERIFY-OPEN] Whether Telemetry collection is opt-out-able on standard plans beyond the Privacy Policy training/disclosure limits above.
   Owner: product/legal. Recheck: 2026-10-20.
 - [VERIFY-OPEN] SOC2/ISO or equivalent certifications. Owner: product/legal.
   Recheck: 2026-10-20.
 
-## 5. Regions / data residency
+## 5. Regions / data residency (owner-confirmed: hosted US, all subprocessors USA)
 
-- [VERIFY-OPEN] Serving region(s), data residency options, and whether the endpoint or
+- **Hosted US** — Privacy Policy "International Visitors" (Nov 19, 2025, fetched 2026-09-20, owner-confirmed): Services are hosted in the **US**; non-US users transfer data to the US. All subprocessors above are **USA** (AWS / Modal / Nebius / CoreWeave / Slack / Google Workspace).
+- [VERIFY-OPEN] Serving region(s), data residency options beyond US hosting, and whether the endpoint or
   response headers expose region. Nothing on regions found in
   https://docs.typesafe.ai/llms.txt index (checked 2026-09-20).
   Owner: eval lead. Recheck: 2026-10-04.
-- Consequence: P0-JEV-4 requires ≥2 regions. Until regions are confirmed, "region"
+- Consequence: P0-JEV-4 requires ≥2 regions. Until vendor residency options beyond US are confirmed, "region"
   in reports = the vantage network used for the run (labeled as such, NOT as a vendor
   region). If vendor confirms a single region, file an ADR updating the protocol.
 
@@ -125,21 +127,12 @@ Test/probe client (`eval/jev_client/`) is built ONLY from the spec below — no 
   is documented for Support — https://typesafe.ai/legal/mca §3, verified 2026-09-20 —
   but no SLA text found). Owner: eval lead. Recheck: 2026-10-04.
 
-## 9. Acceptable use (pointer)
+## 9. Acceptable use (pointer — does not exist, per owner)
 
-- API use must comply with the Acceptable Use Policy at `typesafe.ai/legal/aup`
-  (referenced by MCA §2.3(l), verified 2026-09-20).
-  [recheck 2026-09-20: `https://typesafe.ai/legal/aup` returns 404 (https + http) —
-  DEAD/CHANGED as cited; AUP not readable at this URL, do not treat as verified].
-  [AUP relocation hunt 2026-09-20: NOT FOUND after thorough search. Sources checked:
-  `https://typesafe.ai/legal/aup` (404 https + http, re-verified 2026-09-20);
-  `https://docs.typesafe.ai/legal` index (lists DPA/MCA/Privacy Policy only, no AUP);
-  `https://docs.typesafe.ai/llms.txt` legal section (no AUP page); MCA footer links
-  (Terms of Use + Privacy Policy only); `https://trust.typesafe.ai/` (no AUP content);
-  3 search-engine sweeps for TypeSafe "acceptable use"/AUP (no AUP URL surfaced).
-  Live MCA ("Last updated Sep 19, 2026", fetched 2026-09-20) §2.3(l) still cites
-  `typesafe.ai/legal/aup` — dangling reference. AUP NOT read; full read still required
-  before any live measurement].
-- [VERIFY-OPEN] Read the full AUP and confirm that redacted dangerous-command eval
-  traffic is acceptable use. Owner: product/legal. Recheck: 2026-10-04 (before any
-  live measurement).
+- MCA §2.3(l) cites "TypeSafe's Acceptable Use Policy (located at typesafe.ai/legal/aup)"
+  (verified 2026-09-20). **Owner-confirmed 2026-09-20:** legal index at `https://docs.typesafe.ai/legal`
+  lists **only DPA, MCA, Privacy Policy — no AUP exists**; `https://typesafe.ai/legal/aup`
+  returns **404** (https + http, re-verified 2026-09-20 for this update; MCA §2.3(l) is a
+  **dangling reference**). [Prior hunt 2026-09-20: 3 search-engine sweeps + `trust.typesafe.ai` check also found no AUP.]
+- [VERIFY-OPEN] Request **written confirmation from TypeSafe that no AUP exists** (email/ticket ID + date in `jev-tos.md:[VERIFY-OPEN-1]`). Per owner, this is **not a blocker** for eval/shadow traffic.
+  Owner: product/legal. Recheck: written confirmation, not a URL search.
