@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/daemon", "crates/hook-client", "crates/adapter-claude", "crates/audit", "crates/cli"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "LicenseRef-TBD-legal-signoff"
+repository = "https://github.com/algorithcoguard/algorithco-guard"
+rust-version = "1.75"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

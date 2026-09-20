@@ -1,0 +1,34 @@
+[package]
+name = "algo-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "CLI for algorithco guard (algo init|uninstall|doctor|pause|resume|status|why|log)"
+
+[[bin]]
+name = "algo"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5.0"
+chrono = "0.4"
+algo-audit = { path = "../audit" }
+algo-types = { path = "../../../core/crates/types" }
+algo-redact = { path = "../../../core/crates/redact" }
+algo-fingerprint = { path = "../../../core/crates/fingerprint" }
+algo-provider = { path = "../../../core/crates/provider" }
+algo-policy = { path = "../../../core/crates/policy" }
+
+[dev-dependencies]
+tempfile = "3.10"
+assert_cmd = "2.0"
+predicates = "3.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
