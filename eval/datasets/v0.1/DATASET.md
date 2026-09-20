@@ -68,3 +68,7 @@
 - **License:** TBD — legal sign-off required before any external release
   (see decision D-07). Treat as internal-only until then.
 - **Tag:** full-collection release tagged `eval-data-v0.1` (provenance fix is additive; next tag `eval-data-v0.2` will carry the human-reviewed + real-session held-out).
+- **Generator diversity (2026-09-20, PROPOSED):** Option A expansion will use
+  **≥2 generators/prompts + hand adversarial set** (see the eval-6 plan file in
+  questions, section 4); each new record logs `generator`. **No tuning on
+  held-out** — dev only.

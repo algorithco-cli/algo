@@ -3,6 +3,16 @@
 > Source: `plans/phase-0-05-exit-gate.md` (`P0-GATE-1`, `P0-GATE-2`) + master plan §8 + `plans/90-crosscutting-gates-ux-decisions.md`.
 > Status: **DRAFT — thresholds proposed, team must ratify with name+date before gate passes.**
 > Phase 1 is blocked until every box below is checked + human gate sign-off.
+>
+> **Scope caveat (2026-09-20):** all statistics in this document (false_allow,
+> false_ask, ECE/Brier, p50/p99, cost/1k, Wilson/Clopper-Pearson bounds, §4
+> expansion counts, `eval/questions/EVAL-6-STARTED.md` baselines) apply to the
+> **dataset distribution** — synthetic v0.1 `seed.jsonl` (240 records, 40/30/30,
+> hand-authored, see `eval/datasets/v0.1/DATASET.md` provenance) — unless a
+> subsection explicitly measures real-session or shadow data. They **do not**
+> predict real-world usage. **Phase 1 shadow mode** (`ADR-0008`, daemon
+> `shadow:true` + `would_have` audit) is the **real-world validation**: no
+> enforcement depends on Jev until shadow stats replicate the dataset claims.
 
 ## 1. Gate metrics (`P0-GATE-1`)
 
@@ -23,7 +33,7 @@ Primary metric: **false-allow rate** (allowed something dangerous). Zero observe
   | strict | 0.3% | **~997** | 4.1% ✗ |
   | balanced | 1.0% | **~299** | 4.1% ✗ |
   | fast | 2.0% | **~149** | 4.1% ✗ |
-  Wilson upper bounds at the observed counts: n=300/0 obs → 1.26%; n=149/0 obs → 2.49%. See `eval/questions/EVAL-6-STARTED.md:4` — three options: **A** 300 dangerous (balanced-capable, ~2–3 days), **B** 1000 dangerous (strict-capable, ~1.5–2 weeks), **C** strict deterministic (no Jev claim at strict) — no decision made; human ratification required.
+  Wilson upper bounds at the observed counts: n=300/0 obs → 1.26%; n=149/0 obs → 2.49%. See `eval/questions/EVAL-6-STARTED.md:4` — **PROPOSED** (pending ratification, 2026-09-20) is **A+C**: **A** 300 dangerous for balanced/fast (~2–3 days) plus **C** strict deterministic (no Jev claim at strict); **B** 1000 dangerous (~1.5–2 weeks) **not started** — deferred.
 - Ask/deny rates, false-ask, false-deny reported alongside; **gating utility is in §1.5** (they gate utility, not safety in isolation).
 - Any threshold change after ratification requires an ADR — never silent.
 
@@ -104,6 +114,23 @@ Current verdicts (fill at gate review):
 | verifier | TBD | TBD | TBD |
 | loop | TBD | TBD | TBD |
 | scanner | TBD | TBD | TBD |
+
+> **Draft narrow-scope options (2026-09-20, PROPOSED — consistent with ADR-0008 shadow-only; no decision made, sign-off blank):**
+>
+> **If auto-approve stays narrow-scope / shadow-only** (false_allow, utility, or p50 not clearing §1 even after tuning):
+>
+> **Phase 1 MAY do (without Jev auto-approve):**
+> - L0/L1 deterministic: hard deny-list + heuristics (`eval/baselines/rules_only.py` v0.2.0 logic, hardened into `core/crates/policy+detection`), cache (blake3 fingerprint), and `allow-list` of read-only / scratch-scoped allow — all **enforce** (block) synchronously. Latency budgets L0/L1 p50<3/p99<10ms stay.
+> - Jev shadow: daemon computes Jev decision on the **redacted** payload, writes `shadow:true` + `would_have: allow/deny/ask`, confidence, source, latency to `~/.algo/audit.db`; adapter **always renders `approve`** on Jev (never blocks). `algo status` shows `would-have N`; `algo why` shows `would_have` + reason. This is the real-world validation.
+> - `algo pause` / `algo uninstall` and local-only / redacted privacy modes remain.
+>
+> **Phase 1 MUST NOT do (until a superseding ADR + gate pass):**
+> - No Jev-backed `allow` that bypasses `ask` or `deny` — every Jev `allow` stays advisory.
+> - No Jev-backed `deny` that blocks without an independent L0/L1 deny — Jev `deny` is advisory/`would-have` only.
+> - No widening of allow-list without human review (CODEOWNERS on deny_list/thresholds).
+> - No L3 p50 budget relaxation (stays 250ms per ADR-0008); no cost-claim without a pinned multi-region report.
+>
+> Verdict fields above stay **TBD / blank** — narrow-scope vs redesign is decided at the gate with owners/issues per the Rules.
 
 ## 3. Phase-1 readiness checklist (`P0-GATE-2`)
 
