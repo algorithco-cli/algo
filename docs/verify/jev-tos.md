@@ -87,8 +87,17 @@ L2 ships only if it meets the same eval threshold as Jev on its traffic share
 - [VERIFY-OPEN-1] Read full AUP (`typesafe.ai/legal/aup`) — confirm redacted
   dangerous-command eval traffic is acceptable use. Owner: product/legal.
   Recheck: 2026-10-04 (before live measurement).
-  [recheck 2026-09-20: `https://typesafe.ai/legal/aup` returns 404 (https + http) —
+   [recheck 2026-09-20: `https://typesafe.ai/legal/aup` returns 404 (https + http) —
   DEAD/CHANGED as cited; locate current AUP URL before live measurement].
+  [AUP relocation hunt 2026-09-20: NOT FOUND after thorough search. Sources checked:
+  `https://typesafe.ai/legal/aup` (404 https + http, re-verified 2026-09-20);
+  `https://docs.typesafe.ai/legal` index (lists DPA/MCA/Privacy Policy only, no AUP);
+  `https://docs.typesafe.ai/llms.txt` legal section (no AUP page); MCA footer links
+  (Terms of Use + Privacy Policy only); `https://trust.typesafe.ai/` (no AUP content);
+  3 search-engine sweeps for TypeSafe "acceptable use"/AUP (no AUP URL surfaced).
+  Live MCA ("Last updated Sep 19, 2026", fetched 2026-09-20) §2.3(l) still cites
+  `typesafe.ai/legal/aup` — dangling reference. AUP NOT read; full read still required
+  before any live measurement].
 - [VERIFY-OPEN-2] Read DPA (`typesafe.ai/legal/data-processing`) — retention,
   subprocessors, deletion. Owner: product/legal. Recheck: 2026-10-20.
 - [VERIFY-OPEN-3] Distillation exception ticket (see Q4) — file + record ID.

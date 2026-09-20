@@ -131,6 +131,15 @@ Test/probe client (`eval/jev_client/`) is built ONLY from the spec below — no 
   (referenced by MCA §2.3(l), verified 2026-09-20).
   [recheck 2026-09-20: `https://typesafe.ai/legal/aup` returns 404 (https + http) —
   DEAD/CHANGED as cited; AUP not readable at this URL, do not treat as verified].
+  [AUP relocation hunt 2026-09-20: NOT FOUND after thorough search. Sources checked:
+  `https://typesafe.ai/legal/aup` (404 https + http, re-verified 2026-09-20);
+  `https://docs.typesafe.ai/legal` index (lists DPA/MCA/Privacy Policy only, no AUP);
+  `https://docs.typesafe.ai/llms.txt` legal section (no AUP page); MCA footer links
+  (Terms of Use + Privacy Policy only); `https://trust.typesafe.ai/` (no AUP content);
+  3 search-engine sweeps for TypeSafe "acceptable use"/AUP (no AUP URL surfaced).
+  Live MCA ("Last updated Sep 19, 2026", fetched 2026-09-20) §2.3(l) still cites
+  `typesafe.ai/legal/aup` — dangling reference. AUP NOT read; full read still required
+  before any live measurement].
 - [VERIFY-OPEN] Read the full AUP and confirm that redacted dangerous-command eval
   traffic is acceptable use. Owner: product/legal. Recheck: 2026-10-04 (before any
   live measurement).
