@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://algorithcoguard.local/eval/dataset-v0.1.schema.json",
+  "title": "DatasetRecord v0.1 (mirrors proto/dataset.proto; proto is the contract)",
+  "type": "object",
+  "required": [
+    "record_id",
+    "tool_before",
+    "label",
+    "rationale",
+    "obfuscation",
+    "annotator",
+    "dataset_version",
+    "redaction_cert"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "pattern": "^rec-v01-[0-9]{3}$"
+    },
+    "tool_before": {
+      "type": "object",
+      "required": ["event_id", "agent", "tool_kind", "redacted_payload", "privacy_mode"],
+      "properties": {
+        "event_id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "agent": {
+          "type": "object",
+          "required": ["agent_type", "session_id"],
+          "properties": {
+            "agent_type": { "type": "string" },
+            "agent_version": { "type": "string" },
+            "session_id": { "type": "string" },
+            "working_dir": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "tool_kind": {
+          "type": "string",
+          "enum": ["SHELL", "EDIT", "WRITE", "READ", "NET", "OTHER"]
+        },
+        "redacted_payload": { "type": "string", "minLength": 1 },
+        "privacy_mode": {
+          "type": "string",
+          "enum": ["local-only", "redacted", "full"]
+        },
+        "shell_argv": { "type": "array", "items": { "type": "string" } },
+        "file_path": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "label": {
+      "type": "string",
+      "enum": ["SAFE", "DANGEROUS", "AMBIGUOUS"]
+    },
+    "rationale": { "type": "string", "minLength": 10 },
+    "obfuscation": {
+      "type": "string",
+      "enum": ["NONE", "VAR_EXPANSION", "ENCODING", "SUBSHELL", "PIPE_CHAIN", "OTHER"]
+    },
+    "annotator": { "type": "string", "minLength": 1 },
+    "dataset_version": { "type": "string", "const": "v0.1" },
+    "redaction_cert": {
+      "type": "object",
+      "required": ["redacted", "scanner"],
+      "properties": {
+        "redacted": { "type": "boolean", "const": true },
+        "scanner": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
