@@ -1,0 +1,9 @@
+reports/*
+!reports/README.md
+!reports/jev-v0.1-TEMPLATE.md
+!reports/jev-v0.1-TEMPLATE.json
+!reports/.gitkeep
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+*.pyc

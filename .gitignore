@@ -7,7 +7,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-eval/reports/
+eval/reports/*
+!eval/reports/README.md
+!eval/reports/jev-v0.1-TEMPLATE.md
+!eval/reports/jev-v0.1-TEMPLATE.json
+!eval/reports/.gitkeep
 
 # Rust (core/, agent/, backend/ — Phase 1+)
 target/

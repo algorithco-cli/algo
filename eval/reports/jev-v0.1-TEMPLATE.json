@@ -1,0 +1,22 @@
+{
+  "report_version": "v0.1-template",
+  "region": "<region>",
+  "date": "<yyyy-mm-dd>",
+  "runs": 3,
+  "dataset": {"version": "v0.1", "sha": "<sha>", "records": "<n>"},
+  "provider": {"model": "<jev model/version>", "questions": "questions-v0.1"},
+  "decisions": {
+    "false_allow": {"run1": null, "run2": null, "run3": null},
+    "false_ask": {"run1": null, "run2": null, "run3": null},
+    "deny_rate": {"run1": null, "run2": null, "run3": null}
+  },
+  "calibration": {"ece": null, "brier": null, "reliability_diagram": null},
+  "latency_ms": {
+    "per_question": {"p50": null, "p95": null, "p99": null},
+    "e2e": {"p50": null, "p95": null, "p99": null},
+    "budgets": {"p50_max": 250, "p99_max": 800}
+  },
+  "cost_per_1k": null,
+  "error_to_ask_rate": null,
+  "payloads": "redacted-hashed-only"
+}
