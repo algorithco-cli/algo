@@ -1,0 +1,15 @@
+[package]
+name = "algo-shell-analysis"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shell analysis via tree-sitter-bash (parse, facts, obfuscation)"
+readme = "README.md"
+
+[dependencies]
+tree-sitter = "0.20"
+tree-sitter-bash = "0.20"
+
+[dev-dependencies]

@@ -1,0 +1,17 @@
+[package]
+name = "algo-fingerprint"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Fingerprint normalization for cache (proptest idempotence, blake3 cache_key)"
+readme = "README.md"
+
+[dependencies]
+algo-types = { path = "../types" }
+blake3 = "1.5"
+regex = "1.12"
+
+[dev-dependencies]
+proptest = "1.4"

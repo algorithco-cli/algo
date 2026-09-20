@@ -1,0 +1,19 @@
+[package]
+name = "algo-provider"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "DecisionProvider trait + mock (Jev OFF, only mock per waiver)"
+readme = "README.md"
+
+[dependencies]
+algo-types = { path = "../types" }
+thiserror = "1.0"
+
+[features]
+jev = []  # placeholder for future Jev provider behind feature flag (currently OFF, see ADR-0009)
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
