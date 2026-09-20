@@ -1,0 +1,15 @@
+version: v2
+modules:
+  - path: .
+    includes:
+      - algorithco_guard/v0
+lint:
+  use:
+    - STANDARD
+  # PACKAGE_VERSION_SUFFIX exempt: package `algorithco_guard.v0` is DECIDED
+  # (plans/phase-0-02-proto-contracts-v0.md §Naming, 90-crosscutting D-10).
+  except:
+    - PACKAGE_VERSION_SUFFIX
+breaking:
+  use:
+    - FILE

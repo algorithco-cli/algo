@@ -1,0 +1,77 @@
+// EXPERIMENTAL — do not implement in Phase 0
+//
+// Daemon ↔ backend wire stubs (v0alpha placeholders). Nothing consumes
+// these in Phase 0. Auth, policy-signature, and audit messages are shape
+// placeholders only. Payloads are REDACTED by default; FULL and any
+// telemetry are explicit opt-in only, never code. No Jev APIs are
+// invented here.
+syntax = "proto3";
+
+package algorithco_guard.v0;
+
+import "algorithco_guard/v0/decision.proto";
+import "algorithco_guard/v0/events.proto";
+
+// Placeholder: daemon→backend auth envelope (shape only, not a protocol).
+message BackendAuthPlaceholder {
+  // Auth scheme identifier placeholder (no semantics in Phase 0).
+  string scheme = 1;
+  // Redacted credential reference placeholder (never raw secrets).
+  string redacted_ref = 2;
+}
+
+// Placeholder: policy bundle envelope (shape only).
+message PolicyBundlePlaceholder {
+  // Policy version placeholder.
+  string policy_version = 1;
+  // Policy-signature placeholder (no verify logic in Phase 0).
+  string policy_sig_placeholder = 2;
+}
+
+// Placeholder: audit batch envelope (redacted events only in Phase 0).
+message AuditBatchPlaceholder {
+  // Redacted post-tool events placeholder.
+  repeated ToolAfter redacted_events = 1;
+  // Decisions correlated to the events placeholder.
+  repeated Decision decisions = 2;
+  // Opt-in flag: FULL payloads only with explicit user opt-in.
+  bool full_payload_opt_in = 3;
+}
+
+// Placeholder: policy fetch request.
+message FetchPolicyRequest {
+  // Auth placeholder.
+  BackendAuthPlaceholder auth = 1;
+  // Locally known policy version placeholder.
+  string known_policy_version = 2;
+}
+
+// Placeholder: policy fetch response.
+message FetchPolicyResponse {
+  // Policy bundle placeholder.
+  PolicyBundlePlaceholder bundle = 1;
+}
+
+// Placeholder: audit push request (redacted events only in Phase 0).
+message PushAuditRequest {
+  // Audit batch placeholder.
+  AuditBatchPlaceholder batch = 1;
+  // Auth placeholder.
+  BackendAuthPlaceholder auth = 2;
+}
+
+// Placeholder: audit push response.
+message PushAuditResponse {
+  // Ack flag placeholder.
+  bool ok = 1;
+  // Correlated trace id placeholder.
+  string trace_id = 2;
+}
+
+// EXPERIMENTAL daemon↔backend service. Do NOT implement in Phase 0.
+service DaemonBackendService {
+  // Placeholder: fetch latest policy bundle.
+  rpc FetchPolicy(FetchPolicyRequest) returns (FetchPolicyResponse);
+  // Placeholder: upload redacted audit batch (opt-in telemetry only).
+  rpc PushAudit(PushAuditRequest) returns (PushAuditResponse);
+}

@@ -1,0 +1,137 @@
+// Canonical agent tool events v0 for algorithco guard (CLI `algo`).
+//
+// Consumers: core, agent, eval. Eval imports dataset.proto (which imports
+// this file) — never duplicate these structs. Privacy: payloads stored and
+// transmitted REDACTED by default; see PrivacyMode.
+syntax = "proto3";
+
+package algorithco_guard.v0;
+
+import "google/protobuf/timestamp.proto";
+
+// Identity of the agent emitting an event.
+// Unverified adapter fields are `optional` and marked [VERIFY]: never
+// treat them as required, never guess their values.
+message AgentIdentity {
+  // Agent type label, e.g. "claude-code".
+  // [VERIFY] value set not yet verified against Claude/Codex/OpenCode hook
+  // payloads (see P0-JEV / P4 adapter spikes). Keep optional.
+  optional string agent_type = 1;
+  // Agent version string as reported by the adapter, if any.
+  // [VERIFY] format not yet verified per-agent. Keep optional.
+  optional string agent_version = 2;
+  // Session identifier assigned by the adapter/daemon.
+  string session_id = 3;
+  // Working directory the agent was launched in (redacted if sensitive).
+  string working_dir = 4;
+}
+
+// Kind of tool invocation being observed.
+// Plan shorthand: SHELL/EDIT/WRITE/READ/NET/OTHER (prefixed here per
+// protobuf style — enum values share the package scope).
+enum ToolKind {
+  // Default sentinel. Never emit on the wire; reject or map to ASK.
+  TOOL_KIND_UNSPECIFIED = 0;
+  // Shell command execution (argv-level analysis).
+  TOOL_KIND_SHELL = 1;
+  // File edit of an existing path.
+  TOOL_KIND_EDIT = 2;
+  // File creation / overwrite.
+  TOOL_KIND_WRITE = 3;
+  // File read.
+  TOOL_KIND_READ = 4;
+  // Network operation (fetch, request, etc.).
+  TOOL_KIND_NET = 5;
+  // Anything else the adapter reports.
+  TOOL_KIND_OTHER = 6;
+}
+
+// Privacy level of the payload carried by an event.
+enum PrivacyMode {
+  // Default sentinel. Treat as REDACTED.
+  PRIVACY_MODE_UNSPECIFIED = 0;
+  // Local-only: never leaves the device.
+  PRIVACY_MODE_LOCAL_ONLY = 1;
+  // Redacted before egress. Default for all stored/transmitted payloads.
+  PRIVACY_MODE_REDACTED = 2;
+  // Full payload, explicit opt-in only.
+  PRIVACY_MODE_FULL = 3;
+}
+
+// Pre-tool-use event: the decision gate acts on this.
+message ToolBefore {
+  // Unique event id (UUID v4 string).
+  string event_id = 1;
+  // Event timestamp.
+  google.protobuf.Timestamp timestamp = 2;
+  // Emitting agent identity.
+  AgentIdentity agent = 3;
+  // Kind of tool invocation.
+  ToolKind tool_kind = 4;
+  // Redacted payload (command text / file diff summary, redacted by default).
+  string redacted_payload = 5;
+  // Privacy level applied to this payload.
+  PrivacyMode privacy_mode = 6;
+  // Shell argv, set ONLY when tool_kind == TOOL_KIND_SHELL. Empty otherwise.
+  repeated string shell_argv = 7;
+  // Target file path, set ONLY when tool_kind is TOOL_KIND_EDIT/TOOL_KIND_WRITE/TOOL_KIND_READ.
+  optional string file_path = 8;
+}
+
+// Post-tool-use event: outcome recording for audit/eval.
+message ToolAfter {
+  // Matches the corresponding ToolBefore.event_id.
+  string event_id = 1;
+  // Event timestamp.
+  google.protobuf.Timestamp timestamp = 2;
+  // Kind of tool invocation (mirrors ToolBefore.tool_kind).
+  ToolKind tool_kind = 3;
+  // Process exit code. Set ONLY for TOOL_KIND_SHELL; absent otherwise.
+  optional int32 exit_code = 4;
+  // Redacted tool output / result summary.
+  string redacted_output = 5;
+  // Wall-clock latency in milliseconds.
+  int64 latency_ms = 6;
+  // Machine-readable error string, empty on success.
+  string error = 7;
+}
+
+// Agent stop event: session/agent termination marker.
+message AgentStop {
+  // Unique event id (UUID v4 string).
+  string event_id = 1;
+  // Event timestamp.
+  google.protobuf.Timestamp timestamp = 2;
+  // Stopping agent identity.
+  AgentIdentity agent = 3;
+  // Human-readable stop reason (redacted).
+  string reason = 4;
+}
+
+// Kind of agent question (plan shorthand: CHOICE/FREEFORM).
+enum QuestionKind {
+  // Default sentinel. Never emit on the wire.
+  QUESTION_KIND_UNSPECIFIED = 0;
+  // Multiple-choice question; options in AgentQuestion.choices.
+  QUESTION_KIND_CHOICE = 1;
+  // Free-form question. NEVER auto-answered (see AgentQuestion).
+  QUESTION_KIND_FREEFORM = 2;
+}
+
+// Agent-raised question (e.g. clarification request to the user/policy).
+// Invariant: FREEFORM questions are NEVER auto-answered by any agent,
+// adapter, or model path. They always route to ASK / human.
+message AgentQuestion {
+  // Unique question id (UUID v4 string).
+  string question_id = 1;
+  // Event timestamp.
+  google.protobuf.Timestamp timestamp = 2;
+  // Asking agent identity.
+  AgentIdentity agent = 3;
+  // Question kind (QUESTION_KIND_CHOICE or QUESTION_KIND_FREEFORM).
+  QuestionKind kind = 4;
+  // Question prompt text (redacted).
+  string prompt = 5;
+  // Choice options. Set ONLY when kind == QUESTION_KIND_CHOICE. Empty for FREEFORM.
+  repeated string choices = 6;
+}

@@ -1,0 +1,16 @@
+version: v2
+# Codegen inputs: canonical v0 contracts only.
+# Generated code is build output — never hand-edit (see VERSIONING.md).
+inputs:
+  - directory: algorithco_guard/v0
+plugins:
+  # Rust codegen via prost.
+  - local: protoc-gen-prost
+    out: gen/rust
+    opt:
+      - compile_well_known_types=true
+  # TypeScript codegen via protobuf-es.
+  - local: protoc-gen-es
+    out: gen/ts
+    opt:
+      - target=ts

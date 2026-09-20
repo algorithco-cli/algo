@@ -1,0 +1,56 @@
+// Policy decision v0 for algorithco guard (CLI `algo`).
+//
+// Invariant (fail-safe): on error, timeout, crash, parse failure, or
+// unknown input, the decision MUST be ASK — never ALLOW. Every I/O,
+// timeout, and parse path proves `proves_ask_on_*` (see 90-crosscutting).
+// Deterministic rules outrank models.
+syntax = "proto3";
+
+package algorithco_guard.v0;
+
+// Decision action (plan shorthand: ALLOW/DENY/ASK; prefixed per protobuf style).
+enum Action {
+  // Default sentinel. Never emit on the wire; receivers map to ASK.
+  ACTION_UNSPECIFIED = 0;
+  // Allow the tool call to proceed.
+  ACTION_ALLOW = 1;
+  // Deny the tool call.
+  ACTION_DENY = 2;
+  // Ask the user (fail-safe default for errors/unknowns).
+  ACTION_ASK = 3;
+}
+
+// Which layer produced the decision (for `algo why` + audit).
+// Plan shorthand: RULE/CACHE/LOCAL_MODEL/JEV/FALLBACK.
+enum SourceLevel {
+  // Default sentinel. Never emit on the wire; receivers map to ASK.
+  SOURCE_LEVEL_UNSPECIFIED = 0;
+  // Deterministic local rule. Outranks all model levels.
+  SOURCE_LEVEL_RULE = 1;
+  // Local decision cache hit.
+  SOURCE_LEVEL_CACHE = 2;
+  // On-device local model.
+  SOURCE_LEVEL_LOCAL_MODEL = 3;
+  // Jev (remote model path; gated by ToS/measurement, P0-JEV).
+  SOURCE_LEVEL_JEV = 4;
+  // Fail-safe fallback path (errors/timeouts map here, action ASK).
+  SOURCE_LEVEL_FALLBACK = 5;
+}
+
+// A single policy decision for one ToolBefore event.
+message Decision {
+  // Decision action. Error/unknown -> ASK, never ALLOW.
+  Action action = 1;
+  // One-line human-readable reason, shown by `algo why`.
+  string reason = 2;
+  // Model/rule confidence in [0, 1].
+  double confidence_0_1 = 3;
+  // Which layer produced this decision.
+  SourceLevel source_level = 4;
+  // Decision latency in milliseconds (budgets enforced in CI).
+  int64 latency_ms = 5;
+  // Policy version that produced this decision.
+  string policy_version = 6;
+  // Trace id correlating ToolBefore -> Decision -> audit (UUID v4 string).
+  string trace_id = 7;
+}

@@ -1,0 +1,58 @@
+// EXPERIMENTAL — do not implement in Phase 0
+//
+// Hook ↔ daemon wire stubs (v0alpha placeholders). Nothing consumes these
+// in Phase 0. Auth, policy-signature, and audit messages below are shape
+// placeholders only. Payloads are REDACTED by default; FULL is explicit
+// opt-in only. Privacy text must match behavior before any implementation.
+syntax = "proto3";
+
+package algorithco_guard.v0;
+
+import "algorithco_guard/v0/decision.proto";
+import "algorithco_guard/v0/events.proto";
+
+// Placeholder: hook→daemon auth envelope (shape only, not a protocol).
+message HookAuthPlaceholder {
+  // Auth scheme identifier placeholder (no semantics in Phase 0).
+  string scheme = 1;
+  // Redacted credential reference placeholder (never raw secrets).
+  string redacted_ref = 2;
+}
+
+// Placeholder: signed-policy envelope (shape only, not a protocol).
+message PolicySigPlaceholder {
+  // Policy version placeholder.
+  string policy_version = 1;
+  // Signature bytes placeholder (no verify logic in Phase 0).
+  string signature_placeholder = 2;
+}
+
+// Placeholder: audit ack envelope (shape only).
+message AuditAckPlaceholder {
+  // Correlated trace id placeholder.
+  string trace_id = 1;
+  // Ack flag placeholder.
+  bool ok = 2;
+}
+
+// Hook → daemon check request placeholder (wraps canonical ToolBefore).
+message CheckToolBeforeRequest {
+  // Canonical pre-tool event.
+  ToolBefore tool_before = 1;
+  // Auth placeholder.
+  HookAuthPlaceholder auth = 2;
+}
+
+// Hook → daemon check response placeholder.
+message CheckToolBeforeResponse {
+  // Policy decision.
+  Decision decision = 1;
+  // Audit ack placeholder.
+  AuditAckPlaceholder audit_ack = 2;
+}
+
+// EXPERIMENTAL hook↔daemon service. Do NOT implement in Phase 0.
+service HookDaemonService {
+  // Placeholder: pre-tool decision check.
+  rpc CheckToolBefore(CheckToolBeforeRequest) returns (CheckToolBeforeResponse);
+}

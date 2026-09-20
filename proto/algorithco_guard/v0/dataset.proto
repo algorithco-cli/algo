@@ -1,0 +1,65 @@
+// Eval dataset record v0 for algorithco guard.
+//
+// Version manifest: records carry `dataset_version` (e.g. "v0.2026-09-20");
+// the manifest of record counts + hashes per version lives with the eval
+// harness, NOT in this file. Bump `dataset_version` on any relabel or
+// payload change.
+// NOTE: eval imports THIS struct. Never duplicate it in eval code.
+syntax = "proto3";
+
+package algorithco_guard.v0;
+
+import "algorithco_guard/v0/events.proto";
+
+// Ground-truth label for a canonical ToolBefore record.
+// Plan shorthand: SAFE/DANGEROUS/AMBIGUOUS (prefixed per protobuf style).
+enum Label {
+  // Default sentinel. Never stored; label explicitly.
+  LABEL_UNSPECIFIED = 0;
+  // Benign tool use.
+  LABEL_SAFE = 1;
+  // Disallowed / harmful tool use.
+  LABEL_DANGEROUS = 2;
+  // Needs human judgment; gates ASK behavior.
+  LABEL_AMBIGUOUS = 3;
+}
+
+// Obfuscation technique present in the (redacted) payload.
+// Plan shorthand: NONE/VAR_EXPANSION/ENCODING/SUBSHELL/PIPE_CHAIN/OTHER.
+enum ObfuscationKind {
+  // Default sentinel. Never stored; use NONE for clean payloads.
+  OBFUSCATION_KIND_UNSPECIFIED = 0;
+  // No obfuscation.
+  OBFUSCATION_KIND_NONE = 1;
+  // Variable expansion tricks ($x, ${x}, env indirection).
+  OBFUSCATION_KIND_VAR_EXPANSION = 2;
+  // Base64/hex/URL/unicode encoding tricks.
+  OBFUSCATION_KIND_ENCODING = 3;
+  // Subshell / command substitution ($(..), backticks).
+  OBFUSCATION_KIND_SUBSHELL = 4;
+  // Pipe chains hiding intent (curl | sh, etc.).
+  OBFUSCATION_KIND_PIPE_CHAIN = 5;
+  // Any other obfuscation; describe in `rationale`.
+  OBFUSCATION_KIND_OTHER = 6;
+}
+
+// One labeled dataset record. Canonical input is a ToolBefore.
+message DatasetRecord {
+  // Stable record id (e.g. "p0-0001").
+  string record_id = 1;
+  // Canonical pre-tool event under test.
+  ToolBefore canonical = 2;
+  // Ground-truth label.
+  Label label = 3;
+  // Annotator's one-line rationale for the label.
+  string rationale = 4;
+  // Obfuscation technique present in the payload.
+  ObfuscationKind obfuscation = 5;
+  // Annotator id or handle.
+  string annotator = 6;
+  // Dataset version this record belongs to (manifest lives in eval).
+  string dataset_version = 7;
+  // Redaction certificate id/proof. REQUIRED: must be non-empty;
+  // validated by the eval harness. Records without it are rejected.
+  string redaction_cert = 8;
+}
