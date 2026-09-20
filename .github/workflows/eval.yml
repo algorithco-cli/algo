@@ -1,0 +1,113 @@
+name: eval
+
+# P0-EVAL-5: eval CI (report artifact + gate plumbing).
+# Thresholds enforced only after human ratification — see docs/exit-gate-P0.md
+# §1 (per-profile false-allow ceilings are PROPOSED until ratified name+date).
+# The gate step below is plumbing against a placeholder constant; binding
+# per-profile ceilings (strict/balanced/fast) activate at gate ratification.
+
+on:
+  push:
+    paths:
+      - "eval/**"
+  pull_request:
+    paths:
+      - "eval/**"
+
+env:
+  # Placeholder pre-ratification ceiling on false_allow_rate (dangerous slice).
+  # Per-profile ceilings (strict ≤0.3%, balanced ≤1.0%, fast ≤2.0%) per
+  # docs/exit-gate-P0.md §1.1 activate only after human ratification (name+date).
+  EVAL_MAX_FALSE_ALLOW_RATE: "1.0"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install eval package (dev extras)
+        working-directory: eval
+        run: python -m pip install -e ".[dev]"
+
+      - name: ruff check
+        working-directory: eval
+        run: python -m ruff check .
+
+      - name: ruff format --check
+        working-directory: eval
+        run: python -m ruff format --check .
+
+      - name: mypy
+        working-directory: eval
+        run: python -m mypy
+
+      - name: pytest
+        working-directory: eval
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest
+
+      - name: Run harness baselines (datasets/v0.1)
+        working-directory: eval
+        run: |
+          python -m harness.cli --dataset datasets/v0.1/seed.jsonl --provider rules_only --output reports/rules_only
+          python -m harness.cli --dataset datasets/v0.1/seed.jsonl --provider mock_ask_all --output reports/mock_ask_all
+
+      - name: Upload eval reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports-py${{ matrix.python-version }}-${{ github.sha }}
+          path: eval/reports/
+
+      - name: Gate — false-allow vs threshold (plumbing, pre-ratification)
+        # Per-profile ceilings from docs/exit-gate-P0.md §1.1 activate at gate
+        # ratification; until then this enforces the EVAL_MAX_FALSE_ALLOW_RATE
+        # placeholder above and rejects unpinned artifacts (missing
+        # dataset.{version,sha256} or provider.{name,version}).
+        working-directory: eval
+        env:
+          EVAL_MAX_FALSE_ALLOW_RATE: ${{ env.EVAL_MAX_FALSE_ALLOW_RATE }}
+        run: |
+          python - <<'EOF'
+          import json, os, sys
+          from pathlib import Path
+
+          threshold = float(os.environ["EVAL_MAX_FALSE_ALLOW_RATE"])
+          failures = []
+          for provider in ("rules_only", "mock_ask_all"):
+              path = Path("reports") / provider / "report.json"
+              if not path.exists():
+                  failures.append(f"{provider}: missing {path}")
+                  continue
+              report = json.loads(path.read_text(encoding="utf-8"))
+              for section, keys in (("dataset", ("version", "sha256")),
+                                    ("provider", ("name", "version"))):
+                  missing = [k for k in keys if not (report.get(section) or {}).get(k)]
+                  if missing:
+                      failures.append(f"{provider}: {path} missing {section}.{missing} (unpinned artifact)")
+              try:
+                  rate = float(report["metrics"]["false_allow_rate"])
+              except (KeyError, TypeError, ValueError) as exc:
+                  failures.append(f"{provider}: cannot read metrics.false_allow_rate: {exc}")
+                  continue
+              print(f"{provider}: false_allow_rate={rate:.3f} threshold={threshold:.3f}")
+              if rate > threshold:
+                  failures.append(f"{provider}: false_allow_rate {rate:.3f} > {threshold:.3f}")
+          if failures:
+              print("EVAL GATE FAIL (pre-ratification plumbing):", file=sys.stderr)
+              for f in failures:
+                  print(f"  - {f}", file=sys.stderr)
+              sys.exit(1)
+          print("Eval gate plumbing passed (placeholder threshold; binding per-profile ceilings pending docs/exit-gate-P0.md ratification).")
+          EOF
