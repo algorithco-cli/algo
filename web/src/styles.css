@@ -144,8 +144,10 @@ h1, h2, h3 { line-height: 1.25; letter-spacing: -0.015em; }
 .site-header.scrolled { box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28); }
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .reveal.visible { opacity: 1; transform: none; }
-.hero { position: relative; }
-.hero::before { content: ""; position: absolute; inset: -60px -40px auto -40px; height: 340px; pointer-events: none; background: radial-gradient(closest-side, var(--ag-brand), transparent); opacity: 0.16; }
+.hero { position: relative; overflow: hidden; border: 1px solid var(--ag-border); border-radius: 24px; padding: 48px 24px; margin-top: 24px; }
+.hero-aurora { position: absolute; inset: 0; opacity: 0.5; pointer-events: none; mask-image: linear-gradient(to bottom, black 60%, transparent 100%); }
+.hero-aurora .aurora-container { position: absolute; inset: 0; }
+.hero-calm::before { content: ""; position: absolute; inset: -60px -40px auto -40px; height: 340px; pointer-events: none; background: radial-gradient(closest-side, var(--ag-brand), transparent); opacity: 0.16; }
 .hero-copy, .hero-terminal { position: relative; }
 .btn { transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease; }
 .btn:hover { text-decoration: none; }

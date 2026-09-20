@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import RubberSegment from "./components/RubberSegment";
+import Aurora from "./components/Aurora";
 
 /* ---------- shared bits ---------- */
 
@@ -447,6 +448,9 @@ const STEPS: Array<[string, string, string]> = [
 export default function App(): JSX.Element {
   const scrolled = useScrolled();
   useRevealOnMount();
+  const [calmMotion] = React.useState(
+    () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
+  );
   return (
     <div className="page">
       <a href="#main" className="skip-link">
@@ -477,7 +481,12 @@ export default function App(): JSX.Element {
 
       <main id="main" className="wrap">
         {/* Hero */}
-        <div className="hero reveal" id="top">
+        <div className={`hero reveal${calmMotion ? " hero-calm" : ""}`} id="top">
+          {calmMotion ? null : (
+            <div className="hero-aurora" aria-hidden>
+              <Aurora amplitude={1.0} blend={0.55} speed={0.55} />
+            </div>
+          )}
           <div className="hero-copy">
             <p className="hero-badge">
               <span className="pulse" aria-hidden /> Private MVP — shadow-first, free local tier
