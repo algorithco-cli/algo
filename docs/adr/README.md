@@ -31,4 +31,5 @@ CI blocks `D-*` implementation without a merged ADR.
 - [0005-core-distribution](./0005-core-distribution.md) (D-D, draft 2026-09-20)
 - [0006-payments-mor](./0006-payments-mor.md) (D-E/D-08, draft 2026-09-20)
 - [0007-windows-scope](./0007-windows-scope.md) (D-F/D-09, draft 2026-09-20)
-- 0003 reserved (dataset-shape ADR, separate agent — do not touch)
+- [0003-dataset-shape-alignment](./0003-dataset-shape-alignment.md) (draft 2026-09-20)
+- [0008-jev-shadow-only](./0008-jev-shadow-only.md) (D-G, draft 2026-09-20)
