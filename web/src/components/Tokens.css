@@ -1,23 +1,10 @@
 /* web — Tokens.css (Variant 1 single source, same as dashboard)
- * Canonical: plans/design-tokens.md §2 — copy-paste source, verified 2026-09-20.
+ * Canonical: plans/design-tokens.md §2 — dark theme only (light removed 2026-09-21).
  * Also available as ../../design-tokens.css static file.
- * Grep check: grep -ri '#[0-9a-f]\{6\}' web/src → only 9 light + 9 dark below.
+ * Grep check: grep -ri '#[0-9a-f]\{6\}' web/src → only the 9 tokens below.
  */
 
-:root,
-[data-theme="light"] {
-  --ag-brand: #6D4AFF;
-  --ag-bg: #FAFAFB;
-  --ag-surface: #FFFFFF;
-  --ag-border: #E6E5EE;
-  --ag-text: #17161F;
-  --ag-text-muted: #6B6A7B;
-  --ag-allow: #1E9E63;
-  --ag-ask: #D99A00;
-  --ag-deny: #E5484D;
-}
-
-[data-theme="dark"] {
+:root {
   --ag-brand: #8E77FF;
   --ag-bg: #0E0D15;
   --ag-surface: #16151F;
@@ -42,8 +29,7 @@
 }
 
 /* Starlight / docs mapping per design-tokens.md §4 — no hex beyond tokens */
-:root,
-[data-theme="light"] {
+:root {
   --background: var(--ag-bg);
   --foreground: var(--ag-text);
   --card: var(--ag-surface);
@@ -52,15 +38,5 @@
   --border: var(--ag-border);
   --muted-foreground: var(--ag-text-muted);
   --sl-color-accent: var(--ag-brand);
-}
-
-[data-theme="dark"] {
-  --background: var(--ag-bg);
-  --foreground: var(--ag-text);
-  --card: var(--ag-surface);
-  --card-foreground: var(--ag-text);
-  --primary: var(--ag-brand);
-  --border: var(--ag-border);
-  --muted-foreground: var(--ag-text-muted);
-  --sl-color-accent: var(--ag-brand);
+  color-scheme: dark;
 }
