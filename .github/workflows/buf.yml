@@ -24,12 +24,20 @@ jobs:
       - name: buf lint
         run: buf lint proto
       - name: buf breaking (against latest tag)
+        # NOTE: archive-based baseline, not `.git#tag=`. buf's git-ref
+        # against-input misbuilds on some setups (proven 2026-09-20: spurious
+        # "imported file does not exist" on a tree that lint/build/codegen
+        # accept); extracting the tag tree and comparing dir-vs-dir is
+        # deterministic on every runner. Verified locally: identical trees
+        # pass, a removed field fails (see ADR/commit message).
         run: |
           LATEST="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo '')"
           if [ -z "$LATEST" ]; then
             echo "No v* tag yet; skipping breaking check (first tag will establish baseline)."
           else
-            buf breaking proto --against ".git#tag=$LATEST"
+            rm -rf /tmp/proto-baseline && mkdir -p /tmp/proto-baseline
+            git archive "$LATEST" proto | tar -x -C /tmp/proto-baseline
+            buf breaking proto --against /tmp/proto-baseline/proto
           fi
 
   codegen-smoke:
