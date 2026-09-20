@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 - v0 alpha scaffold: `events`, `decision`, `dataset`, experimental wire stubs.
+- 2026-09-20: `dataset.proto`: `redaction_cert` (field 8) becomes
+  `RedactionCert { bool redacted = 1; string scanner = 2; string notes = 3; }`,
+  documented REQUIRED (eval enforces absence → reject). Aligns proto with the
+  eval object shape per ADR-0003; eval JSON adopts `canonical` naming
+  (eval side, no proto field rename).
 
 ## v0.0.1-alpha (recommended first tag — not yet cut)
 

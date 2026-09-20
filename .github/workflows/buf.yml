@@ -37,8 +37,16 @@ jobs:
     needs: lint-breaking
     if: startsWith(github.ref, 'refs/tags/v')
     env:
-      PROTOC_GEN_PROST_VERSION: v0.4.0
-      PROTOC_GEN_ES_VERSION: v2.2.0
+      # Bare SemVer, no leading `v`: `cargo install --version v0.4.0` fails
+      # ("not a valid SemVer requirement"). Verified 2026-09-20.
+      PROTOC_GEN_PROST_VERSION: 0.4.0
+      # ES plugin pin. Installed as a TRIPLE-PIN together with matching
+      # @bufbuild/protobuf + @bufbuild/protoplugin (same version): letting npm
+      # hoist a newer protobuf next to protoplugin's exact-pinned copy breaks
+      # codegen with `protoc-gen-es: Cannot read properties of undefined
+      # (reading 'length')`. Upstream: bufbuild/protobuf-es#1175
+      # (https://github.com/bufbuild/protobuf-es/issues/1175). Verified 2026-09-20.
+      PROTOC_GEN_ES_VERSION: 2.2.0
     steps:
       - uses: actions/checkout@v4
       - uses: bufbuild/buf-setup-action@v1
@@ -51,10 +59,77 @@ jobs:
       - name: Install protoc plugins (pinned)
         run: |
           cargo install protoc-gen-prost --version "${PROTOC_GEN_PROST_VERSION}" --locked
-          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}"
+          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protobuf@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protoplugin@${PROTOC_GEN_ES_VERSION}"
       - name: buf generate (Rust prost + TS es)
         run: buf generate proto --template proto/buf.gen.yaml
-      - name: Rust smoke (scratch consumer)
-        run: echo "TODO(P0-PROTO-6): cargo check against gen/rust from tag"
-      - name: TS smoke (scratch consumer)
-        run: echo "TODO(P0-PROTO-6): npm run build against gen/ts from tag"
+      - name: Assert generated output exists
+        run: |
+          ls -R gen
+          test -n "$(find gen/rust -name '*.rs' -print -quit)"
+          test -n "$(find gen/ts -name '*.ts' -print -quit)"
+      - name: Rust smoke (scratch consumer, cargo check)
+        # Real compile check, verified locally 2026-09-20 (cargo 1.97.1, exit 0):
+        # scratch lib crate provides the google.protobuf WKT module that
+        # protoc-gen-prost (compile_well_known_types=true) references as
+        # super::super::google::protobuf::Timestamp (via prost-types 0.13),
+        # then includes the generated file verbatim.
+        run: |
+          set -euo pipefail
+          SMOKE="$(mktemp -d)/algo-proto-rust-smoke"
+          cargo new --lib "$SMOKE"
+          mkdir -p "$SMOKE/src/algorithco_guard"
+          cp gen/rust/algorithco_guard.v0.rs "$SMOKE/src/algorithco_guard/v0.rs"
+          printf 'pub mod v0;\n' > "$SMOKE/src/algorithco_guard/mod.rs"
+          cat > "$SMOKE/src/lib.rs" <<'EOF'
+          pub mod google {
+              pub mod protobuf {
+                  pub use ::prost_types::Timestamp;
+              }
+          }
+          pub mod algorithco_guard;
+          EOF
+          printf '\nprost = "0.13"\nprost-types = "0.13"\n' >> "$SMOKE/Cargo.toml"
+          cargo check --manifest-path "$SMOKE/Cargo.toml"
+      - name: TS smoke (scratch consumer, npm run build)
+        # Real type check, verified locally 2026-09-20 (node 24.13.0, exit 0):
+        # scratch npm package installs the @bufbuild/protobuf runtime pinned to
+        # the SAME version as the codegen plugin (see env pin) and runs
+        # tsc --noEmit over the generated files verbatim.
+        run: |
+          set -euo pipefail
+          SMOKE="$(mktemp -d)/algo-proto-ts-smoke"
+          mkdir -p "$SMOKE"
+          cp -r gen/ts/. "$SMOKE/"
+          cat > "$SMOKE/package.json" <<EOF
+          {
+            "name": "algo-proto-ts-smoke",
+            "version": "0.0.0",
+            "private": true,
+            "type": "module",
+            "scripts": { "build": "tsc --noEmit -p tsconfig.json" },
+            "dependencies": { "@bufbuild/protobuf": "${PROTOC_GEN_ES_VERSION}" },
+            "devDependencies": { "typescript": "5.4.5" }
+          }
+          EOF
+          cat > "$SMOKE/tsconfig.json" <<'EOF'
+          {
+            "compilerOptions": {
+              "target": "es2022",
+              "module": "esnext",
+              "moduleResolution": "bundler",
+              "strict": true,
+              "skipLibCheck": true,
+              "noEmit": true
+            },
+            "include": ["algorithco_guard/**/*.ts"]
+          }
+          EOF
+          npm install --prefix "$SMOKE" --no-audit --no-fund
+          npm run build --prefix "$SMOKE"
+      - name: Assert working tree clean (gen/ ignored)
+        # Generated output (gen/, proto/gen/) is git-ignored build output, so a
+        # clean checkout must still be clean after generate + smokes (smokes
+        # build under mktemp, never in-tree). Fails loudly otherwise.
+        run: |
+          git status --porcelain=v1
+          test -z "$(git status --porcelain=v1)"

@@ -32,3 +32,10 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Proto codegen (buf generate output — build artifact, never commit)
+# out paths in proto/buf.gen.yaml are cwd-relative: generating from the repo
+# root (as CI does) writes gen/, from proto/ writes proto/gen/. Ignore both
+# so generated output never dirties the tree.
+gen/
+proto/gen/
