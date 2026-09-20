@@ -129,6 +129,8 @@ Test/probe client (`eval/jev_client/`) is built ONLY from the spec below — no 
 
 - API use must comply with the Acceptable Use Policy at `typesafe.ai/legal/aup`
   (referenced by MCA §2.3(l), verified 2026-09-20).
+  [recheck 2026-09-20: `https://typesafe.ai/legal/aup` returns 404 (https + http) —
+  DEAD/CHANGED as cited; AUP not readable at this URL, do not treat as verified].
 - [VERIFY-OPEN] Read the full AUP and confirm that redacted dangerous-command eval
   traffic is acceptable use. Owner: product/legal. Recheck: 2026-10-04 (before any
   live measurement).
