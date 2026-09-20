@@ -19,6 +19,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import RubberSegment from "./components/RubberSegment";
 
 /* ---------- shared bits ---------- */
 
@@ -318,6 +319,41 @@ function Faq(): JSX.Element {
   );
 }
 
+/* ---------- nav segment (rubber-band, scroll-spy) ---------- */
+
+function NavSegment(): JSX.Element {
+  const [active, setActive] = React.useState(NAV[0][1]);
+  React.useEffect(() => {
+    const ids = NAV.map(([, href]) => href.slice(1));
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActive(`#${e.target.id}`);
+        });
+      },
+      { rootMargin: "-40% 0px -55% 0px" },
+    );
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) obs.observe(el);
+    });
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <RubberSegment
+      items={NAV.map(([label, href]) => ({ value: href, label }))}
+      value={active}
+      size="sm"
+      aria-label="Primary"
+      onChange={(href) => {
+        setActive(href);
+        const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        document.getElementById(href.slice(1))?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+      }}
+    />
+  );
+}
+
 /* ---------- page ---------- */
 
 const NAV = [
@@ -425,12 +461,8 @@ export default function App(): JSX.Element {
             <span className="brand-name">algorithco guard</span>
             <span className="kbd">by algorithco</span>
           </a>
-          <nav className="main-nav" aria-label="Primary">
-            {NAV.map(([label, href]) => (
-              <a key={href} href={href}>
-                {label}
-              </a>
-            ))}
+          <nav className="nav-segment-wrap" aria-label="Primary">
+            <NavSegment />
           </nav>
           <div className="header-cta">
             <a href="#login" className="btn btn-ghost">

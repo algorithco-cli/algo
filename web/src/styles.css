@@ -53,6 +53,8 @@ h1, h2, h3 { line-height: 1.25; letter-spacing: -0.015em; }
 .main-nav { display: flex; gap: 4px; flex-wrap: wrap; font-size: 13px; }
 .main-nav a { padding: 6px 10px; border-radius: 8px; color: var(--ag-text-muted); }
 .main-nav a:hover { color: var(--ag-text); background: var(--ag-bg); text-decoration: none; }
+.nav-segment-wrap { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.nav-segment-wrap::-webkit-scrollbar { display: none; }
 .header-cta { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .hero { display: grid; gap: 24px; padding: 48px 0 8px; align-items: center; }
 @media (min-width: 960px) { .hero { grid-template-columns: 1.05fr 0.95fr; } }
