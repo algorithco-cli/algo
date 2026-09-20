@@ -14,20 +14,21 @@ without this ADR merged.
 
 ## Decision
 
-Ship BYOK first; keep proxy optional later. The provider layer supports both modes behind a
-trait, but Phase 0–P3 builds, docs, and UX assume the user supplies their own Jev key.
-Redact-before-network applies in both modes; `local-only` sends nothing except via the
-explicit Jev path; `algo log --show-egress` shows what left the machine.
+**Bring your own Jev API key (BYOK) is the default Jev mode** — this ADR's decision.
+**No embedded key in distributed binaries** (see MCA §2.4 Q2 — keys confidential,
+no sharing; §2.3(b)/(g) uncapped risk). The provider layer supports both modes
+behind a trait, but **proxy mode through our servers stays blocked until legal
+review** (DPA/retention/ZDR/proxy auth design cleared). Phase 0–P3 builds, docs,
+and UX assume the user supplies their own Jev key. Redact-before-network applies
+in both modes; `local-only` (default) sends nothing except via the explicit Jev
+path with opt-in consent; `algo log --show-egress` shows what left the machine.
 
 ## Alternatives
 
-- **Proxy-first (backend holds a shared key, clients call backend)**: rejected for now. It
-  pulls auth, billing, rate-limiting, and abuse handling into P3 scope and concentrates
-  disclosure risk. Revisit if enterprise demand requires centralized billing.
+ - **Proxy-first (backend holds a shared key, clients call backend)**: **blocked until legal review** — not just deferred. It pulls auth, billing, rate-limiting, abuse handling, and **key custody** (MCA §2.4 confidential) into P3 scope and concentrates disclosure + uncapped indemnity risk (§§12.3, 13.2). Revisit only after legal review of proxy auth, per-org quota, abuse limits, audit, and DPA §3 subprocessor implications.
 - **BYOK-only forever (no proxy trait)**: rejected. It forecloses team/enterprise flows where
   a proxy with org policy is valuable. Keep the trait so a proxy can land without rework.
-- **Implicit key (env-var sniffing / shared default key)**: rejected. No secrets in code,
-  logs, or defaults; key comes from explicit user config / OS keychain only.
+- **Embedded key in distributed binaries / shared default key**: **prohibited** (MCA §2.4). No secrets in code, logs, defaults, or shipped artifacts; key comes from explicit user config / OS keychain only. Binaries must not contain a fallback key.
 
 ## Consequences
 
@@ -55,14 +56,14 @@ explicit Jev path; `algo log --show-egress` shows what left the machine.
 
 ## Verification
 
-- P0-JEV-1 dossier links official Jev API/SDK + ToS notes with dates; P0-JEV-2 records
-  BYOK false-allow + p50/p99 latency artifacts.
+- P0-JEV-1 dossier links official Jev API/SDK + MCA Sep 19, 2026 clauses (§§2.3(b),(g), 2.4, 4.1/4.3, 5, 12.3, 13.2, 16.4) + DPA Apr 24, 2026 with dates; P0-JEV-2 records
+  BYOK false-allow + p50/p99 latency artifacts (no embedded key).
 - Provider trait compiles with BYOK backend; proxy backend is a stub or missing — no
-  dead proxy code paths that could fail open. All timeout/parse errors prove `ask`.
-- `algo log --show-egress` demonstrates redacted egress on the BYOK path.
+  dead proxy code paths that could fail open; **binary scan shows no embedded `TYPESAFE_API_KEY` / `ALGO_JEV_API_KEY` literal**. All timeout/parse errors prove `ask`.
+- `algo log --show-egress` demonstrates redacted egress on the BYOK path; `local-only` default shows no egress.
 
 ## Sign-off (leave blank — human act)
 
-- [ ] Human sign-off: `@algorithcoguard/backend` + `@algorithcoguard/security` — required
-  before any P3 L3 network scope or proxy work. Without it, no L3 provider implementation
-  beyond the Phase 0 redacted probe client, and no proxy design/build.
+- [ ] Human sign-off: `@algorithcoguard/backend` + `@algorithcoguard/security` + `@algorithcoguard/legal` — required
+  before any P3 L3 network scope or **proxy mode** work. Without it, no L3 provider implementation
+  beyond the Phase 0 redacted probe client, and no proxy design/build. BYOK default itself needs legal sign-off per MCA §2.4.
