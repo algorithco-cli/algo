@@ -1,0 +1,100 @@
+/* algorithco guard — Tokens.css (dashboard single source)
+ * Canonical tokens from plans/design-tokens.md Variant 1 DECIDED (verified 2026-09-20).
+ * Also available as ../../design-tokens.css static file (copy of ../design-tokens.css).
+ * Do NOT introduce other hex — grep check: grep -ri '#[0-9a-f]\{6\}' dashboard/src web/src
+ * must return only the 9 light + 9 dark values below (via vars, no strays).
+ */
+
+:root,
+[data-theme="light"] {
+  --ag-brand: #6D4AFF;
+  --ag-bg: #FAFAFB;
+  --ag-surface: #FFFFFF;
+  --ag-border: #E6E5EE;
+  --ag-text: #17161F;
+  --ag-text-muted: #6B6A7B;
+  --ag-allow: #1E9E63;
+  --ag-ask: #D99A00;
+  --ag-deny: #E5484D;
+}
+
+[data-theme="dark"] {
+  --ag-brand: #8E77FF;
+  --ag-bg: #0E0D15;
+  --ag-surface: #16151F;
+  --ag-border: #26243A;
+  --ag-text: #F4F3FF;
+  --ag-text-muted: #9C9AB0;
+  --ag-allow: #3DD68C;
+  --ag-ask: #F5B82E;
+  --ag-deny: #FF6B6F;
+}
+
+/* Tailwind v4 compat @theme inline mapping */
+@theme inline {
+  --color-brand: var(--ag-brand);
+  --color-bg: var(--ag-bg);
+  --color-surface: var(--ag-surface);
+  --color-border: var(--ag-border);
+  --color-text: var(--ag-text);
+  --color-muted: var(--ag-text-muted);
+  --color-allow: var(--ag-allow);
+  --color-ask: var(--ag-ask);
+  --color-deny: var(--ag-deny);
+}
+
+/* shadcn/ui mapping per design-tokens.md §3:
+ * primary → brand, background → bg, card → surface,
+ * border → border, foreground → text, muted-foreground → text-muted,
+ * success/warning/destructive → allow/ask/deny — no hex here */
+:root,
+[data-theme="light"] {
+  --background: var(--ag-bg);
+  --foreground: var(--ag-text);
+  --card: var(--ag-surface);
+  --card-foreground: var(--ag-text);
+  --primary: var(--ag-brand);
+  --primary-foreground: white;
+  --border: var(--ag-border);
+  --muted: var(--ag-surface);
+  --muted-foreground: var(--ag-text-muted);
+  --destructive: var(--ag-deny);
+  --destructive-foreground: white;
+  --success: var(--ag-allow);
+  --warning: var(--ag-ask);
+  --radius: 0.5rem;
+}
+
+[data-theme="dark"] {
+  --background: var(--ag-bg);
+  --foreground: var(--ag-text);
+  --card: var(--ag-surface);
+  --card-foreground: var(--ag-text);
+  --primary: var(--ag-brand);
+  --primary-foreground: white;
+  --border: var(--ag-border);
+  --muted: var(--ag-surface);
+  --muted-foreground: var(--ag-text-muted);
+  --destructive: var(--ag-deny);
+  --destructive-foreground: white;
+  --success: var(--ag-allow);
+  --warning: var(--ag-ask);
+}
+
+/* Decision badge helpers — exclusive use of allow/ask/deny tokens */
+.badge-allow {
+  background: var(--ag-allow);
+  color: white;
+}
+.badge-ask {
+  background: var(--ag-ask);
+  color: black;
+}
+.badge-deny {
+  background: var(--ag-deny);
+  color: white;
+}
+
+/* Brand never for allow/deny semantics — enforced by grep check in CI
+ * grep -ri '#[0-9a-f]\{6\}' dashboard/src web/src → only Tokens.css hex above
+ */

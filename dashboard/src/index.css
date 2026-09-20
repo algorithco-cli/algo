@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base resets using tokens — no hard-coded hex */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    background: var(--ag-bg);
+    color: var(--ag-text);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  a {
+    color: var(--ag-brand);
+  }
+  a:hover {
+    opacity: 0.9;
+  }
+}

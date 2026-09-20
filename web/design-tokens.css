@@ -1,0 +1,45 @@
+/* algorithco guard — Design Tokens (Variant 1, DECIDED)
+ * Canonical source: plans/design-tokens.md (verified 2026-09-20).
+ * Single source for dashboard (React+Vite), web (Astro+Starlight), docs.
+ * Rules: decision colors exclusive to allow/ask/deny; brand never for semantics;
+ * dark theme is NOT an inversion — use exact dark column values.
+ * Any color change = PR to plans/design-tokens.md + this file + screenshots + rebuilds.
+ */
+
+:root,
+[data-theme="light"] {
+  --ag-brand: #6D4AFF;
+  --ag-bg: #FAFAFB;
+  --ag-surface: #FFFFFF;
+  --ag-border: #E6E5EE;
+  --ag-text: #17161F;
+  --ag-text-muted: #6B6A7B;
+  --ag-allow: #1E9E63;
+  --ag-ask: #D99A00;
+  --ag-deny: #E5484D;
+}
+
+[data-theme="dark"] {
+  --ag-brand: #8E77FF;
+  --ag-bg: #0E0D15;
+  --ag-surface: #16151F;
+  --ag-border: #26243A;
+  --ag-text: #F4F3FF;
+  --ag-text-muted: #9C9AB0;
+  --ag-allow: #3DD68C;
+  --ag-ask: #F5B82E;
+  --ag-deny: #FF6B6F;
+}
+
+/* Tailwind v4 (dashboard) — @theme inline mapping */
+@theme inline {
+  --color-brand: var(--ag-brand);
+  --color-bg: var(--ag-bg);
+  --color-surface: var(--ag-surface);
+  --color-border: var(--ag-border);
+  --color-text: var(--ag-text);
+  --color-muted: var(--ag-text-muted);
+  --color-allow: var(--ag-allow);
+  --color-ask: var(--ag-ask);
+  --color-deny: var(--ag-deny);
+}
