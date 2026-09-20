@@ -146,6 +146,40 @@ secret-scanned before tagging (`eval-data-v0.2`).
   p99 610/648ms, error→ask 0/0.0014). Record both; cache and batching improvements target warm.
 - Histogram artifact: TODO (per-profile, per-region, cold vs warm).
 
+## 7. Time-box + decision rule for no added value (PROPOSED, pending human ratification)
+
+**Time-box: 2–3 weeks** from the start of dev tuning (this file) — bounded effort.
+
+At the end of the box, score the **tuned Jev** question set (pinned `questions-v0.1`) on the
+**held-out 30%** (72 records + real-session slice when landed; see §3 hold-out discipline
+— **never tuned on held-out**). Compare to the **realistic baseline** (`rules_only` v0.2.0) at
+the **same operating point** per gate §1.5 G2 (fixed `ask_rate` / fixed `false_allow`):
+`Δ false_allow at fixed ask`, `AUROC`, `accuracy`, `ambiguous_accuracy`, `ECE/Brier`.
+
+**Decision rule (options only — no decision made, human ratification required):**
+
+- **If tuned Jev shows no meaningful added value over `rules_only` on held-out** (i.e., fails
+  G2: does not beat `rules_only` v0.2.0 on `ambiguous_accuracy` / `accuracy` / `AUROC` at
+  comparable `ask`, and/or still fails G1 `false_ask ≤0.30` PROPOSED) → do **not** pursue
+  auto-approve with Jev. Instead, propose **alternative Jev uses** (options, not a pick):
+  - **(a) Verifier:** use Jev as a `stop-hook` judge (done/not-done) — latency-looser, batch
+    post-action, needs verifier-slice data (propose ≤2% false_allow, see gate §2 row 2);
+  - **(b) Scanner candidate judging:** Jev judges cheap pre-filter candidates (secrets, missing
+    auth) as **report-only** scanner, not blocking — post-action, needs precision/recall
+    on scanner-danger slice;
+  - **(c) Park Jev auto-approve** and keep L0/L1 deterministic + shadow audit (ADR-0008) until
+    a later question/model improvement justifies reopening.
+  The gate then resolves as `narrow-scope` (shadow-only) for auto-approve; alternatives (a)/(b)
+  are tracked as separate capabilities (§2 rows 2 and 4) with their own slices and budgets.
+- **If tuned Jev does show meaningful added value on held-out** (clears G1 + G2 at the
+  operating point, with §1.1 false_allow within ceiling on the full set with confidence
+  intervals, ECE monotonic) → pin `questions-v0.1` and supersede ADR-0008 to allow
+  Jev-backed auto-approve for `balanced`/`fast` (strict stays deterministic per Option C
+  until separately proven).
+
+The time-box prevents indefinite tuning. Effort estimate: question tuning + dev sweep
+~1 week, held-out scoring + expansion (Option A) overlapped ~1–2 weeks within the box.
+
 ## Repro (dev tuning)
 
 ```powershell
@@ -154,5 +188,5 @@ python -m harness.cli --dataset eval/datasets/v0.1/dev.jsonl --provider rules_on
 python eval/jev_client/measure.py --dataset eval/datasets/v0.1/dev.jsonl --regions vantage-eu-central --runs 3 --out-dir eval/reports/dev_jev
 ```
 
-Gate stays **unchecked, shadow-only** (ADR-0008) until §2–§6 produce a tuned question set that
+Gate stays **unchecked, shadow-only** (ADR-0008) until §2–§7 produce a tuned question set that
 clears §1.1 + §1.5 + ECE/Brier monotonic + p50/p99 within budgets.

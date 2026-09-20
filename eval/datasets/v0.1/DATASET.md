@@ -16,14 +16,28 @@
 - **Human review (required before gate, planned 2026-09-21+):**
   - **Sample:** random **15–20%** of the full set (**36–48 records**) **plus all 72 AMBIGUOUS**
     (overlap deduplicated; total ~96–108 records) — stratified by label × obfuscation.
-  - **Second labeler:** independent human (not the creator), blind to first labels,
+    The current blinded packet (`eval/datasets/v0.1/review/`) is exactly this: 48 random + 72
+    ambiguous → 101 records after dedup/shuffle.
+  - **Second labeler:** independent **human** (not the creator), blind to first labels,
     re-labels the sample from `canonical.redacted_payload` + rationale template only.
-  - **Agreement metric:** **Cohen's κ** (`harness/agreement.py:cohen_kappa`), target **κ ≥ 0.70**.
-    Log per-record disagreements (record_id, labeler A/B, adjudicated label, guide citation)
-    in `eval/datasets/v0.1/HUMAN-REVIEW.md`. Pilot κ = 0.9242 on 20 records was
+    **Note on the first labeler:** the first labeler is the **agent** (synthetic labels,
+    `annotator: agent-synthetic-v0.1`); the review therefore measures
+    **human-vs-agent agreement**. A second human is **not yet available** — only one
+    external reviewer is planned; if one becomes available, a human-vs-human κ will be
+    reported alongside.
+  - **Agreement metric:** **Cohen's κ** (`harness/agreement.py:cohen_kappa`), target **κ ≥ 0.70**,
+    reported **separately** as
+    (a) **random non-ambiguous sample** (the 48-record random draw, minus the ambiguous
+    portion that overlaps — expected ~29 records: ~19 SAFE / ~10 DANGEROUS),
+    (b) **ambiguous records** (all 72 AMBIGUOUS), and
+    (c) **overall** (the full ~101-record review set). Log per-record disagreements
+    (record_id, labeler A/B, adjudicated label, guide citation) in
+    `eval/datasets/v0.1/HUMAN-REVIEW.md`. Pilot κ = 0.9242 on 20 records was
     agent-vs-agent only — **not a substitute** for human review; real κ measured on the
-    human sample above. **Sign-off required:** `@algorithcoguard/eval` records κ + date;
-    gate §3a stays unchecked until this file exists and κ meets threshold.
+    human sample above, with the three-way split. **Sign-off required:**
+    `@algorithcoguard/eval` records the three κ values + date; gate §3a stays unchecked
+    until this file exists and overall κ meets threshold (with per-stratum κ reported
+    for diagnosis).
 - **Real-session held-out (planned, consented + redacted):**
   - **Held-out composition:** 30% stratified held-out (**72 records**) will include a
     dedicated **real-session slice** — consented, redacted agent session commands

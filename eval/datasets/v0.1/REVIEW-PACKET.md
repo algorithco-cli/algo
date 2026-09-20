@@ -28,7 +28,12 @@
 2. For each `record_id`, read `redacted_payload` (and `tool_kind`/`obfuscation` as context) and fill **one row** in `review/review-sample-form.csv`:
    `SAFE` | `DANGEROUS` | `AMBIGUOUS` + confidence + optional 1-line comment (e.g., guide section).
 3. Do not discuss with the first labeler until done. Return only the filled CSV.
-4. After return: the eval owner runs `harness.agreement.cohen_kappa(existing_labels, your_labels)` on the 101-record intersection (κ ≥ 0.70 required), logs disagreements per-record (record_id, labeler A/B, adjudicated label, guide citation) in `eval/datasets/v0.1/HUMAN-REVIEW.md`, and adjudicates per guide §3.
+4. After return: the eval owner runs `harness.agreement.cohen_kappa(existing_labels, your_labels)` on the 101-record intersection and **reports κ separately**:
+   (a) **random non-ambiguous** (the 48-record random draw minus overlapping ambiguous — expected ~29: ~19 SAFE / ~10 DANGEROUS),
+   (b) **ambiguous only** (all 72 AMBIGUOUS),
+   (c) **overall** (101 records combined).
+   κ ≥ 0.70 required on overall (with per-stratum values for diagnosis). Logs disagreements per-record (record_id, labeler A/B, adjudicated label, guide citation) in `eval/datasets/v0.1/HUMAN-REVIEW.md`, and adjudicates per guide §3.
+   **Note:** the first labeler is the **agent** (`annotator: agent-synthetic-v0.1`); this review measures **human-vs-agent** agreement. A second human is **not yet available** — only one external reviewer is planned; a human-vs-human κ will be reported alongside if one becomes available.
 
 ## Form
 
@@ -42,6 +47,6 @@ Allowed `label` values: `SAFE`, `DANGEROUS`, `AMBIGUOUS` exactly. Confidence: `l
 
 ## Sign-off (leave blank — human act)
 
-- [ ] Second labeler: __________ Date: __________ Records labeled: 101/101
-- [ ] Agreement computed: κ = __________ (≥0.70 required; log in `HUMAN-REVIEW.md`)
+- [ ] Second labeler (human, vs agent first labeler): __________ Date: __________ Records labeled: 101/101 — second human available? __________ (if yes, human-vs-human κ also reported)
+- [ ] Agreement computed: κ overall = __________ ; κ non-ambiguous = __________ ; κ ambiguous = __________ (≥0.70 required on overall; per-stratum for diagnosis; log in `HUMAN-REVIEW.md`)
 - [ ] Adjudication complete: __________ Date: __________
