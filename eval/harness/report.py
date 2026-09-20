@@ -45,6 +45,7 @@ def build_report_dict(
     provider_version: str,
     metrics: EvalMetrics,
     results: Sequence[RunResult],
+    cost_usd_per_decision: float = 0.0,
 ) -> dict[str, Any]:
     return {
         "eval": "algorithco-guard-eval-v0",
@@ -58,7 +59,7 @@ def build_report_dict(
         "provider": {
             "name": provider_name,
             "version": provider_version,
-            "cost_usd_per_decision": None,
+            "cost_usd_per_decision": cost_usd_per_decision,
         },
         "metrics": metrics.to_dict(),
         "results": [

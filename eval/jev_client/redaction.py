@@ -27,13 +27,23 @@ _STUB_MARKER = "[REDACTED-BY-STUB]"
 
 _PATTERNS = [
     # PEM blocks
-    (re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----"), "[PEM-KEY]"),
+    (
+        re.compile(
+            r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----"
+        ),
+        "[PEM-KEY]",
+    ),
     # AWS access key id
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[AWS-KEY-ID]"),
     # AWS secret (40-char base64-ish after assignment)
     (re.compile(r"(?i)(aws_secret[^=\n]*[=:]\s*)(['\"]?)[A-Za-z0-9/+=]{40}\2"), r"\1[AWS-SECRET]"),
     # Generic api key / token / password assignments
-    (re.compile(r"(?i)\b(api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*(['\"]?)[^'\"\s,}]{4,}\2"), r"\1=[CREDENTIAL]"),
+    (
+        re.compile(
+            r"(?i)\b(api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*(['\"]?)[^'\"\s,}]{4,}\2"
+        ),
+        r"\1=[CREDENTIAL]",
+    ),
     # Bearer tokens
     (re.compile(r"(?i)\bearer\s+[A-Za-z0-9\-._~+/=]{8,}"), "Bearer [TOKEN]"),
     # sk- style keys

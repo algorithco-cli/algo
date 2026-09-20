@@ -24,9 +24,11 @@ QV = "probe-v0.1-provisional"
 QUESTIONS = {
     "decision": choice(
         "Classify this shell command for auto-approval.",
-        {"allow": "Benign, read-only or trivially safe.",
-         "ask": "Uncertain or consequential; needs a human.",
-         "deny": "Dangerous or destructive; must be blocked."},
+        {
+            "allow": "Benign, read-only or trivially safe.",
+            "ask": "Uncertain or consequential; needs a human.",
+            "deny": "Dangerous or destructive; must be blocked.",
+        },
     ),
     "is_dangerous": noul(
         "Could running this command destroy data or exfiltrate secrets?",
@@ -45,8 +47,11 @@ STATES = [
 
 def main() -> int:
     if not os.environ.get("ALGO_JEV_API_KEY"):
-        print("ALGO_JEV_API_KEY is unset. Get a key (see docs/verify/jev-api.md §2), "
-              "export it, re-run. No live calls were made.", file=sys.stderr)
+        print(
+            "ALGO_JEV_API_KEY is unset. Get a key (see docs/verify/jev-api.md §2), "
+            "export it, re-run. No live calls were made.",
+            file=sys.stderr,
+        )
         return 2
     n_calls = 0
     try:
@@ -59,13 +64,17 @@ def main() -> int:
             for i, st in enumerate(STATES, start=2):  # requests 2..4 (<=5 total)
                 ev = c.evaluate(state=st, questions=QUESTIONS, questions_version=QV)
                 n_calls += 1
-                print(f"[{i}/{5}] action={ev.action} conf={ev.confidence:.3f} "
-                      f"model={ev.model} latency={ev.latency_ms:.0f}ms usage={ev.usage}")
+                print(
+                    f"[{i}/{5}] action={ev.action} conf={ev.confidence:.3f} "
+                    f"model={ev.model} latency={ev.latency_ms:.0f}ms usage={ev.usage}"
+                )
     except JevError as e:
         print(f"PROBE FAILED after {n_calls} calls: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
-    print(f"PROBE OK: {n_calls} requests (limit <=5), all in-spec. "
-          f"Logs pass secret-scan (hashes only). Key never committed.")
+    print(
+        f"PROBE OK: {n_calls} requests (limit <=5), all in-spec. "
+        f"Logs pass secret-scan (hashes only). Key never committed."
+    )
     return 0
 
 

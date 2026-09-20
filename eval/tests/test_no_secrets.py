@@ -155,5 +155,5 @@ def test_redaction_cert_on_every_record() -> None:
             assert isinstance(cert, dict), f"line {lineno}: redaction_cert missing"
             assert cert.get("redacted") is True, f"line {lineno}: not certified redacted"
             assert cert.get("scanner"), f"line {lineno}: scanner version missing"
-            payload = record.get("tool_before", {}).get("redacted_payload", "")
+            payload = record.get("canonical", {}).get("redacted_payload", "")
             assert scan_text(str(payload)) == [], f"line {lineno}: payload trips scan"

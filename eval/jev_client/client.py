@@ -38,7 +38,8 @@ try:  # canonical harness redaction once P0-EVAL-4 lands
 except Exception:  # pragma: no cover - stub path until harness exists
     _canonical_redact = None  # type: ignore
 
-from redaction import log_record, redact_text as _stub_redact
+from redaction import log_record
+from redaction import redact_text as _stub_redact
 
 log = logging.getLogger("jev_client")
 
@@ -83,6 +84,7 @@ def _redact(state: str) -> tuple[str, dict]:
 
 
 # --- typed question builders (spec §"Question types") -------------------------
+
 
 def noul(instructions: str, true: str | None = None, false: str | None = None) -> dict:
     q: dict = {"type": "noul", "instructions": instructions}
@@ -136,8 +138,8 @@ def _map_to_action(answers: dict, questions_version: str) -> tuple[str, float]:
         raise JevUnavailable(f"unknown decision option: {opt!r}")
     try:
         conf = float(ans.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        raise JevUnavailable("unparsable confidence")
+    except (TypeError, ValueError) as exc:
+        raise JevUnavailable("unparsable confidence") from exc
     return opt, conf
 
 
@@ -157,7 +159,9 @@ class JevClient:
         if not key:
             raise JevConfigError("ALGO_JEV_API_KEY is empty or unset (env-only; see .env.example)")
         self._key = key
-        self.base_url = (base_url or os.environ.get("ALGO_JEV_BASE_URL", BASE_URL_DEFAULT)).rstrip("/")
+        self.base_url = (base_url or os.environ.get("ALGO_JEV_BASE_URL", BASE_URL_DEFAULT)).rstrip(
+            "/"
+        )
         self.model = model or os.environ.get("ALGO_JEV_MODEL", "jev-latest")
         self.timeout_s = timeout_s
         self.max_retries = max_retries
@@ -172,7 +176,7 @@ class JevClient:
     def close(self) -> None:
         self._http.close()
 
-    def __enter__(self) -> "JevClient":
+    def __enter__(self) -> JevClient:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -190,7 +194,10 @@ class JevClient:
                 resp = self._http.post(self.base_url + API_PATH, json=payload, headers=headers)
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 # Timeout (default 800ms) and any transport error -> ask path.
-                log.warning("jev transport/timeout -> ask", extra={"safe": {**red_log, "err": type(e).__name__}})
+                log.warning(
+                    "jev transport/timeout -> ask",
+                    extra={"safe": {**red_log, "err": type(e).__name__}},
+                )
                 raise JevUnavailable(f"transport/timeout: {type(e).__name__}") from e
             dt_ms = (time.perf_counter() - t0) * 1000.0
             if resp.status_code == 200:
@@ -213,7 +220,9 @@ class JevClient:
                     wait = max(wait, float(retry_after)) if retry_after else wait
                 except ValueError:
                     pass
-                log.info("jev %s -> backoff %.1fs (attempt %d)", resp.status_code, wait, attempt + 1)
+                log.info(
+                    "jev %s -> backoff %.1fs (attempt %d)", resp.status_code, wait, attempt + 1
+                )
                 time.sleep(wait)
                 attempt += 1
                 continue
@@ -253,18 +262,22 @@ class JevClient:
         usage = data.get("usage", {})
         log.info(
             "jev decision",
-            extra={"safe": {
-                **red_log,
-                "model": data.get("model"),
-                "action": action,
-                "confidence": round(conf, 4),
-                "latency_ms": round(float(data["_latency_ms"]), 1),
-                "usage": usage,
-                "questions_version": questions_version,
-                # NOTE: raw answer payloads are intentionally NOT logged.
-                "answer_types": {k: (v.get("type") if isinstance(v, dict) else "?")
-                                 for k, v in data["answers"].items()},
-            }},
+            extra={
+                "safe": {
+                    **red_log,
+                    "model": data.get("model"),
+                    "action": action,
+                    "confidence": round(conf, 4),
+                    "latency_ms": round(float(data["_latency_ms"]), 1),
+                    "usage": usage,
+                    "questions_version": questions_version,
+                    # NOTE: raw answer payloads are intentionally NOT logged.
+                    "answer_types": {
+                        k: (v.get("type") if isinstance(v, dict) else "?")
+                        for k, v in data["answers"].items()
+                    },
+                }
+            },
         )
         return Evaluation(
             action=action,
@@ -273,8 +286,10 @@ class JevClient:
             usage=usage if isinstance(usage, dict) else {},
             latency_ms=float(data["_latency_ms"]),
             questions_version=questions_version,
-            answers_raw_types={k: (v.get("type") if isinstance(v, dict) else "?")
-                               for k, v in data["answers"].items()},
+            answers_raw_types={
+                k: (v.get("type") if isinstance(v, dict) else "?")
+                for k, v in data["answers"].items()
+            },
         )
 
 

@@ -1,22 +1,27 @@
 {
-  "report_version": "v0.1-template",
+  "dataset": "<basename e.g. all.jsonl>",
+  "dataset_sha256": "<sha256 hex>",
+  "questions_version": "<questions version e.g. questions-v0.1>",
+  "provider": "typesafe-jev",
+  "provider_version": null,
+  "model_requested": null,
   "region": "<region>",
   "date": "<yyyy-mm-dd>",
   "runs": 3,
-  "dataset": {"version": "v0.1", "sha": "<sha>", "records": "<n>"},
-  "provider": {"model": "<jev model/version>", "questions": "questions-v0.1"},
-  "decisions": {
-    "false_allow": {"run1": null, "run2": null, "run3": null},
-    "false_ask": {"run1": null, "run2": null, "run3": null},
-    "deny_rate": {"run1": null, "run2": null, "run3": null}
+  "list_price_per_mtok_usd": 0.042,
+  "budgets": {"l3_p50_ms": 250, "l3_p99_ms": 800},
+  "metrics": {
+    "false_allow": {"mean": null, "min": null, "max": null, "stdev": null},
+    "false_ask": {"mean": null, "min": null, "max": null, "stdev": null},
+    "false_deny": {"mean": null, "min": null, "max": null, "stdev": null},
+    "ece": {"mean": null, "min": null, "max": null, "stdev": null},
+    "brier": {"mean": null, "min": null, "max": null, "stdev": null},
+    "lat_p50": {"mean": null, "min": null, "max": null, "stdev": null},
+    "lat_p95": {"mean": null, "min": null, "max": null, "stdev": null},
+    "lat_p99": {"mean": null, "min": null, "max": null, "stdev": null},
+    "cost_per_1k_usd": {"mean": null, "min": null, "max": null, "stdev": null},
+    "error_timeout_ask_rate": {"mean": null, "min": null, "max": null, "stdev": null}
   },
-  "calibration": {"ece": null, "brier": null, "reliability_diagram": null},
-  "latency_ms": {
-    "per_question": {"p50": null, "p95": null, "p99": null},
-    "e2e": {"p50": null, "p95": null, "p99": null},
-    "budgets": {"p50_max": 250, "p99_max": 800}
-  },
-  "cost_per_1k": null,
-  "error_to_ask_rate": null,
-  "payloads": "redacted-hashed-only"
+  "gate": {"p50_lt_250": null, "p99_lt_800": null},
+  "note": "payloads redacted; per-record rows carry state_sha256 only"
 }

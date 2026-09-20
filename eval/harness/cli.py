@@ -32,13 +32,13 @@ def load_items(dataset: Path) -> list[EvalItem]:
             if not line:
                 continue
             record = json.loads(line)
-            tool_before = record.get("tool_before", {})
+            canonical = record.get("canonical", {})
             items.append(
                 EvalItem(
                     record_id=str(record.get("record_id", f"line-{lineno}")),
                     expected=str(record.get("label", "AMBIGUOUS")),
-                    tool_kind=str(tool_before.get("tool_kind", "OTHER")),
-                    payload=str(tool_before.get("redacted_payload", "")),
+                    tool_kind=str(canonical.get("tool_kind", "OTHER")),
+                    payload=str(canonical.get("redacted_payload", "")),
                     obfuscation=str(record.get("obfuscation", "NONE")),
                 )
             )
@@ -105,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         provider_version=provider.version,
         metrics=metrics,
         results=results,
+        cost_usd_per_decision=provider.cost_usd_per_decision,
     )
     json_path, md_path = write_report(report, args.output)
     print(f"wrote {json_path} and {md_path}")
