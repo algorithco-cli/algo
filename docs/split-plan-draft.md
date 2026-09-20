@@ -1,8 +1,9 @@
-# Draft — Repo split plan: monorepo → separate repos (DO NOT EXECUTE)
+# Draft — Repo split plan: monorepo → separate repos (SUPERSEDED by waiver)
 
-> **Status:** draft — 2026-09-20 (owner: @algorithcoguard/maintainers)
-> **Do not execute until owner approves ADR-0009 (naming) + this plan + license/legal review.**
-> This is a **Draft** for review only; no `git filter-repo` or `gh repo create` is run by this file.
+> **Status:** superseded — 2026-09-21 by `docs/adr/0009-p0-gate-waiver.md` + owner decision
+> "ONE repository (existing monorepo) stays PRIVATE until release" (`AGENTS.md:1`).
+> **Do not execute.** This draft is retained for history only; no `git filter-repo` or
+> `gh repo create` is to be run. See `docs/DEFERRED.md:6.5`.
 
 ## 1. Target state (per owner feedback 2026-09-20)
 

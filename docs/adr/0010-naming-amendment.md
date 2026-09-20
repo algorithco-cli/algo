@@ -1,9 +1,9 @@
-# ADR-0009: Naming Amendment — `algo guard` dispatcher (Draft, do not apply yet)
+# ADR-0010: Naming Amendment — `algo guard` dispatcher (Draft, superseded by waiver)
 
 ## Status
 
 draft — 2026-09-20 (owner: @algorithcoguard/maintainers + legal)
-**Do not apply until owner approves.** This is a Draft amendment to ADR-0002 (accepted).
+**Do not apply — superseded 2026-09-21 by ADR-0009 waiver + owner decision "keep ADR-0002 unchanged" (see `docs/DEFERRED.md`).** This was Draft amendment to ADR-0002 (accepted); renumbered from 0009 to 0010 on 2026-09-21 to free 0009 for the P0 gate waiver per owner instruction.
 
 ## Context
 

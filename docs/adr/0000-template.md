@@ -2,7 +2,7 @@
 
 ## Status
 
-draft | accepted | superseded by [ADR-XXXX](./XXXX-title.md)
+draft | accepted | superseded by ADR-XXXX
 
 ## Context
 

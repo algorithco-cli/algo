@@ -33,4 +33,5 @@ CI blocks `D-*` implementation without a merged ADR.
 - [0007-windows-scope](./0007-windows-scope.md) (D-F/D-09, draft 2026-09-20)
 - [0003-dataset-shape-alignment](./0003-dataset-shape-alignment.md) (draft 2026-09-20)
 - [0008-jev-shadow-only](./0008-jev-shadow-only.md) (D-G, draft 2026-09-20)
-- [0009-naming-amendment](./0009-naming-amendment.md) (D-10 amendment, draft 2026-09-20 — do not apply yet)
+- [0009-p0-gate-waiver](./0009-p0-gate-waiver.md) (P0 gate waiver for private MVP, draft 2026-09-21 — owner-instructed, countersignature blank)
+- [0010-naming-amendment](./0010-naming-amendment.md) (D-10 amendment, draft 2026-09-20, renumbered from 0009 on 2026-09-21 — superseded by ADR-0009 waiver + owner "keep ADR-0002 unchanged")

@@ -1,0 +1,44 @@
+# SECURITY-REVIEW-QUEUE — security-critical files for later human review
+
+> **Waiver:** `docs/adr/0009-p0-gate-waiver.md` (owner-instructed 2026-09-21, countersignature blank).
+> P0 exit gate (`docs/exit-gate-P0.md:5`) is **deferred, not cancelled**. Every file below was written or **will be written** under this waiver and **must be human-reviewed** (CODEOWNERS on deny list / thresholds / redaction / sig-verify / `algo init`/`algo uninstall` / auth — `AGENTS.md:9` — agent approval is never sufficient) **before the milestone in `Milestone`**.
+> Keep this file updated at each milestone (per owner). No sign-off field is filled by agents.
+
+## Queue (append-only; do not delete rows after review — mark them)
+
+| # | File (as of 2026-09-21) | Why it is security-critical | Milestone before human review | Status |
+|---|---|---|---|---|
+| S01 | `core/crates/redact/src/*` (not yet exists — will be `core/crates/redact/src/lib.rs`, `patterns.rs`) | Secret/PII masking before any egress — determines what leaves the machine (`docs/redact-crate-design.md:4`, `docs/redact-consent-readiness.md:2`) | `real user data` and `Jev enabled` (redact gates every real-data Jev call) | **Not yet written** — design only |
+| S02 | `core/crates/policy/src/deny_list.rs` + `engine.rs` | Hard deny rules outrank models — `rm -rf /`, `mkfs`, `dd of=/dev/*`, `curl|sh`, `chmod 777`, `eval+base64`, `ssh StrictHostKeyChecking=no + rm` (`plans/phase-1-04-core-policy-redact.md:5`) — bypass is uncapped indemnity (`jev-tos.md:127`) | `public release` | **Not yet written** |
+| S03 | `core/crates/shell-analysis/src/*` (`parse.rs`, `facts.rs`, `obfuscation.rs`) | Parses shell syntax tree that policy/redact match on — `tree-sitter-bash` correctness determines fail-safe | `public release` | **Not yet written** |
+| S04 | `core/crates/provider/src/*` (`trait.rs`, `jev.rs` mock only) | DecisionProvider trait + `JevProvider` timeout/parse → `ASK` mapping (fail-safe `ASK`, never `ALLOW` per waiver 3) | `Jev enabled` (mock is Jev OFF; real Jev `L3` stays `ASK` until then) | **Not yet written** (trait + mock only while Jev stays OFF) |
+| S05 | `core/crates/types/src/*` (`proto` generated) | Canonical `ToolBefore`/`Decision` types + `is_deny()`/`to_ask_on_error()` helpers — contracts-first | `public release` | **Not yet written** |
+| S06 | `core/crates/fingerprint/src/*` | Cache key `blake3(normalize + policy_version + profile)` — cache poisoning is a threat (`docs/threat-model-v0.md:53`) | `public release` | **Not yet written** |
+| S07 | `agent/crates/daemon/src/*` (`main.rs`, `pipeline.rs`, `cache.rs`, `jev_pool.rs`, `transport.rs`) | Pipeline L0→L1→L3→L4, cache TTL 24h, SQLite WAL, `~/.algo/algo.sock` `0600` (`plans/phase-1-06-agent-daemon-hookclient.md:7-9`) | `public release` | **Not yet written** |
+| S08 | `agent/crates/hook-client/src/main.rs` | Tiny binary called by agent hooks — latency budget ~1ms, daemon-down → `ASK` (`plans/phase-1-06:11`) | `public release` | **Not yet written** |
+| S09 | `agent/crates/adapter-claude/src/*` (`parse.rs`, `render.rs`) | Parses `tool_input.command`/`cwd`/`session_id` → `CanonicalEvent`; renders `allow→approve / deny→block / ask→ask` per [VERIFY] Claude docs (`docs/exit-gate-P0.md:170-180`) | `public release` | **Not yet written** |
+| S10 | `agent/crates/audit/src/*` + `agent/crates/cli-audit/src/*` (`algo init`/`doctor`/`uninstall`/`pause`/`why`/`log` + `--show-egress`) | Backup/restore of agent configs (`*.algo-backup-<ts>`, additive merge), `algo uninstall` byte-identical (`plans/phase-1-08:9-14`), `algo log --show-egress` one-path with redact (privacy) | `public release` | **Not yet written** |
+| S11 | `eval/baselines/rules_only.py` v0.2.0 (`hard deny-list + heuristics`, threat-model derived, not dataset-tuned) | Baseline for gate §1.5 G2 — Jev must beat this at comparable `ask`; deny-list details are sensitive (see `docs/public-exposure-review.md:2`) | `public release` (if `guard-eval` ever public) | **Written** — `eval/baselines/rules_only.py:17-45` (19 patterns, 2026-09-20) — **queued for review** |
+| S12 | `eval/jev_client/client.py` + `redaction.py` + `measure.py` | Throwaway redacted probe client (only Jev path in Phase 0, env-only `ALGO_JEV_API_KEY`, `TIMEOUT_S_DEFAULT 0.8` → `JevUnavailable` → `ASK`) — but it touches real Jev traffic (`api.typesafe.ai`) | `Jev enabled` | **Written** — `eval/jev_client/client.py:72-82` `_redact()` + `247-250` redact-before-POST + `191-194` timeout→ask |
+| S13 | `proto/algorithco_guard/v0/dataset.proto` (`RedactionCert`) + `decision.proto` (`error → ASK` invariant) | Contracts are the source of truth — hand-edit breakage is a gate failure (`AGENTS.md:4`) | `public release` | **Written** — `proto/algorithco_guard/v0/dataset.proto:12-70`, `decision.proto:3-50` — **queued for review** |
+| S14 | `.github/workflows/secrets.yml` + `links.yml` + `eval.yml` + `buf.yml` | Secret scanning, link, eval false-allow, buf breaking — merge-blockers (`AGENTS.md:46-60`) | `public release` | **Written** — `secrets.yml:12-28` (OSS docker), `links.yml:26-38` (globstar), `eval.yml:73-112` (gate plumbing), `buf.yml:27-53` (archive-based) — **queued for review** |
+| S15 | `docs/threat-model-v0.md` (B1–B4, 8 abuses) + `docs/security-model.md` + `docs/privacy-dataflow.md` | Threat boundaries, fail-safe, redaction-before-egress, US-infra disclosure (owner-confirmed) | `public release` | **Written** — `docs/threat-model-v0.md:18-54` — **queued for review** (sign-off `58-59` blank) |
+| S16 | `proto/buf.yaml` + `proto/buf.gen.yaml` | Contract toolchain — breaking change detection | `public release` | **Written** |
+
+## Already queued but not security-critical (tracked for completeness)
+
+| File | Why not security-critical | Milestone |
+|---|---|---|
+| `eval/datasets/v0.1/seed.jsonl` (240) + `dev.jsonl` + `held-out.jsonl` + `review/*` | Adversarial data + blinded packet — sensitive for public exposure (`docs/public-exposure-review.md:3`) but not a product security gate | `public release` (keep `guard-eval` private) |
+| `docs/adr/*` (0001–0010) | ADRs are governance, not runtime | `public release` |
+
+## How to use
+
+- At each milestone, a human (CODEOWNERS per `AGENTS.md:9`) reviews the rows whose `Milestone` matches the milestone and **checks a box in the relevant `docs/adr/*` or `docs/threat-model-v0.md`**, not here. This file stays as the **queue**.
+- Do not delete rows after review — add a `Reviewed: __________ Date: __________` note in the `Status` column and link the PR.
+- New security-critical files (any change to `deny_list.rs`/`engine.rs`/`redact`/`provider`/`daemon`/`hook-client`/`adapter`/`audit`/`init`/`uninstall`/auth) are appended at the bottom with `Not yet written` until they exist.
+
+## Sign-off (leave blank — human act)
+
+- [ ] This queue reviewed: __________ Date: __________
+- [ ] Countersignature (waiver companion): __________ Date: __________
