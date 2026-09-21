@@ -1,21 +1,43 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Algorithco Guard — the control layer for AI coding agents. Hard-deny dangerous commands, fail-safe ask, redact-first privacy. Free local MVP." />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0E0D15" />
+    <meta name="description" content="Algorithco Guard — the control layer for AI coding agents. Hard-deny destructive commands, fail-safe ask, redact-first privacy. Free local MVP." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0D15" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAFAFB" />
+    <meta property="og:type" content="website" />
     <meta property="og:title" content="Algorithco Guard — safer, quieter, auditable AI coding agents" />
     <meta property="og:description" content="Shadow-first guardrail for Claude Code and friends. Install in ~30s. Free local MVP." />
     <meta property="og:image" content="/logo.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Algorithco Guard — safer, quieter, auditable AI coding agents" />
+    <meta name="twitter:description" content="Shadow-first guardrail for Claude Code and friends. Install in ~30s. Free local MVP." />
+    <meta name="twitter:image" content="/logo.png" />
     <title>Algorithco Guard — safer AI coding agents</title>
-    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      try {
+        var t = localStorage.getItem("ag-theme");
+        if (t !== "light" && t !== "dark") t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "algorithco guard",
+        "name": "Algorithco Guard",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "macOS, Linux, Windows",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
