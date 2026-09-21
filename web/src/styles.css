@@ -55,12 +55,10 @@ h1, h2, h3 { line-height: 1.25; letter-spacing: -0.015em; }
 .brand-name { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; white-space: nowrap; }
 .brand-by { font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; color: var(--ag-text-muted); border: 1px solid var(--ag-border); background: var(--ag-bg); border-radius: 999px; padding: 4px 10px; line-height: 1.4; white-space: nowrap; }
 .brand-by strong { color: var(--ag-text); font-weight: 600; }
-.nav-desktop { display: none; align-items: center; gap: 28px; margin: 0 auto; }
-.nav-desktop a { position: relative; font-size: 14px; font-weight: 500; color: var(--ag-text-muted); padding: 8px 0; }
-.nav-desktop a:hover { color: var(--ag-text); text-decoration: none; }
-.nav-desktop a.active { color: var(--ag-text); }
-.nav-desktop a.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 2px; border-radius: 2px; background: var(--ag-brand); }
-@media (min-width: 961px) { .nav-desktop { display: flex; } }
+.nav-desktop { display: none; margin: 0 auto; }
+@media (min-width: 961px) { .nav-desktop { display: block; } }
+.jelly-nav .jelly-radio__skin { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+.jelly-nav .jelly-radio__chip[data-on='true'] .jelly-radio__skin { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
 .header-cta { margin-left: auto; display: flex; gap: 10px; align-items: center; flex: none; }
 .burger { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--ag-border); background: var(--ag-surface); color: var(--ag-text); cursor: pointer; }
 @media (min-width: 961px) { .burger { display: none; } .mobile-menu { display: none; } }

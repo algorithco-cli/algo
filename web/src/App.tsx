@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Aurora from "./components/Aurora";
+import JellyRadio from "./components/JellyRadio";
 
 /* ---------- shared bits ---------- */
 
@@ -323,7 +324,7 @@ function Faq(): JSX.Element {
 
 /* ---------- scroll-spy for nav highlight ---------- */
 
-function useActiveSection(): string {
+function useActiveSection(): [string, React.Dispatch<React.SetStateAction<string>>] {
   const [active, setActive] = React.useState(NAV[0][1]);
   React.useEffect(() => {
     const ids = NAV.map(([, href]) => href.slice(1));
@@ -341,7 +342,7 @@ function useActiveSection(): string {
     });
     return () => obs.disconnect();
   }, []);
-  return active;
+  return [active, setActive];
 }
 
 /* ---------- page ---------- */
@@ -438,7 +439,7 @@ export default function App(): JSX.Element {
   const scrolled = useScrolled();
   useRevealOnMount();
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const active = useActiveSection();
+  const [active, setActive] = useActiveSection();
   const [calmMotion] = React.useState(
     () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,
   );
@@ -461,11 +462,20 @@ export default function App(): JSX.Element {
             </span>
           </a>
           <nav className="nav-desktop" aria-label="Primary">
-            {NAV.map(([label, href]) => (
-              <a key={href} href={href} className={active === href ? "active" : undefined} aria-current={active === href ? "true" : undefined}>
-                {label}
-              </a>
-            ))}
+            <JellyRadio
+              items={NAV.map(([label, href]) => ({ value: href, label }))}
+              value={active}
+              size="sm"
+              gap={4}
+              radius={10}
+              ariaLabel="Primary"
+              className="jelly-nav"
+              onChange={(href) => {
+                setActive(href);
+                const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                document.getElementById(href.slice(1))?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+              }}
+            />
           </nav>
           <div className="header-cta">
             <a href="#login" className="btn btn-ghost cta-login">
