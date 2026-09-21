@@ -12,7 +12,6 @@ import {
   Lock,
   Menu,
   MessageCircle,
-  Minus,
   Play,
   Plus,
   Rocket,
@@ -113,11 +112,19 @@ function BackToTop(): JSX.Element | null {
   );
 }
 
-function Section({ id, kicker, title, lede, children }: { id: string; kicker: string; title: string; lede?: string; children: React.ReactNode }): JSX.Element {
+function Section({ id, kicker, title, accent, lede, children }: { id: string; kicker: string; title: string; accent?: string; lede?: string; children: React.ReactNode }): JSX.Element {
   return (
     <section id={id} className="section reveal">
       <p className="kicker">{kicker}</p>
-      <h2 className="section-title">{title}</h2>
+      <h2 className="section-title">
+        {title}
+        {accent ? (
+          <>
+            {" "}
+            <span className="accent">{accent}</span>
+          </>
+        ) : null}
+      </h2>
       {lede ? <p className="muted section-lede">{lede}</p> : null}
       <div className="section-body">{children}</div>
     </section>
@@ -309,15 +316,31 @@ function Faq(): JSX.Element {
   const [open, setOpen] = React.useState<number | null>(0);
   return (
     <div className="faq">
-      {FAQS.map(([q, a], i) => (
-        <div key={q} className={`card faq-item${open === i ? " open" : ""}`}>
-          <button className="faq-q" onClick={() => setOpen((o) => (o === i ? null : i))} aria-expanded={open === i}>
-            <span>{q}</span>
-            {open === i ? <Minus size={16} aria-hidden /> : <Plus size={16} aria-hidden />}
-          </button>
-          {open === i ? <p className="muted faq-a">{a}</p> : null}
-        </div>
-      ))}
+      {FAQS.map(([q, a], i) => {
+        const isOpen = open === i;
+        return (
+          <div
+            key={q}
+            className={`faq-item reveal${isOpen ? " open" : ""}`}
+            style={{ transitionDelay: `${Math.min(i, 6) * 60}ms` }}
+          >
+            <button
+              className="faq-q"
+              onClick={() => setOpen((o) => (o === i ? null : i))}
+              aria-expanded={isOpen}
+              aria-controls={`faq-a-${i}`}
+            >
+              <span>{q}</span>
+              <span className={`faq-icon${isOpen ? " open" : ""}`} aria-hidden>
+                <Plus size={17} />
+              </span>
+            </button>
+            <div className="faq-a-wrap" id={`faq-a-${i}`} role="region">
+              <p className="muted faq-a">{a}</p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -449,6 +472,11 @@ export default function App(): JSX.Element {
         Skip to content
       </a>
       <BackToTop />
+      <div className="bg-orbs" aria-hidden>
+        <div className="orb orb-a" />
+        <div className="orb orb-b" />
+        <div className="orb-grid" />
+      </div>
       {/* Header */}
       <header className={`site-header${scrolled ? " scrolled" : ""}`}>
         <div className="wrap header-inner">
@@ -857,20 +885,24 @@ algo status  # allowed / asked / blocked, savings, profile`}</code>
         </Section>
 
         {/* FAQ */}
-        <Section id="faq" kicker="FAQ" title="Questions, answered">
+        <Section id="faq" kicker="FAQ" title="Questions," accent="answered" lede="Everything about safety, privacy, speed, and rollout — in one place.">
           <Faq />
         </Section>
 
         {/* Final CTA */}
-        <div className="card cta">
-          <img src="/logo.svg" alt="" width={56} height={56} aria-hidden />
-          <div>
+        <div className="cta reveal">
+          <div className="cta-glow" aria-hidden />
+          <div className="cta-icon" aria-hidden>
+            <img src="/logo.svg" alt="" width={40} height={40} />
+          </div>
+          <div className="cta-copy">
+            <p className="kicker">Get started</p>
             <h2>Ship agents you don&apos;t have to babysit.</h2>
             <p className="muted">Free local MVP. ~30s install. Shadow-first, reversible, explained.</p>
           </div>
-          <div className="hero-actions">
+          <div className="cta-actions">
             <a href="#install" className="btn btn-primary btn-lg">
-              Install free
+              Install free <ArrowRight size={16} aria-hidden />
             </a>
             <a href="#login" className="btn btn-ghost btn-lg">
               Log in
@@ -880,16 +912,44 @@ algo status  # allowed / asked / blocked, savings, profile`}</code>
         </div>
       </main>
 
-      <footer className="site-footer">
-        <div className="wrap footer-inner muted">
-          <div className="footer-brand">
-            <img src="/logo.svg" alt="" width={24} height={24} aria-hidden />
-            <strong>Algorithco Guard</strong>
-            <span>
-              CLI <code>algo</code> · Tokens Variant 1 · Colors <span className="c-allow">allow</span> / <span className="c-ask">ask</span> /{" "}
-              <span className="c-deny">deny</span> only for decisions.
-            </span>
+      <footer className="site-footer reveal">
+        <div className="wrap footer-inner">
+          <div className="footer-top">
+            <div className="footer-brand-block">
+              <a href="#top" className="brand" aria-label="Algorithco Guard — home">
+                <img src="/logo.svg" alt="" width={34} height={34} className="brand-logo" aria-hidden />
+                <span className="brand-text">
+                  <span className="brand-name">Algorithco Guard</span>
+                  <span className="brand-by">
+                    by <strong>Algorithco</strong>
+                  </span>
+                </span>
+              </a>
+              <p className="muted footer-tag">The control layer for AI coding agents. Safer, quieter, auditable.</p>
+            </div>
+            <nav className="footer-cols" aria-label="Footer">
+              <div className="footer-col">
+                <h4>Product</h4>
+                <a href="#features">Features</a>
+                <a href="#demo">Live demo</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#roadmap">Roadmap</a>
+              </div>
+              <div className="footer-col">
+                <h4>Resources</h4>
+                <a href="#how">How it works</a>
+                <a href="#docs">Docs</a>
+                <a href="#faq">FAQ</a>
+              </div>
+              <div className="footer-col">
+                <h4>Account</h4>
+                <a href="#login">Log in</a>
+                <a href="#pricing">Get started</a>
+                <a href="#privacy">Privacy</a>
+              </div>
+            </nav>
           </div>
+          <hr className="footer-div" />
           <p className="footer-notice">
             When Jev is enabled (BYOK, <code>redacted</code> or <code>full</code>), your redacted (or with <code>full</code>, unredacted) commands are sent
             to TypeSafe AI&apos;s US infrastructure under your own key, processed by its US subprocessors (AWS / Modal / Nebius / CoreWeave), retained as
@@ -897,6 +957,13 @@ algo status  # allowed / asked / blocked, savings, profile`}</code>
             Input and will not disclose Input except to service providers. Non-US users transfer data to the US. <code>local-only</code> sends nothing.
             ZDR is available only via enterprise <code>privacy@typesafe.ai</code>.
           </p>
+          <div className="footer-bottom">
+            <span>© 2026 Algorithco Guard · CLI <code>algo</code></span>
+            <span>
+              Tokens Variant 1 · <span className="c-allow">allow</span> / <span className="c-ask">ask</span> /{" "}
+              <span className="c-deny">deny</span> only for decisions
+            </span>
+          </div>
         </div>
       </footer>
     </div>
