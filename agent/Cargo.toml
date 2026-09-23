@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/daemon", "crates/hook-client", "crates/adapter-claude", "crates/audit", "crates/cli", "crates/verifier", "crates/loop-controller", "tui"]
+members = ["crates/daemon", "crates/hook-client", "crates/adapter-claude", "crates/adapter-codex", "crates/adapter-opencode", "crates/audit", "crates/cli", "crates/verifier", "crates/loop-controller", "tui"]
 resolver = "2"
 
 [workspace.package]

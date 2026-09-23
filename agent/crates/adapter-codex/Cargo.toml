@@ -1,0 +1,18 @@
+[package]
+name = "algo-adapter-codex"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Codex adapter (P4 spike): approval/sandbox/MCP, degrade gracefully, never assume block"
+
+[dependencies]
+algo-types = { path = "../../../core/crates/types" }
+algo-redact = { path = "../../../core/crates/redact" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2"
+
+[dev-dependencies]
+proptest = "1"
