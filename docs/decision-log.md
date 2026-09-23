@@ -11,7 +11,7 @@ ADR required before code for every open item. Branch `adr/D0X-*`.
 | D-02 | Jev API + SDK | all L3 | no default until verified (links+dates) | @algorithcoguard/core | 2026-09-20 | verify-open |
 | D-03 | ToS training on Jev outputs | P3 L2 | L2 blocked until written clearance | @algorithcoguard/eval | 2026-09-20 | blocked |
 | D-04 | Hook caps per agent | P2 stop/edit, P4 adapters | per-agent spike docs first | @algorithcoguard/agent | 2026-09-20 | draft |
-| D-05 | CEL vs DSL | P1/P2 policy | spike both, bias CEL if mature | @algorithcoguard/core | 2026-09-20 | deferred to P1 |
+| D-05 | CEL vs DSL | P1/P2 policy | spike both, bias CEL if mature | @algorithcoguard/core | 2026-09-20 | spike complete 2026-09-23, ADR-0012 draft (CEL proposed, human merge pending — policy stays regex until merged) |
 | D-06 | ort vs candle | P3 L2 runtime | benchmark both | @algorithcoguard/agent | 2026-09-20 | deferred to P3 |
 | D-07 | License per repo | public release | permissive core/agent proposal, legal sign-off pending | @algorithcoguard/legal | 2026-09-20 | draft (see [ADR 0001](./adr/0001-license.md)) |
 | D-08 | Payments MoR | monetization | external MoR, early decide; reserve entitlement field in P3 | @algorithcoguard/backend | 2026-09-20 | deferred (see [ADR 0006](./adr/0006-payments-mor.md)) |

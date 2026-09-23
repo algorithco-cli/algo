@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- `backend.proto` (P3 cloud API: `GuardService` AuthDevice/Org/Policy/DryRun/
+  IngestAudit/QueryStats, redacted-only) added as a new file post-tag
+  (non-breaking under `FILE` policy; P3 scope, not P0).
+
 - v0 alpha scaffold: `events`, `decision`, `dataset`, experimental wire stubs.
 - 2026-09-20: `dataset.proto`: `redaction_cert` (field 8) becomes
   `RedactionCert { bool redacted = 1; string scanner = 2; string notes = 3; }`,
@@ -9,7 +13,7 @@
   eval object shape per ADR-0003; eval JSON adopts `canonical` naming
   (eval side, no proto field rename).
 
-## v0.0.1-alpha (recommended first tag — not yet cut)
+## v0.0.1-alpha (cut 2026-09-20 — P0-PROTO-6 baseline)
 
 - Initial `algorithco_guard.v0` alpha contracts:
   - `events.proto`: `AgentIdentity`, `ToolKind`, `ToolBefore`, `ToolAfter`,
