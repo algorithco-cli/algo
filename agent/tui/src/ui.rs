@@ -87,12 +87,14 @@ fn spinner_frame(tick: usize) -> &'static str {
 /// Drawn cell-by-cell over a box `rect` AFTER its `Block` + contents, so the
 /// phase fully controls the dashes. Only straight border glyphs are replaced —
 /// title text and corners are left intact (corners just tinted to match).
-/// Perimeter order is clockwise, so an increasing `tick` marches the dashes
-/// clockwise around the box.
+/// Perimeter order is clockwise, so an increasing `phase` marches the dashes
+/// clockwise around the box. `phase` must come from wall-clock pacing
+/// (`App::anim_phase`) — never from the per-event tick counter, or input
+/// floods (mouse motion) visibly speed the animation up.
 fn render_marching_dashes(
     frame: &mut Frame,
     rect: ratatui::layout::Rect,
-    tick: usize,
+    phase: usize,
     style: Style,
 ) {
     if rect.width < 4 || rect.height < 3 {
@@ -101,7 +103,6 @@ fn render_marching_dashes(
     const DASH: usize = 3;
     const GAP: usize = 2;
     const PERIOD: usize = DASH + GAP;
-    let phase = tick / 2; // ~5 cells/sec at the 100ms UI poll
     let on = |p: usize| (p + PERIOD - phase % PERIOD) % PERIOD < DASH;
 
     let buf = frame.buffer_mut();
@@ -977,17 +978,23 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         Span::styled("quick  ", Style::default().fg(COLOR_MUTED)),
     ])])
     .alignment(ratatui::layout::Alignment::Center);
-    // Split last chunk into hints (left/center) and quit (right corner)
-    let footer_split = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(10), Constraint::Length(10)])
-        .split(chunks[8]);
-    frame.render_widget(hints, footer_split[0]);
-    let quit_style = Style::default().fg(COLOR_MUTED);
-    let quit = Paragraph::new(Line::from(Span::styled(" q quit ", quit_style)))
-        .alignment(ratatui::layout::Alignment::Right);
-    frame.render_widget(quit, footer_split[1]);
-    app.login_quit = Some(footer_split[1]);
+    // Footer row intentionally left blank (hints removed). `hints` is
+    // intentionally unrendered; the mouse-quit target is gone with its label
+    // (keyboard `q` still quits). Reference chunks[8] to keep layout stable.
+    let _ = (&hints, chunks[8]);
+    app.login_quit = None;
+
+    // Animated focus rings: rotating dashed border on the active box only.
+    // Drawn last so the dash phase owns the border cells outright.
+    let dash_style = Style::default()
+        .fg(COLOR_BRAND)
+        .add_modifier(Modifier::BOLD);
+    if browser_focused || is_browser_pending {
+        render_marching_dashes(frame, chunks[3], app.anim_phase, dash_style);
+    }
+    if apikey_focused {
+        render_marching_dashes(frame, chunks[5], app.anim_phase, dash_style);
+    }
 
     // Keep legacy alias in sync for tests that still read login_signin
     app.login_signin = app.login_browser;
@@ -1599,18 +1606,18 @@ mod tests {
             !s.contains("You're offline — nothing is synced. Choose Continue offline."),
             "duplicated warning should be removed"
         );
-        // Single authoritative status line, not duplicated
+        // Hint lines removed: idle status and footer must not show them
         assert!(
-            s.contains("Tab") && s.contains("Enter"),
-            "keyboard hints missing"
+            !s.contains("1 / 2 to choose"),
+            "idle status hint should be gone"
         );
-        // Quit de-emphasized (still present but muted)
-        assert!(s.contains("quit"), "quit missing");
-        // Click areas recorded
+        assert!(!s.contains("1/2 quick"), "footer hints should be gone");
+        assert!(!s.contains("q quit"), "footer quit label should be gone");
+        // Click areas recorded (offline kept; quit target gone with its label)
         assert!(app.login_browser.is_some(), "browser rect not recorded");
         assert!(app.login_apikey.is_some(), "apikey rect not recorded");
         assert!(app.login_offline.is_some(), "offline rect not recorded");
-        assert!(app.login_quit.is_some(), "quit rect not recorded");
+        assert!(app.login_quit.is_none(), "quit rect should be gone");
     }
 
     #[test]
@@ -1922,5 +1929,55 @@ mod tests {
             "selected # cell must sit on highlight bg, got {:?}",
             cell.bg
         );
+    }
+
+    #[test]
+    fn focused_box_has_rotating_dashed_border() {
+        // Idle login focuses the browser box: its border must be dashed with
+        // gaps, the title must survive the overlay, and the dash pattern must
+        // march between ticks and loop cleanly after a full period.
+        let mut app = App::new(None);
+        app.show_login(); // focus Browser, Idle
+        app.anim_phase = 0;
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let browser = app.login_browser.expect("browser rect");
+        let top_row = |buf: &ratatui::buffer::Buffer| -> String {
+            (browser.x..browser.x + browser.width)
+                .map(|x| buf[(x, browser.y)].symbol().to_string())
+                .collect()
+        };
+        let first = top_row(terminal.backend().buffer());
+        assert!(
+            first.contains("─"),
+            "focused box must keep dashes, got {first:?}"
+        );
+        assert!(
+            first.contains("[1]"),
+            "title must survive dash overlay, got {first:?}"
+        );
+        // Unfocused API-key box keeps a solid border (no dash gaps).
+        // Strip its title first — the title text legitimately contains spaces.
+        let apikey = app.login_apikey.expect("apikey rect");
+        let abuf = terminal.backend().buffer().clone();
+        let atop: String = (apikey.x..apikey.x + apikey.width)
+            .map(|x| abuf[(x, apikey.y)].symbol().to_string())
+            .collect();
+        let border_only = atop.replace(" [2] Use an API key ", "");
+        assert!(
+            !border_only.contains(' '),
+            "unfocused box must stay solid, got {atop:?}"
+        );
+        // Advance one phase step: the dash pattern must visibly march.
+        app.anim_phase = 1;
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let second = top_row(terminal.backend().buffer());
+        assert_ne!(first, second, "dashes must rotate between phases");
+        // Full period (5 dash cells) returns to the start.
+        app.anim_phase = 5;
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let third = top_row(terminal.backend().buffer());
+        assert_eq!(first, third, "dash cycle must loop cleanly");
     }
 }

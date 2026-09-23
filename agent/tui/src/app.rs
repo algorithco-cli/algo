@@ -10,6 +10,8 @@ use ratatui::widgets::TableState;
 /// Ticks (at ~100ms UI poll) before a pending browser sign-in times out
 /// with an honest "not available yet" error instead of spinning forever.
 pub const BROWSER_TIMEOUT_TICKS: usize = 300;
+/// Milliseconds per marching-ants dash step (5 cells/sec).
+pub const ANIM_STEP_MS: u64 = 200;
 /// Ticks before a successful login auto-transitions to the feed.
 pub const SUCCESS_TICKS: usize = 12;
 
@@ -105,6 +107,11 @@ pub struct App {
     pub login_status_msg: Option<String>,
     /// Frame tick for animations (incremented each UI loop).
     pub tick: usize,
+    /// Wall-clock phase for the marching-ants border. Advanced at a fixed
+    /// rate in `tick()` so mouse-motion event floods can't speed it up.
+    pub anim_phase: usize,
+    /// Last time `anim_phase` advanced.
+    pub anim_clock: std::time::Instant,
 
     // ---- Clickable areas, populated each render (mouse-first UI). ----
     pub login_browser: Option<ratatui::layout::Rect>,
@@ -174,6 +181,8 @@ impl App {
             login_ticks: 0,
             login_status_msg: None,
             tick: 0,
+            anim_phase: 0,
+            anim_clock: std::time::Instant::now(),
             login_browser: None,
             login_apikey: None,
             login_apikey_input: None,
@@ -606,6 +615,12 @@ impl App {
     /// Drives spinner, validation timers, success auto-transition.
     pub fn tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
+        // Wall-clock animation phase: fixed 200ms steps no matter how many
+        // input events (mouse motion floods the loop) arrive between frames.
+        while self.anim_clock.elapsed() >= std::time::Duration::from_millis(ANIM_STEP_MS) {
+            self.anim_phase = self.anim_phase.wrapping_add(1);
+            self.anim_clock += std::time::Duration::from_millis(ANIM_STEP_MS);
+        }
         // Sync legacy for render that still reads old fields
         self.sync_legacy();
 
@@ -1118,6 +1133,21 @@ mod tests {
         // Click the first visible row maps to the offset entry.
         app.handle_click(1, 1);
         assert_eq!(app.selected, 5);
+    }
+
+    #[test]
+    fn anim_phase_ignores_input_floods() {
+        // Mouse motion floods the loop with events (one tick() each). The
+        // dash animation must hold still until 200ms of wall-clock passes.
+        let mut app = App::new(None);
+        assert_eq!(app.anim_phase, 0);
+        for _ in 0..1000 {
+            app.tick();
+        }
+        assert_eq!(
+            app.anim_phase, 0,
+            "rapid ticks without elapsed time must not advance animation"
+        );
     }
 
     #[test]
