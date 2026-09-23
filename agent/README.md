@@ -1,16 +1,34 @@
-﻿# agent (Phase 0 — no product code yet)
+﻿# agent (private MVP — P1 local)
 
-> Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard` (see docs/github-org-plan.md).
-> Real code lives in the monorepo subdirectory `agent/` starting its build phase. This dir is a scaffold stub.
+> Part of **algorithco guard** (CLI `algo`). Monorepo: `algorithcoguard/algorithco-guard`.
+> Waiver ADR-0009 (2026-09-21): product code may be written now for unreleased PRIVATE MVP.
+> Gate `docs/exit-gate-P0.md` is deferred, not passed. Jev stays OFF (MockProvider only).
 
-Scope: on-machine product — hook client, daemon (algo.sock), adapters (Claude-first),
-CLI (algo), TUI, verifier, loop controller, scanner, MCP. Shadow-first; ask on any error.
+Scope: on-machine product — hook client, daemon (`~/.algo/algo.sock` 0600), adapters (Claude-first shell-only),
+CLI (`algo`), TUI (read-only), audit WAL. Shadow-first; ask on any error.
 
-## Phase 1+ brief
+Workspace members (`agent/Cargo.toml`): `crates/daemon`, `crates/hook-client`, `crates/adapter-claude`,
+`crates/audit`, `crates/cli`, `tui`.
 
-See plans/00-index-build-order.md for build order. Contracts-first: proto tag, pin exact,
-generate at build. Fail-safe (ask, never allow), latency budgets in CI, no secrets.
+## Behavior notes (P1-08)
 
-## Now (Phase 0)
+- `algo pause` touches `~/.algo/paused` (`ALGO_HOME` respected) — `hook-client` checks first,
+  instant `allow` bypass even daemon-dead. `algo resume` removes it.
+  Any I/O error checking `paused` => NOT paused (proceed to daemon, fail-safe to `ask`).
+- Shadow default P1: daemon computes real decision, stores it with `shadow=1`,
+  returns `Allow` with `reason: shadow: would_have {deny|ask} → approve (shadow)`.
+  JSON adds `shadow` + `would_have`; `algo status` shows `would-have-blocked N`.
+  Soak ≥500 without ever blocking. Enforcing still available via unit default.
+- `algo enforce off` (shadow, default) / `on` (enforcing) / `status` — writes
+  `~/.algo/config.json` (`enforce`/`shadow`); `algo init` preserves prior setting.
+  Daemon reads `ALGO_ENFORCE` > `ALGO_SHADOW` > config > default shadow.
+  Requires daemon restart (private-MVP limit).
+- Fail-safe: enforcing mode daemon unreachable / parse / DB / timeout => `ask`, never `allow`.
+  Shadow mode never blocks even on DB error (would_have ask). Hook never exits non-zero.
+- TUI is read-only over `audit.db`; crash never blocks hooks.
 
-Empty except .gitkeep + this stub. Do NOT add product code until docs/exit-gate-P0.md is signed.
+## Build order
+
+See `plans/00-index-build-order.md` + `plans/phase-1-06-agent-daemon-hookclient.md`,
+`phase-1-07-agent-claude-adapter-shell-only.md`, `phase-1-08-agent-cli-audit-shadow.md`.
+Contracts-first: proto tag, pin exact. `clippy -D warnings`, `cargo test`, latency L0/L1 <3/<10ms.

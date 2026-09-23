@@ -64,9 +64,52 @@ fn fallback_ask_json() -> String {
     v.to_string()
 }
 
+fn paused_file_path() -> PathBuf {
+    // Mirror CLI resolve_home: ALGO_HOME > HOME/USERPROFILE > "."
+    // CLI writes to <home>/.algo/paused via cmd_pause; hook must check same place first.
+    if let Ok(v) = std::env::var("ALGO_HOME") {
+        if !v.trim().is_empty() {
+            return PathBuf::from(v).join(".algo").join("paused");
+        }
+    }
+    dirs_home().join(".algo").join("paused")
+}
+
+fn is_paused() -> bool {
+    is_paused_at(&paused_file_path())
+}
+
+fn is_paused_at(p: &std::path::Path) -> bool {
+    // Fail-safe: any I/O error => NOT paused (proceed to daemon, which fails to ask).
+    // Only an existing file triggers bypass-allow. Never allow-on-error.
+    std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
+}
+
+fn paused_allow_json() -> String {
+    // P1-08: `algo pause` touches ~/.algo/paused — hook-client checks first,
+    // instant bypass even daemon-dead. Intentional allow (not an error path).
+    let v = serde_json::json!({
+        "decision": "allow",
+        "action": "allow",
+        "reason": "paused → allow (bypass)",
+        "source": "paused",
+        "source_level": "paused",
+        "confidence_0_1": 1.0,
+        "latency_ms": 0,
+        "policy_version": env!("CARGO_PKG_VERSION"),
+        "trace_id": "paused"
+    });
+    v.to_string()
+}
+
 #[tokio::main]
 async fn main() {
     // Hook client must never exit non-zero per spec
+    // P1-08: check paused first, instant bypass even daemon-dead (no socket dial).
+    if is_paused() {
+        println!("{}", paused_allow_json());
+        std::process::exit(0);
+    }
     let args = Args::parse();
     let socket_path = args.socket.unwrap_or_else(default_socket_path);
 
@@ -263,5 +306,38 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&fallback).unwrap();
         assert_eq!(v["decision"], "ask");
         assert_eq!(v["source"], "fallback");
+    }
+
+    #[test]
+    fn paused_allow_is_allow() {
+        let s = paused_allow_json();
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["decision"], "allow");
+        assert_eq!(v["action"], "allow");
+        assert_eq!(v["source"], "paused");
+    }
+
+    #[test]
+    fn proves_ask_on_paused_check_error() {
+        // Fail-safe: missing file or dir path must NOT count as paused.
+        // Caller then proceeds to daemon which fails to ask (never allow-on-error).
+        assert!(!is_paused_at(std::path::Path::new(
+            "/tmp/definitely-missing-algo-paused-12345"
+        )));
+        // A directory is not a paused file.
+        assert!(!is_paused_at(std::path::Path::new("/tmp")));
+    }
+
+    #[test]
+    fn paused_file_detects_created_file() {
+        // P1-08 AC: `algo pause` touches <home>/.algo/paused — hook must bypass.
+        let dir = std::env::temp_dir().join(format!("algo-paused-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let p = dir.join("paused");
+        assert!(!is_paused_at(&p));
+        std::fs::write(&p, b"paused").unwrap();
+        assert!(is_paused_at(&p));
+        let _ = std::fs::remove_file(&p);
+        let _ = std::fs::remove_dir(&dir);
     }
 }

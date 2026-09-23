@@ -99,10 +99,13 @@ enum Commands {
         #[arg(long)]
         home: Option<PathBuf>,
     },
-    /// Enforce stub
+    /// Shadow vs enforcing: `algo enforce on|off|status` (default shadow, P1-08).
+    /// Requires daemon restart (private-MVP limit).
     Enforce {
         #[arg(long)]
         home: Option<PathBuf>,
+        /// on = enforcing (shadow off), off = shadow (default), status = print current
+        mode: Option<String>,
     },
     /// Login stub
     Login {
@@ -151,13 +154,13 @@ fn main() {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_log(&h, limit, show_egress)
         }
-        Commands::Policy { .. } => {
-            println!("policy: not yet implemented (stub, exit 0)");
-            Ok(())
+        Commands::Policy { home } => {
+            let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
+            cmd_policy(&h)
         }
-        Commands::Enforce { .. } => {
-            println!("enforce: not yet implemented (stub, exit 0)");
-            Ok(())
+        Commands::Enforce { home, mode } => {
+            let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
+            cmd_enforce(&h, mode.as_deref())
         }
         Commands::Login { .. } => {
             println!("login: not yet implemented (stub, exit 0)");
@@ -327,12 +330,16 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
         .map_err(|e| format!("write config {config_path:?}: {e}"))?;
     println!("wrote: {}", config_path.display());
 
-    // Ensure ~/.algo/ exists, touch config.json with privacy
+    // Ensure ~/.algo/ exists, touch config.json with privacy + shadow default (P1-08).
+    // Preserve existing enforce setting on re-init (explicit `enforce on` survives re-init).
     let algo_config = algo_dir(home).join("config.json");
+    let prev_enforce = read_enforce(home);
     let cfg = serde_json::json!({
         "privacy": chosen_privacy,
         "version": env!("CARGO_PKG_VERSION"),
         "updated_at": Utc::now().to_rfc3339(),
+        "enforce": prev_enforce,
+        "shadow": !prev_enforce,
     });
     fs::write(
         &algo_config,
@@ -735,6 +742,13 @@ fn cmd_doctor(home: &Path) -> Result<(), String> {
         println!("paused: not paused");
     }
 
+    // enforce / shadow (P1-08 default shadow)
+    if read_enforce(home) {
+        println!("enforce: on (enforcing, shadow off)");
+    } else {
+        println!("enforce: off (shadow, default P1)");
+    }
+
     if ok {
         println!("doctor: all checks OK");
     } else {
@@ -762,6 +776,149 @@ fn cmd_resume(home: &Path) -> Result<(), String> {
         println!("not paused");
     }
     Ok(())
+}
+
+// ---------- enforce / shadow (P1-08 default shadow, P2-04 enforce) ----------
+fn read_enforce(home: &Path) -> bool {
+    // Default shadow (enforce=false). Any read/parse error => shadow.
+    let p = algo_dir(home).join("config.json");
+    if let Ok(bytes) = fs::read(&p) {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if json.get("enforce").and_then(|x| x.as_bool()) == Some(true) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn write_enforce(home: &Path, enforce: bool) -> Result<(), String> {
+    ensure_algo_dir(home).map_err(|e| e.to_string())?;
+    let p = algo_dir(home).join("config.json");
+    let mut json = if let Ok(bytes) = fs::read(&p) {
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if !json.is_object() {
+        json = serde_json::json!({});
+    }
+    let obj = json.as_object_mut().unwrap();
+    obj.insert("enforce".into(), serde_json::json!(enforce));
+    obj.insert("shadow".into(), serde_json::json!(!enforce));
+    obj.insert(
+        "version".into(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
+    obj.insert(
+        "updated_at".into(),
+        serde_json::json!(Utc::now().to_rfc3339()),
+    );
+    fs::write(&p, serde_json::to_string_pretty(&json).unwrap().as_bytes())
+        .map_err(|e| format!("write {}: {e}", p.display()))?;
+    Ok(())
+}
+
+fn cmd_policy(home: &Path) -> Result<(), String> {
+    // Read-only snapshot of the effective local policy (never writes).
+    let cfg_path = algo_dir(home).join("config.json");
+    let (privacy, enforce, version) = if let Ok(bytes) = fs::read(&cfg_path) {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            (
+                json.get("privacy")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("redacted")
+                    .to_string(),
+                json.get("enforce").and_then(|x| x.as_bool()) == Some(true),
+                json.get("version")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or(env!("CARGO_PKG_VERSION"))
+                    .to_string(),
+            )
+        } else {
+            (
+                "redacted".to_string(),
+                false,
+                env!("CARGO_PKG_VERSION").to_string(),
+            )
+        }
+    } else {
+        (
+            "redacted".to_string(),
+            false,
+            env!("CARGO_PKG_VERSION").to_string(),
+        )
+    };
+    let paused = algo_dir(home).join("paused").exists();
+    println!("policy (local snapshot, read-only):");
+    println!(
+        "  mode: {}",
+        if enforce {
+            "enforcing (shadow off)"
+        } else {
+            "shadow (default, never blocks)"
+        }
+    );
+    println!("  privacy: {privacy} (local-only|redacted|full)");
+    println!("  profile: balanced (strict|balanced|fast visible; advanced hidden)");
+    println!("  policy version: {version}");
+    println!(
+        "  paused: {}",
+        if paused {
+            "yes (hook bypasses daemon)"
+        } else {
+            "no"
+        }
+    );
+    println!("  config: {}", cfg_path.display());
+    // Counts prove the digest without dumping decisions.
+    let db_path = algo_dir(home).join("audit.db");
+    if db_path.exists() {
+        if let Ok(store) = AuditStore::open(&db_path) {
+            if let Ok(c) = store.counts() {
+                println!(
+                    "  decisions: allow {} ask {} deny {} would-have-blocked {} (shadow {})",
+                    c.allow, c.ask, c.deny, c.would_have_blocked, c.shadow
+                );
+            }
+        }
+    } else {
+        println!("  decisions: none yet (audit.db missing)");
+    }
+    println!("  change: algo enforce on|off (restart daemon) · algo init --privacy <mode>");
+    Ok(())
+}
+
+fn cmd_enforce(home: &Path, mode: Option<&str>) -> Result<(), String> {
+    let m = mode.map(|s| s.trim().to_ascii_lowercase());
+    match m.as_deref() {
+        None | Some("") | Some("status") => {
+            let enforce = read_enforce(home);
+            if enforce {
+                println!("enforce: on (enforcing, shadow off)");
+            } else {
+                println!("enforce: off (shadow, default P1)");
+            }
+            println!("would-have-blocked via `algo status` (shadow deny, never blocked)");
+            println!("note: requires daemon restart after change");
+            Ok(())
+        }
+        Some("on") | Some("enable") | Some("enforce") => {
+            write_enforce(home, true)?;
+            println!("enforce: on (enforcing, shadow off)");
+            println!("restart daemon to apply");
+            Ok(())
+        }
+        Some("off") | Some("disable") | Some("shadow") => {
+            write_enforce(home, false)?;
+            println!("enforce: off (shadow, default P1)");
+            println!("restart daemon to apply");
+            Ok(())
+        }
+        Some(other) => Err(format!(
+            "invalid enforce mode '{other}' (expected on|off|status)"
+        )),
+    }
 }
 
 // ---------- why / status / log ----------
@@ -1098,6 +1255,52 @@ mod tests {
         // Uninstall with keep-db true
         cmd_uninstall(&home, true).unwrap();
         assert!(db_path.exists(), "db should be kept");
+        drop(tmp);
+    }
+
+    #[test]
+    fn enforce_default_shadow_then_on_off() {
+        let (tmp, home) = test_home();
+        // Default (no config) => shadow
+        assert!(!read_enforce(&home));
+        // Init writes shadow default
+        let claude_path = home.join(".claude.json");
+        fs::write(&claude_path, b"{}").unwrap();
+        cmd_init(&home, Some("redacted"), true).unwrap();
+        assert!(!read_enforce(&home));
+        let cfg_bytes = fs::read(home.join(".algo/config.json")).unwrap();
+        let cfg: serde_json::Value = serde_json::from_slice(&cfg_bytes).unwrap();
+        assert_eq!(cfg["shadow"], serde_json::json!(true));
+        // Enforce on
+        cmd_enforce(&home, Some("on")).unwrap();
+        assert!(read_enforce(&home));
+        // Enforce off preserves privacy field
+        cmd_enforce(&home, Some("off")).unwrap();
+        assert!(!read_enforce(&home));
+        let cfg2: serde_json::Value =
+            serde_json::from_slice(&fs::read(home.join(".algo/config.json")).unwrap()).unwrap();
+        assert_eq!(cfg2["privacy"], serde_json::json!("redacted"));
+        // Status mode does not error
+        cmd_enforce(&home, Some("status")).unwrap();
+        cmd_enforce(&home, None).unwrap();
+        // Invalid mode errors (fail-safe, never silent allow)
+        assert!(cmd_enforce(&home, Some("bogus")).is_err());
+        drop(tmp);
+    }
+
+    #[test]
+    fn policy_shows_snapshot_without_writing() {
+        let (tmp, home) = test_home();
+        // No config yet: defaults, must not error.
+        cmd_policy(&home).unwrap();
+        // Init then enforce on: snapshot reflects mode.
+        let claude_path = home.join(".claude.json");
+        fs::write(&claude_path, b"{}").unwrap();
+        cmd_init(&home, Some("redacted"), true).unwrap();
+        cmd_policy(&home).unwrap();
+        cmd_enforce(&home, Some("on")).unwrap();
+        assert!(read_enforce(&home));
+        cmd_policy(&home).unwrap();
         drop(tmp);
     }
 }

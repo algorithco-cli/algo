@@ -110,134 +110,179 @@ fn run_tui(mut app: App) -> io::Result<()> {
                         _ => {}
                     },
                     Event::Key(key) => {
-                    // Login gate: full keyboard navigation with masked input
-                    if app.mode == ViewMode::Login {
-                        match key.code {
-                            KeyCode::Esc => {
-                                match app.login_status {
-                                    LoginStatus::Idle => {
-                                        // Fallback to offline from idle
+                        // Login gate: full keyboard navigation with masked input
+                        if app.mode == ViewMode::Login {
+                            match key.code {
+                                KeyCode::Esc => {
+                                    match app.login_status {
+                                        LoginStatus::Idle => {
+                                            // Fallback to offline from idle
+                                            app.continue_offline();
+                                        }
+                                        LoginStatus::BrowserPending
+                                        | LoginStatus::ApiKeyEditing
+                                        | LoginStatus::ApiKeyValidating
+                                        | LoginStatus::Error(_) => {
+                                            app.cancel_login();
+                                        }
+                                        LoginStatus::Success => {
+                                            app.continue_offline();
+                                        }
+                                    }
+                                }
+                                KeyCode::Enter => {
+                                    app.login_confirm();
+                                }
+                                KeyCode::Tab => {
+                                    app.cycle_focus_next();
+                                }
+                                KeyCode::BackTab => {
+                                    app.cycle_focus_prev();
+                                }
+                                KeyCode::Backspace => {
+                                    if matches!(
+                                        app.login_status,
+                                        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                                    ) || (app.login_status == LoginStatus::Idle
+                                        && app.login_focus == LoginFocus::ApiKey)
+                                    {
+                                        app.pop_api_key_char();
+                                    }
+                                }
+                                KeyCode::Char('1') => {
+                                    // Quick shortcut [1] — if editing, treat as input char '1'
+                                    if matches!(
+                                        app.login_status,
+                                        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                                    ) {
+                                        app.push_api_key_char('1');
+                                    } else if matches!(
+                                        app.login_status,
+                                        LoginStatus::BrowserPending
+                                            | LoginStatus::ApiKeyValidating
+                                            | LoginStatus::Success
+                                    ) {
+                                        // ignore during pending/validating/success
+                                    } else {
+                                        app.login_focus = LoginFocus::Browser;
+                                        // If already on browser idle, Enter would start — but 1 is also quick-select, so start immediately
+                                        if app.login_status == LoginStatus::Idle {
+                                            app.start_browser_signin();
+                                        }
+                                    }
+                                }
+                                KeyCode::Char('2') => {
+                                    if matches!(
+                                        app.login_status,
+                                        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                                    ) {
+                                        app.push_api_key_char('2');
+                                    } else if matches!(
+                                        app.login_status,
+                                        LoginStatus::BrowserPending
+                                            | LoginStatus::ApiKeyValidating
+                                            | LoginStatus::Success
+                                    ) {
+                                    } else {
+                                        app.login_focus = LoginFocus::ApiKey;
+                                        if app.login_status == LoginStatus::Idle {
+                                            app.start_api_key_entry();
+                                        }
+                                    }
+                                }
+                                KeyCode::Char('o') | KeyCode::Char('O') => {
+                                    if matches!(
+                                        app.login_status,
+                                        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                                    ) {
+                                        // typing 'o' into API key should go to input, not offline
+                                        app.push_api_key_char(
+                                            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                                'O'
+                                            } else {
+                                                'o'
+                                            },
+                                        );
+                                    } else if matches!(
+                                        app.login_status,
+                                        LoginStatus::BrowserPending
+                                            | LoginStatus::ApiKeyValidating
+                                            | LoginStatus::Success
+                                    ) {
+                                        // ignore
+                                    } else {
                                         app.continue_offline();
                                     }
-                                    LoginStatus::BrowserPending
-                                    | LoginStatus::ApiKeyEditing
-                                    | LoginStatus::ApiKeyValidating
-                                    | LoginStatus::Error(_) => {
-                                        app.cancel_login();
-                                    }
-                                    LoginStatus::Success => {
-                                        app.continue_offline();
-                                    }
                                 }
-                            }
-                            KeyCode::Enter => {
-                                app.login_confirm();
-                            }
-                            KeyCode::Tab => {
-                                app.cycle_focus_next();
-                            }
-                            KeyCode::BackTab => {
-                                app.cycle_focus_prev();
-                            }
-                            KeyCode::Backspace => {
-                                if matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_))
-                                    || (app.login_status == LoginStatus::Idle && app.login_focus == LoginFocus::ApiKey)
-                                {
-                                    app.pop_api_key_char();
-                                }
-                            }
-                            KeyCode::Char('1') => {
-                                // Quick shortcut [1] — if editing, treat as input char '1'
-                                if matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_)) {
-                                    app.push_api_key_char('1');
-                                } else if matches!(app.login_status, LoginStatus::BrowserPending | LoginStatus::ApiKeyValidating | LoginStatus::Success) {
-                                    // ignore during pending/validating/success
-                                } else {
-                                    app.login_focus = LoginFocus::Browser;
-                                    // If already on browser idle, Enter would start — but 1 is also quick-select, so start immediately
-                                    if app.login_status == LoginStatus::Idle {
-                                        app.start_browser_signin();
-                                    }
-                                }
-                            }
-                            KeyCode::Char('2') => {
-                                if matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_)) {
-                                    app.push_api_key_char('2');
-                                } else if matches!(app.login_status, LoginStatus::BrowserPending | LoginStatus::ApiKeyValidating | LoginStatus::Success) {
-                                } else {
-                                    app.login_focus = LoginFocus::ApiKey;
-                                    if app.login_status == LoginStatus::Idle {
-                                        app.start_api_key_entry();
-                                    }
-                                }
-                            }
-                            KeyCode::Char('o') | KeyCode::Char('O') => {
-                                if matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_)) {
-                                    // typing 'o' into API key should go to input, not offline
-                                    app.push_api_key_char(if key.modifiers.contains(KeyModifiers::SHIFT) { 'O' } else { 'o' });
-                                } else if matches!(app.login_status, LoginStatus::BrowserPending | LoginStatus::ApiKeyValidating | LoginStatus::Success) {
-                                    // ignore
-                                } else {
-                                    app.continue_offline();
-                                }
-                            }
-                            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                                if matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_)) {
-                                    // 'q' is a valid key char when editing — don't quit, input it
-                                    // Only quit if not editing (de-emphasized quit still works on idle/pending)
-                                    let c = if key.modifiers.contains(KeyModifiers::SHIFT) { 'Q' } else { 'q' };
-                                    app.push_api_key_char(c);
-                                } else {
-                                    break;
-                                }
-                            }
-                            KeyCode::Char(c) => {
-                                // Typing into API key when focused or editing
-                                if matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_))
-                                    || (app.login_status == LoginStatus::Idle && app.login_focus == LoginFocus::ApiKey)
-                                {
-                                    // Filter out control combos, but allow most printable
-                                    if !key.modifiers.contains(KeyModifiers::CONTROL) && !key.modifiers.contains(KeyModifiers::ALT) {
+                                KeyCode::Char('q') | KeyCode::Char('Q') => {
+                                    if matches!(
+                                        app.login_status,
+                                        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                                    ) {
+                                        // 'q' is a valid key char when editing — don't quit, input it
+                                        // Only quit if not editing (de-emphasized quit still works on idle/pending)
+                                        let c = if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                            'Q'
+                                        } else {
+                                            'q'
+                                        };
                                         app.push_api_key_char(c);
+                                    } else {
+                                        break;
                                     }
-                                } else if c == 'k' || c == 'j' {
-                                    // ignore nav keys on login
                                 }
+                                KeyCode::Char(c) => {
+                                    // Typing into API key when focused or editing
+                                    if matches!(
+                                        app.login_status,
+                                        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                                    ) || (app.login_status == LoginStatus::Idle
+                                        && app.login_focus == LoginFocus::ApiKey)
+                                    {
+                                        // Filter out control combos, but allow most printable
+                                        if !key.modifiers.contains(KeyModifiers::CONTROL)
+                                            && !key.modifiers.contains(KeyModifiers::ALT)
+                                        {
+                                            app.push_api_key_char(c);
+                                        }
+                                    } else if c == 'k' || c == 'j' {
+                                        // ignore nav keys on login
+                                    }
+                                }
+                                _ => {}
                             }
-                            _ => {}
+                        } else {
+                            match key.code {
+                                KeyCode::Char('q') => break,
+                                KeyCode::Char('j') | KeyCode::Down => app.select_next(),
+                                KeyCode::Char('k') | KeyCode::Up => app.select_prev(),
+                                KeyCode::Char('g') | KeyCode::Home => app.select_first(),
+                                KeyCode::Char('G') | KeyCode::End => app.select_last(),
+                                KeyCode::Char('r') => {
+                                    app.refresh();
+                                    last_auto = Instant::now();
+                                }
+                                KeyCode::Char('p') => app.toggle_policy(),
+                                KeyCode::Char('1') => {
+                                    if app.mode != ViewMode::Feed {
+                                        app.toggle_policy();
+                                    }
+                                }
+                                KeyCode::Char('2') => {
+                                    if app.mode != ViewMode::Policy {
+                                        app.toggle_policy();
+                                    }
+                                }
+                                KeyCode::Esc => {
+                                    if app.mode == ViewMode::Policy {
+                                        app.toggle_policy();
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
-                    } else {
-                        match key.code {
-                            KeyCode::Char('q') => break,
-                            KeyCode::Char('j') | KeyCode::Down => app.select_next(),
-                            KeyCode::Char('k') | KeyCode::Up => app.select_prev(),
-                            KeyCode::Char('g') | KeyCode::Home => app.select_first(),
-                            KeyCode::Char('G') | KeyCode::End => app.select_last(),
-                            KeyCode::Char('r') => {
-                                app.refresh();
-                                last_auto = Instant::now();
-                            }
-                            KeyCode::Char('p') => app.toggle_policy(),
-                            KeyCode::Char('1') => {
-                                if app.mode != ViewMode::Feed {
-                                    app.toggle_policy();
-                                }
-                            }
-                            KeyCode::Char('2') => {
-                                if app.mode != ViewMode::Policy {
-                                    app.toggle_policy();
-                                }
-                            }
-                            KeyCode::Esc => {
-                                if app.mode == ViewMode::Policy {
-                                    app.toggle_policy();
-                                } else {
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
                     }
                     _ => {}
                 }

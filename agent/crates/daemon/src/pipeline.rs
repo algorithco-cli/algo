@@ -24,12 +24,57 @@ pub struct DbRecord {
     pub shadow: bool,
 }
 
+/// P1-08 shadow encoding (no proto change until P2-01 deltas).
+/// When shadow=true, pipeline stores the real decision (deny/ask) with shadow=true
+/// but returns Allow with reason `shadow: would_have {deny|ask|allow} (...) → approve (shadow)`.
+/// Daemon JSON and audit derive `would_have` from this prefix + DB row.
+pub fn action_str_of(action: i32) -> &'static str {
+    if action == Action::Allow as i32 {
+        "allow"
+    } else if action == Action::Deny as i32 {
+        "deny"
+    } else {
+        "ask"
+    }
+}
+
+pub fn is_shadow_reason(reason: &str) -> bool {
+    reason.starts_with("shadow: would_have ")
+}
+
+pub fn parse_would_have(reason: &str) -> Option<&str> {
+    // Expects `shadow: would_have {deny|ask|allow} ...`
+    let rest = reason.strip_prefix("shadow: would_have ")?;
+    let token = rest.split_whitespace().next()?;
+    match token {
+        "deny" | "ask" | "allow" => Some(token),
+        _ => None,
+    }
+}
+
+pub fn shadow_allow_from(real: &Decision) -> Decision {
+    let orig = action_str_of(real.action);
+    Decision {
+        action: Action::Allow as i32,
+        reason: format!(
+            "shadow: would_have {} ({}) → approve (shadow)",
+            orig, real.reason
+        ),
+        confidence_0_1: real.confidence_0_1,
+        source_level: real.source_level,
+        latency_ms: real.latency_ms,
+        policy_version: real.policy_version.clone(),
+        trace_id: real.trace_id.clone(),
+    }
+}
+
 pub struct Pipeline {
     engine: Arc<algo_policy::Engine>,
     cache: Arc<Cache>,
     pool: Arc<JevPool>,
     writer_tx: mpsc::Sender<DbRecord>,
     policy_version: String,
+    shadow: bool,
 }
 
 impl Pipeline {
@@ -45,7 +90,24 @@ impl Pipeline {
             pool,
             writer_tx,
             policy_version: env!("CARGO_PKG_VERSION").to_string(),
+            // Unit default is enforcing (shadow=false) so L0-deny tests stay pure.
+            // Daemon runtime enables shadow by default via with_shadow(true) unless
+            // `algo enforce on` / ALGO_ENFORCE=1 (see daemon read_shadow_mode).
+            shadow: false,
         }
+    }
+
+    pub fn with_shadow(mut self, shadow: bool) -> Self {
+        self.shadow = shadow;
+        self
+    }
+
+    pub fn set_shadow(&mut self, shadow: bool) {
+        self.shadow = shadow;
+    }
+
+    pub fn is_shadow(&self) -> bool {
+        self.shadow
     }
 
     /// Decide pipeline: L0 policy.evaluate → L1 cache (blake3, TTL 24h, max 10k) → L3 Jev (miss+uncertain) → L4 ask.
@@ -94,6 +156,7 @@ impl Pipeline {
                     trace_id: event.event_id.clone(),
                 };
                 // Best-effort audit write, never block >1s. Even if DB busy, deny must still be returned.
+                // Shadow P1: store real deny with shadow=true, return Allow (never block in shadow).
                 let rec = DbRecord {
                     ts: chrono::Utc::now().timestamp_millis(),
                     session_id,
@@ -106,11 +169,14 @@ impl Pipeline {
                     confidence: d.confidence_0_1,
                     latency_ms: d.latency_ms,
                     profile: "balanced".into(),
-                    shadow: false,
+                    shadow: self.shadow,
                 };
                 // Use try_send with 1s timeout; if it would block, we still return deny (hard deny outranks DB).
                 let _ =
                     tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec)).await;
+                if self.shadow {
+                    return shadow_allow_from(&d);
+                }
                 return d;
             }
             algo_policy::PolicyDecision::Allow { reason, .. } => {
@@ -137,7 +203,7 @@ impl Pipeline {
                     confidence: d.confidence_0_1,
                     latency_ms: d.latency_ms,
                     profile: "balanced".into(),
-                    shadow: false,
+                    shadow: self.shadow,
                 };
                 let _ =
                     tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec)).await;
@@ -167,7 +233,7 @@ impl Pipeline {
                 confidence: cached.confidence_0_1,
                 latency_ms: cached.latency_ms,
                 profile: "balanced".into(),
-                shadow: false,
+                shadow: self.shadow,
             };
             // Cache hit audit: timeout <1s
             let send_res =
@@ -175,17 +241,28 @@ impl Pipeline {
             if send_res.is_err() {
                 // DB locked: fail-safe ask within 1s per spec, but for cache hit we still
                 // map to ask to prove the invariant. However hard deny already handled.
-                // For non-deny, map to ask:
-                return algo_types::ask_on_error(
+                // Shadow: never block even on DB error → allow with would_have ask.
+                let ask = algo_types::ask_on_error(
                     "db write timeout → ask (fail-safe)",
                     event.event_id.clone(),
                 );
+                if self.shadow {
+                    return shadow_allow_from(&ask);
+                }
+                return ask;
             }
             if let Ok(Err(_)) = send_res {
-                return algo_types::ask_on_error(
+                let ask = algo_types::ask_on_error(
                     "db channel closed → ask (fail-safe)",
                     event.event_id.clone(),
                 );
+                if self.shadow {
+                    return shadow_allow_from(&ask);
+                }
+                return ask;
+            }
+            if self.shadow && cached.action != Action::Allow as i32 {
+                return shadow_allow_from(&cached);
             }
             return cached;
         }
@@ -216,7 +293,8 @@ impl Pipeline {
             self.cache.insert(&event.redacted_payload, decision.clone());
         }
 
-        // Audit write with 1s guard
+        // Audit write with 1s guard — store REAL decision with shadow flag.
+        // Cache already holds real (not shadow Allow) so future hits preserve would_have.
         let rec = DbRecord {
             ts: chrono::Utc::now().timestamp_millis(),
             session_id,
@@ -229,23 +307,35 @@ impl Pipeline {
             confidence: decision.confidence_0_1,
             latency_ms: decision.latency_ms,
             profile: "balanced".into(),
-            shadow: false,
+            shadow: self.shadow,
         };
         let send_res = tokio::time::timeout(Duration::from_secs(1), self.writer_tx.send(rec)).await;
-        // If DB/channel blocks >1s, prove ask and never block
+        // If DB/channel blocks >1s, prove ask and never block.
+        // Shadow: never block even on DB error → allow with would_have ask.
         if send_res.is_err() {
-            return algo_types::ask_on_error(
+            let ask = algo_types::ask_on_error(
                 "db write timeout → ask (fail-safe)",
                 event.event_id.clone(),
             );
+            if self.shadow {
+                return shadow_allow_from(&ask);
+            }
+            return ask;
         }
         if let Ok(Err(_)) = send_res {
-            return algo_types::ask_on_error(
+            let ask = algo_types::ask_on_error(
                 "db channel closed → ask (fail-safe)",
                 event.event_id.clone(),
             );
+            if self.shadow {
+                return shadow_allow_from(&ask);
+            }
+            return ask;
         }
 
+        if self.shadow && decision.action != Action::Allow as i32 {
+            return shadow_allow_from(&decision);
+        }
         decision
     }
 }
@@ -532,5 +622,66 @@ mod tests {
         let avg = start.elapsed().as_millis() / 10;
         // p50 <3ms is budget, but in debug may be higher; just assert <25ms to avoid flake
         assert!(avg < 25, "avg latency {}ms too high", avg);
+    }
+
+    fn make_shadow_pipeline() -> (Pipeline, mpsc::Receiver<DbRecord>) {
+        let engine = Arc::new(algo_policy::Engine::new());
+        let cache = Arc::new(Cache::new());
+        let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));
+        let (tx, rx) = mpsc::channel(1000);
+        let p = Pipeline::new(engine, cache, pool, tx).with_shadow(true);
+        assert!(p.is_shadow());
+        (p, rx)
+    }
+
+    #[tokio::test]
+    async fn shadow_l0_deny_returns_allow_but_audits_deny() {
+        // P1-08: shadow default — compute deny, return Allow, audit would_have deny.
+        let (pipeline, mut rx) = make_shadow_pipeline();
+        let d = pipeline.decide(tool_before("rm -rf /")).await;
+        assert_eq!(d.action, Action::Allow as i32, "shadow must never block");
+        assert!(is_shadow_reason(&d.reason));
+        assert_eq!(parse_would_have(&d.reason), Some("deny"));
+        // Audit row must preserve real deny with shadow=true for would-have-blocked.
+        let rec = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("audit row")
+            .expect("channel open");
+        assert_eq!(rec.action, Action::Deny as i32);
+        assert!(rec.shadow);
+    }
+
+    #[tokio::test]
+    async fn shadow_never_blocks_on_db_error() {
+        // Shadow soak: even DB-closed must return Allow (would_have ask), never block.
+        let engine = Arc::new(algo_policy::Engine::new());
+        let cache = Arc::new(Cache::new());
+        let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));
+        let (tx, rx) = mpsc::channel(1000);
+        drop(rx);
+        let pipeline = Pipeline::new(engine, cache, pool, tx).with_shadow(true);
+        let d = pipeline.decide(tool_before("ls -la")).await;
+        assert_eq!(d.action, Action::Allow as i32);
+        assert!(is_shadow_reason(&d.reason));
+    }
+
+    #[test]
+    fn shadow_reason_helpers() {
+        assert!(!is_shadow_reason("hard deny: rm -rf /"));
+        assert!(is_shadow_reason(
+            "shadow: would_have deny (hard deny) → approve (shadow)"
+        ));
+        assert_eq!(
+            parse_would_have("shadow: would_have deny (x) → approve (shadow)"),
+            Some("deny")
+        );
+        assert_eq!(
+            parse_would_have("shadow: would_have ask (x) → approve (shadow)"),
+            Some("ask")
+        );
+        assert_eq!(parse_would_have("hard deny"), None);
+        assert_eq!(action_str_of(Action::Deny as i32), "deny");
+        assert_eq!(action_str_of(Action::Allow as i32), "allow");
+        assert_eq!(action_str_of(Action::Ask as i32), "ask");
     }
 }
