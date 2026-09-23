@@ -1,0 +1,22 @@
+﻿/* Self-hosted fonts — variable woff2, latin subset (fetched 2026-09-21 from
+ * Google Fonts css2 API with a woff2 UA; Inter v20 / JetBrains Mono variable).
+ * Inter wght axis covers 100-900, JetBrains Mono 100-800. font-display: swap
+ * so text never blocks on fonts. Preloaded in index.html (above-the-fold).
+ * To change weights/subsets: re-fetch the css2 URL, keep the "latin" block,
+ * drop the file in public/fonts/ and bump nothing (stable filename).
+ */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+}

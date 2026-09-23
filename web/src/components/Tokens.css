@@ -1,11 +1,15 @@
-/* web — Tokens.css (Variant 1 single source, same as dashboard)
- * Canonical: plans/design-tokens.md §2 — dark-first with a light-mode option.
+/* web — Tokens.css (Variant 1, synced to canonical 2026-09-22)
+ * Canonical: plans/design-tokens.md §2 + web/design-tokens.css — core
+ * allow/ask/deny/brand/bg/surface/border/text/muted values match exactly.
+ * Extensions (web-only, documented): --ag-brand-strong, --ag-bg-raised,
+ * --term-* (terminal always dark), font/radius, shadcn aliases.
  * Grep check: hex lives ONLY in this file (design tokens by definition).
  */
 
 :root {
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
 
   --ag-radius-sm: 8px;
   --ag-radius-md: 12px;
@@ -13,45 +17,45 @@
   --ag-radius-xl: 24px;
 
   /* Terminal stays dark in both themes (developer terminals are dark). */
-  --term-bg: #0E0D15;
-  --term-surface: #16151F;
-  --term-border: #26243A;
-  --term-text: #F4F3FF;
-  --term-muted: #9C9AB0;
-  --term-green: #3DD68C;
-  --term-amber: #F5B82E;
-  --term-purple: #8E77FF;
+  --term-bg: #0e0d15;
+  --term-surface: #16151f;
+  --term-border: #26243a;
+  --term-text: #f4f3ff;
+  --term-muted: #9c9ab0;
+  --term-green: #3dd68c;
+  --term-amber: #f5b82e;
+  --term-purple: #8e77ff;
 }
 
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --ag-brand: #6D4AFF;
-  --ag-brand-strong: #5A36F0;
-  --ag-bg: #FAFAFB;
-  --ag-bg-raised: #FFFFFF;
-  --ag-surface: #FFFFFF;
-  --ag-border: #E6E5EE;
-  --ag-text: #17161F;
-  --ag-text-muted: #5F5E73;
-  --ag-allow: #1E9E63;
-  --ag-ask: #B57E00;
-  --ag-deny: #D13438;
+  --ag-brand: #6d4aff;
+  --ag-brand-strong: #5a36f0;
+  --ag-bg: #fafafb;
+  --ag-bg-raised: #ffffff;
+  --ag-surface: #ffffff;
+  --ag-border: #e6e5ee;
+  --ag-text: #17161f;
+  --ag-text-muted: #6b6a7b;
+  --ag-allow: #1e9e63;
+  --ag-ask: #d99a00;
+  --ag-deny: #e5484d;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --ag-brand: #8E77FF;
-  --ag-brand-strong: #A68FFF;
-  --ag-bg: #0E0D15;
-  --ag-bg-raised: #14131D;
-  --ag-surface: #16151F;
-  --ag-border: #26243A;
-  --ag-text: #F4F3FF;
-  --ag-text-muted: #A6A4BC;
-  --ag-allow: #3DD68C;
-  --ag-ask: #F5B82E;
-  --ag-deny: #FF6B6F;
+  --ag-brand: #8e77ff;
+  --ag-brand-strong: #a68fff;
+  --ag-bg: #0e0d15;
+  --ag-bg-raised: #14131d;
+  --ag-surface: #16151f;
+  --ag-border: #26243a;
+  --ag-text: #f4f3ff;
+  --ag-text-muted: #9c9ab0;
+  --ag-allow: #3dd68c;
+  --ag-ask: #f5b82e;
+  --ag-deny: #ff6b6f;
 }
 
 @theme inline {
