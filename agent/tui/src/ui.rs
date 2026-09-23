@@ -82,6 +82,83 @@ fn spinner_frame(tick: usize) -> &'static str {
     SPINNER[tick % SPINNER.len()]
 }
 
+/// Marching-ants outline: a rotating dashed border with gaps.
+///
+/// Drawn cell-by-cell over a box `rect` AFTER its `Block` + contents, so the
+/// phase fully controls the dashes. Only straight border glyphs are replaced —
+/// title text and corners are left intact (corners just tinted to match).
+/// Perimeter order is clockwise, so an increasing `tick` marches the dashes
+/// clockwise around the box.
+fn render_marching_dashes(
+    frame: &mut Frame,
+    rect: ratatui::layout::Rect,
+    tick: usize,
+    style: Style,
+) {
+    if rect.width < 4 || rect.height < 3 {
+        return;
+    }
+    const DASH: usize = 3;
+    const GAP: usize = 2;
+    const PERIOD: usize = DASH + GAP;
+    let phase = tick / 2; // ~5 cells/sec at the 100ms UI poll
+    let on = |p: usize| (p + PERIOD - phase % PERIOD) % PERIOD < DASH;
+
+    let buf = frame.buffer_mut();
+    let x0 = rect.x;
+    let y0 = rect.y;
+    let x1 = rect.x + rect.width - 1;
+    let y1 = rect.y + rect.height - 1;
+    let w = (rect.width - 2) as usize; // horizontal straight-run length
+    let h = (rect.height - 2) as usize; // vertical straight-run length
+
+    // Top edge (left→right), then bottom edge (perimeter continues clockwise).
+    for i in 0..w {
+        let x = x0 + 1 + i as u16;
+        let c = &mut buf[(x, y0)];
+        if c.symbol() == "─" {
+            if on(i) {
+                c.set_symbol("─").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+        let q = w + h + (w - 1 - i);
+        let c = &mut buf[(x, y1)];
+        if c.symbol() == "─" {
+            if on(q) {
+                c.set_symbol("─").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+    }
+    // Right edge (top→bottom), then left edge (perimeter continues clockwise).
+    for j in 0..h {
+        let y = y0 + 1 + j as u16;
+        let c = &mut buf[(x1, y)];
+        if c.symbol() == "│" {
+            if on(w + j) {
+                c.set_symbol("│").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+        let c = &mut buf[(x0, y)];
+        if c.symbol() == "│" {
+            if on(w + h + w + h - 1 - j) {
+                c.set_symbol("│").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+    }
+    // Corners: keep glyph, tint to match the dashes.
+    for (cx, cy) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
+        buf[(cx, cy)].set_style(style);
+    }
+}
+
 /// Compact centered dialog (fixed size, never a stretched panel).
 fn centered_fixed(w: u16, h: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
     use ratatui::layout::{Constraint, Direction, Layout};
@@ -325,18 +402,8 @@ fn render_offline_banner(frame: &mut Frame, app: &App, area: ratatui::layout::Re
 
 fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     // Production-quality auth gate — two primary paths, one secondary fallback.
-    let card = centered_fixed(68, 24, area);
-    let outer_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(COLOR_BRAND))
-        .title(Span::styled(
-            " ◈ algorithco guard ",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        ));
-    let inner = outer_block.inner(card);
-    frame.render_widget(outer_block, card);
+    // No outer container box: the card area is used directly (borderless).
+    let inner = centered_fixed(68, 24, area);
 
     if inner.width < 40 || inner.height < 18 {
         // Fallback for smaller but not tiny terminals
@@ -625,7 +692,7 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         };
         let input_line = if has_input {
             // Masked with cursor
-            let cursor = if apikey_focused { "▌" } else { "" };
+            let cursor = if apikey_focused { "█" } else { "" };
             Line::from(vec![
                 Span::styled("  ", Style::default()),
                 Span::styled(display, Style::default().fg(Color::White)),
@@ -844,8 +911,8 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
             " Press Enter to submit your API key ".to_string()
         }
     } else {
-        // Idle — single helpful hint, not warning
-        " Tab to switch  •  1 / 2 to choose  •  Enter to select ".to_string()
+        // Idle — no hint text (deliberately blank, keeps spacing).
+        String::new()
     };
     let status = Paragraph::new(Line::from(Span::styled(status_text, status_style)))
         .alignment(ratatui::layout::Alignment::Center);
