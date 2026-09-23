@@ -9,7 +9,7 @@ description = "Canonical types generated from proto (algorithco_guard.v0), never
 readme = "README.md"
 
 [dependencies]
-prost = "0.13"
+prost = "0.14"
 prost-types = "0.13"
 
 [build-dependencies]
