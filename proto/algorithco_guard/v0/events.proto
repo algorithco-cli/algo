@@ -94,6 +94,16 @@ message ToolAfter {
   int64 latency_ms = 6;
   // Machine-readable error string, empty on success.
   string error = 7;
+  // P2-01: edit/write file target (mirrors ToolBefore.file_path when present).
+  optional string file_path = 8;
+  // P2-01: byte range of the edit/write (if known), inclusive start.
+  optional int64 byte_start = 9;
+  // P2-01: byte range end (exclusive). Absent when whole-file.
+  optional int64 byte_end = 10;
+  // P2-01: hash of new content (e.g. blake3 hex), if computed.
+  optional string new_content_hash = 11;
+  // P2-01: redacted preview snippet of new content (privacy: redacted).
+  optional string redacted_preview = 12;
 }
 
 // Agent stop event: session/agent termination marker.
@@ -106,6 +116,12 @@ message AgentStop {
   AgentIdentity agent = 3;
   // Human-readable stop reason (redacted).
   string reason = 4;
+  // P2-01: task reference the agent claims to have completed (redacted).
+  optional string task_ref = 5;
+  // P2-01: diff ref (e.g. git diff hash or redacted summary) for verifier.
+  optional string diff_ref = 6;
+  // P2-01: test report ref (path or redacted summary) for verifier.
+  optional string test_report_ref = 7;
 }
 
 // Kind of agent question (plan shorthand: CHOICE/FREEFORM).

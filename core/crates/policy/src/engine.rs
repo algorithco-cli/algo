@@ -7,6 +7,28 @@ pub enum Profile {
     Fast,
 }
 
+impl Profile {
+    /// Threshold for Jev "allow" confidence. Hard deny always outranks; Abstain → ask
+    /// is tuned by this. Values are defaults until eval artifact (questions-v0.1 + thresholds)
+    /// is pinned per P2-02; then this loads from artifact, not hardcoded.
+    pub fn jev_allow_threshold(&self) -> f64 {
+        match self {
+            Self::Strict => 0.92,
+            Self::Balanced => 0.78,
+            Self::Fast => 0.62,
+        }
+    }
+
+    pub fn from_policy_profile(p: algo_types::PolicyProfile) -> Self {
+        match p {
+            algo_types::PolicyProfile::Strict => Self::Strict,
+            algo_types::PolicyProfile::Balanced => Self::Balanced,
+            algo_types::PolicyProfile::Fast => Self::Fast,
+            _ => Self::Balanced,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Decision {
     Allow {

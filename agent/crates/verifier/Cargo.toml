@@ -1,0 +1,17 @@
+[package]
+name = "algo-verifier"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Verifier on agent.stop (P2-06): tests run? diff matches task? Jev batched, timeout->ask"
+
+[dependencies]
+algo-types = { path = "../../../core/crates/types" }
+algo-provider = { path = "../../../core/crates/provider" }
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
