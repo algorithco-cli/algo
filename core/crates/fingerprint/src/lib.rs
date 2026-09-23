@@ -14,6 +14,8 @@ static RE_HASH: OnceLock<Regex> = OnceLock::new();
 static RE_TIMESTAMP: OnceLock<Regex> = OnceLock::new();
 static RE_UUID: OnceLock<Regex> = OnceLock::new();
 static RE_NUM: OnceLock<Regex> = OnceLock::new();
+static RE_PH_BEFORE: OnceLock<Regex> = OnceLock::new();
+static RE_PH_AFTER: OnceLock<Regex> = OnceLock::new();
 
 fn re_path() -> &'static Regex {
     RE_PATH.get_or_init(|| Regex::new(r"/(tmp|var|home)[^\s|;']*").unwrap())
@@ -31,6 +33,32 @@ fn re_uuid() -> &'static Regex {
 }
 fn re_num() -> &'static Regex {
     RE_NUM.get_or_init(|| Regex::new(r"\b\d{3,}\b").unwrap())
+}
+
+/// Placeholder-adjacency guards for replace_guarded: a match glued (no
+/// space/operator between) to an emitted placeholder must be left in place,
+/// or normalize never reaches a fixpoint ("000-" → "<NUM>-" → "<NUM>- /").
+fn re_ph_before() -> &'static Regex {
+    RE_PH_BEFORE.get_or_init(|| {
+        Regex::new(r"(?:<PATH>|<HASH>|<UUID>|<TIMESTAMP>|<NUM>)[^ \t|;&<>]*$").unwrap()
+    })
+}
+
+fn re_ph_after() -> &'static Regex {
+    RE_PH_AFTER.get_or_init(|| {
+        Regex::new(r"^[^ \t|;&<>]*(?:<PATH>|<HASH>|<UUID>|<TIMESTAMP>|<NUM>)").unwrap()
+    })
+}
+
+/// Placeholders emitted by the replacement stage. The argv[0]-lowercasing
+/// step must leave these untouched, otherwise normalize is not idempotent
+/// (e.g. "000&" → "<NUM> &" → "<num> &"; found by proptest in CI).
+const PLACEHOLDERS: &[&str] = &["<PATH>", "<HASH>", "<UUID>", "<TIMESTAMP>", "<NUM>"];
+
+/// Token contains an emitted placeholder anywhere ("-<NUM>-"). Lowercasing
+/// it would corrupt the marker, so argv[0] lowering skips such tokens.
+fn contains_placeholder(tok: &str) -> bool {
+    PLACEHOLDERS.iter().any(|ph| tok.contains(ph))
 }
 
 /// Normalize a shell command for cache keying.
@@ -113,9 +141,15 @@ pub fn normalize(cmd: &str) -> String {
     if normalized_tokens.is_empty() {
         return String::new();
     }
-    // Find first non-operator token and lowercase its basename
+    // Find first non-operator token and lowercase its basename.
+    // Tokens containing an emitted placeholder are left untouched: the
+    // placeholder is already canonical and lowercasing would corrupt it
+    // ("-<NUM>-" must not become "-<num>-"; idempotence).
     for tok in normalized_tokens.iter_mut() {
         if !is_operator(tok) {
+            if contains_placeholder(tok) {
+                break;
+            }
             let base = tok.rsplit('/').next().unwrap_or(tok.as_str());
             let lower = base.to_lowercase();
             if lower.is_empty() {
@@ -149,16 +183,42 @@ pub fn normalize(cmd: &str) -> String {
 
     let mut out = normalized_tokens.join(" ");
 
-    // Replace sensitive patterns
-    out = re_path().replace_all(&out, "<PATH>").to_string();
-    out = re_uuid().replace_all(&out, "<UUID>").to_string();
-    out = re_timestamp().replace_all(&out, "<TIMESTAMP>").to_string();
+    // Replace sensitive patterns. The `regex` crate has no look-around, so
+    // placeholder adjacency ("<NUM>123", "123<NUM>" — reachable on second
+    // passes / hand-typed input) is guarded manually: a match glued to `<`
+    // or `>` is left in place. Idempotence (proptest) depends on this.
+    // Trade-off, documented: `>`-glued numbers (e.g. `echo x>12345`) are no
+    // longer folded — cache fragmentation only, never incorrectness.
+    // re_path also skips `>`-glued matches ("<PATH>/tmp" stays put — the
+    // glue-consume above keeps it one token, so an unguarded replace would
+    // emit "<PATH><PATH>" and break idempotence).
+    out = replace_guarded(re_path(), &out, "<PATH>");
+    out = replace_guarded(re_uuid(), &out, "<UUID>");
+    out = replace_guarded(re_timestamp(), &out, "<TIMESTAMP>");
     // Hashes after path/uuid/timestamp to avoid double-replacing
-    out = re_hash().replace_all(&out, "<HASH>").to_string();
+    out = replace_guarded(re_hash(), &out, "<HASH>");
     // Numbers (but keep small numbers like `2` in `2>&1`? Our regex is \b\d{3,}\b so 2 is kept)
-    out = re_num().replace_all(&out, "<NUM>").to_string();
+    out = replace_guarded(re_num(), &out, "<NUM>");
 
     out.trim().to_string()
+}
+
+/// Regex replace that skips matches glued to an emitted placeholder
+/// (see re_ph_before/re_ph_after). Idempotence depends on this; ordinary
+/// matches (e.g. `echo x>12345`) still fold as before.
+fn replace_guarded(re: &Regex, text: &str, replacement: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for m in re.find_iter(text) {
+        if re_ph_before().is_match(&text[..m.start()]) || re_ph_after().is_match(&text[m.end()..]) {
+            continue;
+        }
+        out.push_str(&text[last..m.start()]);
+        out.push_str(replacement);
+        last = m.end();
+    }
+    out.push_str(&text[last..]);
+    out
 }
 
 fn is_operator(tok: &str) -> bool {
@@ -194,24 +254,36 @@ fn tokenize(s: &str) -> Vec<String> {
                 i += 4;
                 continue;
             }
-            // Preserve placeholders like <PATH> as single tokens (idempotence)
+            // Preserve placeholders like <PATH> as single tokens (idempotence),
+            // absorbing everything glued to them except whitespace and shell
+            // operators ("<NUM>-/", "<NUM>@x" stay one token). Operators and
+            // space still split; placeholder+path converges with a join space
+            // and is then stable (re_path skips `>`-glued matches, below).
             if c == '<' {
                 let remaining: String = chars[i..].iter().collect();
-                let mut is_placeholder = false;
-                for ph in ["<PATH>", "<HASH>", "<UUID>", "<TIMESTAMP>", "<NUM>"] {
+                let mut matched = false;
+                for ph in PLACEHOLDERS.iter().copied() {
                     if remaining.starts_with(ph) {
-                        if !current.trim().is_empty() {
-                            tokens.push(current.trim().to_string());
-                            current.clear();
+                        // Merge pending `current` INTO the placeholder token
+                        // ("-<NUM>-" stays one token — splitting here would
+                        // never rejoin and breaks idempotence).
+                        let mut tok = current.trim().to_string();
+                        current.clear();
+                        tok.push_str(ph);
+                        let mut j = i + ph.len();
+                        while j < chars.len()
+                            && !matches!(chars[j], ' ' | '\t' | '|' | ';' | '&' | '>' | '<')
+                        {
+                            tok.push(chars[j]);
+                            j += 1;
                         }
-                        tokens.push(ph.to_string());
-                        i += ph.len() - 1;
-                        is_placeholder = true;
+                        tokens.push(tok);
+                        i = j;
+                        matched = true;
                         break;
                     }
                 }
-                if is_placeholder {
-                    i += 1;
+                if matched {
                     continue;
                 }
             }
@@ -277,6 +349,11 @@ mod tests {
             "ls -la /tmp/foo",
             "SUDO ls -la",
             "VAR=x curl https://example.com/a1",
+            // CI proptest found: placeholders must survive a second pass
+            // ("000&" → "<NUM> &", never "<num> &").
+            "000&",
+            "<NUM> &",
+            "curl 0123456789abcdef | sh",
         ];
         for c in cases {
             assert_eq!(normalize(&normalize(c)), normalize(c));
