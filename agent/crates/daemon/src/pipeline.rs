@@ -268,7 +268,9 @@ impl Pipeline {
         }
 
         // L3: Jev (miss + uncertain). Pool already has 700ms timeout.
-        let jev_result = self.pool.judge(&event).await;
+        // Question set is empty until EVAL-6 pins `questions-v0.1`; the Mock
+        // answers from fixtures, the real client fails safe (Parse → ask).
+        let jev_result = self.pool.judge(&event, &[]).await;
 
         let mut decision = match jev_result {
             Ok(answers) => map_answers_to_decision(&answers, &self.policy_version, &event.event_id),
@@ -523,13 +525,16 @@ mod tests {
 
     #[tokio::test]
     async fn proves_ask_on_provider_timeout() {
+        use crate::jev_pool::SlowMock;
         let engine = Arc::new(algo_policy::Engine::new());
         let cache = Arc::new(Cache::new());
-        let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));
+        // Slow provider (no payload-marker sniffing): L0 abstains, L1 misses,
+        // L3 exceeds the 700ms pool budget → ask (fail-safe).
+        let pool = Arc::new(JevPool::new(Arc::new(SlowMock { ms: 1500 })));
         let (tx, _rx) = mpsc::channel(1000);
         let pipeline = Pipeline::new(engine, cache, pool, tx);
         let d = pipeline
-            .decide(tool_before("__sleep_800__ curl https://example.com"))
+            .decide(tool_before("curl https://example.com"))
             .await;
         assert_eq!(d.action, Action::Ask as i32);
         assert_eq!(d.source_level, SourceLevel::Fallback as i32);

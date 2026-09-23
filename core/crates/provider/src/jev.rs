@@ -42,6 +42,11 @@ pub const RETRY_WAIT: Duration = Duration::from_millis(200);
 
 /// Real Jev client: pooled blocking HTTP (sync trait), one batched request for
 /// all questions, 700ms per-attempt timeout, one retry on 429/529.
+///
+/// DROP RULE: the inner blocking client owns a lazily-built tokio runtime, so a
+/// `JevProvider` must be dropped on a blocking thread (or after the async
+/// runtime shuts down) — dropping it inside async context panics on the runtime
+/// drop. Long-lived pools (daemon) uphold this naturally; tests do it explicitly.
 pub struct JevProvider {
     client: reqwest::blocking::Client,
     api_key: String,
@@ -75,6 +80,12 @@ enum SendOutcome {
 impl JevProvider {
     /// Key + endpoint + model are caller-supplied (daemon reads `ALGO_JEV_*` env).
     /// Empty key is an `Auth` error (config problem → caller maps to ask).
+    ///
+    /// BUILD/DROP RULE: the blocking client builds (and later drops) a helper
+    /// tokio runtime, so `new` must run **outside async context** (plain thread
+    /// or `spawn_blocking`) — building inside async code panics. Same for drop:
+    /// keep the provider in a pool that outlives the async runtime, or drop it
+    /// on a blocking thread.
     pub fn new(api_key: String, base_url: String, model: String) -> Result<Self, ProviderError> {
         if api_key.is_empty() {
             // No payload on Auth by design (trait_def): detail lives in the
