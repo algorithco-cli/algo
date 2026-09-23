@@ -6,20 +6,32 @@
   "description": "algorithco guard — docs site (Vite static, privacy text matches docs/privacy-dataflow.md)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview --port 4174",
-    "lint": "tsc --noEmit"
+    "build": "tsc -b && vite build && node scripts/prerender.mjs",
+    "preview": "vite preview --port 3007 --host 127.0.0.1 --strictPort",
+    "lint": "tsc --noEmit && biome check src vite.config.ts vitest.config.ts scripts",
+    "lint:fix": "biome check --write src vite.config.ts vitest.config.ts scripts",
+    "format": "biome format --write src vite.config.ts vitest.config.ts scripts",
+    "test": "vitest run",
+    "gen:deny": "node scripts/sync-deny-list.mjs"
   },
   "dependencies": {
+    "@hugeicons/core-free-icons": "^4.3.5",
+    "@hugeicons/react": "^1.1.10",
     "lucide-react": "^1.47.0",
+    "motion": "^13.4.1",
+    "ogl": "^1.0.11",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.20.4",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.5.4",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "vitest": "^2.1.9"
   }
 }

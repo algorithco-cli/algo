@@ -8,22 +8,25 @@
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0D15" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAFAFB" />
     <meta property="og:type" content="website" />
+    <!-- Canonical: private MVP local dev http://127.0.0.1:3007 — production domain TBD (see src/lib/site.ts + ADR-0011). -->
+    <meta property="og:url" content="http://127.0.0.1:3007/" />
     <meta property="og:title" content="Algorithco Guard — safer, quieter, auditable AI coding agents" />
     <meta property="og:description" content="Shadow-first guardrail for Claude Code and friends. Install in ~30s. Free local MVP." />
-    <meta property="og:image" content="/logo.png" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content="http://127.0.0.1:3007/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Algorithco Guard — ship agents you don't have to babysit." />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Algorithco Guard — safer, quieter, auditable AI coding agents" />
     <meta name="twitter:description" content="Shadow-first guardrail for Claude Code and friends. Install in ~30s. Free local MVP." />
-    <meta name="twitter:image" content="/logo.png" />
+    <meta name="twitter:image" content="http://127.0.0.1:3007/og-image.png" />
     <title>Algorithco Guard — safer AI coding agents</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/logo.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin fetchpriority="high" />
+    <link rel="prefetch" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <noscript><style>.reveal{opacity:1 !important;transform:none !important}</style></noscript>
     <script>
       try {
         var t = localStorage.getItem("ag-theme");

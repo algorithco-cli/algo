@@ -1,6 +1,6 @@
 /* algorithco guard — Design Tokens (Variant 1, DECIDED)
  * Canonical source: plans/design-tokens.md (verified 2026-09-20).
- * Single source for dashboard (React+Vite), web (Astro+Starlight), docs.
+ * Single source for dashboard (React+Vite), web (Vite+React static), docs.
  * Rules: decision colors exclusive to allow/ask/deny; brand never for semantics;
  * dark theme is NOT an inversion — use exact dark column values.
  * Any color change = PR to plans/design-tokens.md + this file + screenshots + rebuilds.
