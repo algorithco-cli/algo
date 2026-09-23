@@ -1,9 +1,8 @@
-//! `algo-adapter-claude` – shell-only adapter (P1-07, `P1-AGENT-2`).
+//! `algo-adapter-claude` – Claude adapter (P2: shell + edit/write/read + stop).
 //!
-//! - `parse`: Claude PreToolUse JSON for `Bash` (`tool_input.command`, `cwd`, `session_id`)
-//!   → `CanonicalEvent { tool_kind: shell }`. Unsupported tools (Edit/Write/Read) in P1
-//!   return `Err(SkippedUnsupportedTool)` and the caller maps to ask passthrough with
-//!   `skipped:unsupported_tool`. Pure function, no policy logic. Redacts before logging.
+//! - `parse`: Claude PreToolUse JSON for `Bash`/`Edit`/`Write`/`Read`/`AgentStop`
+//!   → `CanonicalEvent`. Shell uses `tool_input.command`; file tools use `file_path`
+//!   + preview. Unknown tools still map to `SkippedUnsupportedTool` → ask. Pure, redacts.
 //! - `render`: `Decision` → Claude hook JSON strings (`approve`/`block`/`ask`). Version-gated
 //!   with `adapter_version`. Unknown schema version → `ask` + `unsupported_schema`.
 //!
@@ -24,27 +23,39 @@ pub const ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[allow(non_upper_case_globals)]
 pub const AdapterVersion: &str = ADAPTER_VERSION;
 
-/// Canonical event for shell tools only in P1.
+/// Canonical event for all tools in P2 (shell + edit/write/read + stop).
 ///
-/// `tool_kind` is always `ToolKind::Shell` in P1. Other tool kinds are not emitted;
-/// the parser returns `SkippedUnsupportedTool` for them so the caller can ask-passthrough.
+/// In P1 only Shell was emitted; P2 adds Edit/Write/Read (file_path + redacted preview)
+/// and AgentStop passthrough. All events carry redactions; never raw secrets.
 #[derive(Debug, Clone)]
 pub struct CanonicalEvent {
-    /// Always `ToolKind::Shell` in P1.
+    /// Tool kind (Shell/Edit/Write/Read/Other; Stop handled separately).
     pub tool_kind: ToolKind,
-    /// Raw shell command string (as received, before redaction for storage).
+    /// Raw shell command string (for Shell) or file preview (for Edit/Write).
     pub command: String,
     /// Working directory from hook payload (`cwd`), empty if absent.
     pub cwd: String,
     /// Session identifier from hook payload (`session_id`), empty if absent.
     pub session_id: String,
+    /// File path for Edit/Write/Read (None for Shell).
+    pub file_path: Option<String>,
     /// Full raw JSON value for audit/debug (never logged with secrets – redacted before logging).
     pub raw: serde_json::Value,
 }
 
 impl CanonicalEvent {
-    /// Convenience: is this a shell event (always true in P1, but keeps call sites explicit).
+    /// Convenience: is this a shell event.
     pub fn is_shell(&self) -> bool {
         self.tool_kind == ToolKind::Shell
+    }
+
+    /// Convenience: is this a file-edit event.
+    pub fn is_edit(&self) -> bool {
+        self.tool_kind == ToolKind::Edit
+    }
+
+    /// Convenience: is this a file-write event.
+    pub fn is_write(&self) -> bool {
+        self.tool_kind == ToolKind::Write
     }
 }
