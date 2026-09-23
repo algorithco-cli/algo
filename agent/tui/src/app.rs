@@ -12,6 +12,8 @@ use ratatui::widgets::TableState;
 pub const BROWSER_TIMEOUT_TICKS: usize = 300;
 /// Milliseconds per marching-ants dash step (5 cells/sec).
 pub const ANIM_STEP_MS: u64 = 200;
+/// Milliseconds per spinner frame (10 fps).
+pub const SPIN_STEP_MS: u64 = 100;
 /// Ticks before a successful login auto-transitions to the feed.
 pub const SUCCESS_TICKS: usize = 12;
 
@@ -112,6 +114,10 @@ pub struct App {
     pub anim_phase: usize,
     /// Last time `anim_phase` advanced.
     pub anim_clock: std::time::Instant,
+    /// Wall-clock phase for the spinner. Same flood-proofing as `anim_phase`.
+    pub spin_phase: usize,
+    /// Last time `spin_phase` advanced.
+    pub spin_clock: std::time::Instant,
 
     // ---- Clickable areas, populated each render (mouse-first UI). ----
     pub login_browser: Option<ratatui::layout::Rect>,
@@ -183,6 +189,8 @@ impl App {
             tick: 0,
             anim_phase: 0,
             anim_clock: std::time::Instant::now(),
+            spin_phase: 0,
+            spin_clock: std::time::Instant::now(),
             login_browser: None,
             login_apikey: None,
             login_apikey_input: None,
@@ -620,6 +628,10 @@ impl App {
         while self.anim_clock.elapsed() >= std::time::Duration::from_millis(ANIM_STEP_MS) {
             self.anim_phase = self.anim_phase.wrapping_add(1);
             self.anim_clock += std::time::Duration::from_millis(ANIM_STEP_MS);
+        }
+        while self.spin_clock.elapsed() >= std::time::Duration::from_millis(SPIN_STEP_MS) {
+            self.spin_phase = self.spin_phase.wrapping_add(1);
+            self.spin_clock += std::time::Duration::from_millis(SPIN_STEP_MS);
         }
         // Sync legacy for render that still reads old fields
         self.sync_legacy();
@@ -1147,6 +1159,10 @@ mod tests {
         assert_eq!(
             app.anim_phase, 0,
             "rapid ticks without elapsed time must not advance animation"
+        );
+        assert_eq!(
+            app.spin_phase, 0,
+            "rapid ticks without elapsed time must not advance spinner"
         );
     }
 

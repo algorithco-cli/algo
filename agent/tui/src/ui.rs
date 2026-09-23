@@ -515,7 +515,7 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
 
     // Browser box contents — honest: no backend, no fabricated device code.
     if is_browser_pending {
-        let spin = spinner_frame(app.tick);
+        let spin = spinner_frame(app.spin_phase);
         let lines = vec![
             Line::from(vec![
                 Span::styled(
