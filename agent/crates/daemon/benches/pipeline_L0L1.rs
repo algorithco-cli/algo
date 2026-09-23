@@ -12,7 +12,7 @@ use algo_daemon::jev_pool::JevPool;
 use algo_daemon::pipeline::Pipeline;
 use algo_provider::MockProvider;
 use algo_types::{AgentIdentity, PrivacyMode, ToolBefore, ToolKind};
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
@@ -88,8 +88,10 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
         b.iter(|| {
             let p = pipeline.clone();
             rt.block_on(async {
-                let d = p.decide(black_box(tool_before("rm -rf /"))).await;
-                black_box(d);
+                let d = p
+                    .decide(std::hint::black_box(tool_before("rm -rf /")))
+                    .await;
+                std::hint::black_box(d);
             })
         });
     });
@@ -99,8 +101,8 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
         b.iter(|| {
             let p = pipeline.clone();
             rt.block_on(async {
-                let d = p.decide(black_box(tool_before("ls -la"))).await;
-                black_box(d);
+                let d = p.decide(std::hint::black_box(tool_before("ls -la"))).await;
+                std::hint::black_box(d);
             })
         });
     });
@@ -110,8 +112,8 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
         b.iter(|| {
             rt.block_on(async {
                 for _ in 0..50 {
-                    black_box(pipeline.decide(tool_before("rm -rf /")).await);
-                    black_box(pipeline.decide(tool_before("ls -la")).await);
+                    std::hint::black_box(pipeline.decide(tool_before("rm -rf /")).await);
+                    std::hint::black_box(pipeline.decide(tool_before("ls -la")).await);
                 }
             });
         });
@@ -122,7 +124,7 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
         b.iter(|| {
             rt.block_on(async {
                 for _ in 0..100 {
-                    black_box(pipeline.decide(tool_before("ls -la")).await);
+                    std::hint::black_box(pipeline.decide(tool_before("ls -la")).await);
                 }
             });
         });
@@ -135,7 +137,7 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
     let start = Instant::now();
     rt.block_on(async {
         for _ in 0..samples {
-            black_box(pipeline.decide(tool_before("rm -rf /")).await);
+            std::hint::black_box(pipeline.decide(tool_before("rm -rf /")).await);
         }
     });
     let avg_ns = start.elapsed().as_nanos() as f64 / samples as f64;
@@ -151,7 +153,7 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
     let start2 = Instant::now();
     rt.block_on(async {
         for _ in 0..samples {
-            black_box(pipeline.decide(tool_before("ls -la")).await);
+            std::hint::black_box(pipeline.decide(tool_before("ls -la")).await);
         }
     });
     let avg2_ns = start2.elapsed().as_nanos() as f64 / samples as f64;

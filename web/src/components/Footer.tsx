@@ -1,36 +1,35 @@
-import ArrowUp from "lucide-react/icons/arrow-up.mjs";
+import {
+  DiscordIcon,
+  GithubIcon,
+  Linkedin01Icon,
+  NewTwitterIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "react-router-dom";
 import { REPO_URL } from "../lib/site-url";
 
-export function Footer(): JSX.Element {
-  const scrollTop = (): void => {
-    const reduce = window.matchMedia?.(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
-  };
+const SOCIALS = [
+  { key: "github", label: "GitHub", href: REPO_URL, icon: GithubIcon },
+  { key: "x", label: "X (Twitter)", href: "https://x.com", icon: NewTwitterIcon },
+  {
+    key: "linkedin",
+    label: "LinkedIn",
+    href: "https://linkedin.com",
+    icon: Linkedin01Icon,
+  },
+  {
+    key: "discord",
+    label: "Discord",
+    href: "https://discord.com",
+    icon: DiscordIcon,
+  },
+];
 
+export function Footer(): JSX.Element {
   return (
     <footer className="site-footer site-footer--impact">
       <div className="wrap footer-impact-inner">
-        {/* Top row */}
-        <div className="footer-impact-top">
-          <h2 className="footer-impact-tagline">
-            AGENTS YOU TRUST.
-            <br />
-            GUARDED BY DESIGN.
-          </h2>
-          <button
-            type="button"
-            className="footer-impact-backtop"
-            onClick={scrollTop}
-            aria-label="Back to top"
-          >
-            <ArrowUp size={18} aria-hidden />
-          </button>
-        </div>
-
-        {/* Middle 3 columns */}
+        {/* Middle columns */}
         <div className="footer-impact-mid">
           <div className="footer-impact-col">
             <p className="footer-impact-label">ALGORITHCO</p>
@@ -41,6 +40,21 @@ export function Footer(): JSX.Element {
               <br />
               <a href="/docs">Docs</a> · <a href="/privacy">Privacy</a>
             </p>
+            <nav className="footer-impact-social" aria-label="Social">
+              {SOCIALS.map((s) => (
+                <a
+                  key={s.key}
+                  className={`footer-impact-social-link is-${s.key}`}
+                  href={s.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={s.label}
+                  title={s.label}
+                >
+                  <HugeiconsIcon icon={s.icon} size={18} strokeWidth={1.8} />
+                </a>
+              ))}
+            </nav>
           </div>
           <div className="footer-impact-col">
             <p className="footer-impact-label">NAVIGATION</p>
@@ -51,23 +65,6 @@ export function Footer(): JSX.Element {
               <Link to="/docs">Docs</Link>
               <Link to="/pricing">Pricing</Link>
               <Link to="/faq">Contact</Link>
-            </nav>
-          </div>
-          <div className="footer-impact-col">
-            <p className="footer-impact-label">FOLLOW</p>
-            <nav className="footer-impact-links" aria-label="Social">
-              <a href={REPO_URL} target="_blank" rel="noreferrer">
-                GitHub
-              </a>
-              <a href="https://x.com" target="_blank" rel="noreferrer">
-                X (Twitter)
-              </a>
-              <a href="https://linkedin.com" target="_blank" rel="noreferrer">
-                LinkedIn
-              </a>
-              <a href="https://discord.com" target="_blank" rel="noreferrer">
-                Discord
-              </a>
             </nav>
           </div>
         </div>

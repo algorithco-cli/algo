@@ -6,7 +6,7 @@
 //! See core/benches/README.md for baseline workflow.
 
 use algo_fingerprint::{cache_key, normalize};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 fn long_command_10k() -> String {
     // 10 KiB payload: curl prefix + 10k filler + pipe + sh -c inner
@@ -32,8 +32,8 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
         &short,
         |b, input| {
             b.iter(|| {
-                let out = normalize(black_box(input));
-                black_box(out);
+                let out = normalize(std::hint::black_box(input));
+                std::hint::black_box(out);
             });
         },
     );
@@ -44,8 +44,8 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
         &long_static,
         |b, input| {
             b.iter(|| {
-                let out = normalize(black_box(input));
-                black_box(out);
+                let out = normalize(std::hint::black_box(input));
+                std::hint::black_box(out);
             });
         },
     );
@@ -53,16 +53,16 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
     // 3) normalize + cache_key combined (pipeline hot path)
     group.bench_function("normalize_plus_cache_key_short", |b| {
         b.iter(|| {
-            let norm = normalize(black_box(short));
-            let key = cache_key(black_box(&norm), "v0", "balanced");
-            black_box(key);
+            let norm = normalize(std::hint::black_box(short));
+            let key = cache_key(std::hint::black_box(&norm), "v0", "balanced");
+            std::hint::black_box(key);
         });
     });
     group.bench_function("normalize_plus_cache_key_long_10k", |b| {
         b.iter(|| {
-            let norm = normalize(black_box(long_static));
-            let key = cache_key(black_box(&norm), "v0", "balanced");
-            black_box(key);
+            let norm = normalize(std::hint::black_box(long_static));
+            let key = cache_key(std::hint::black_box(&norm), "v0", "balanced");
+            std::hint::black_box(key);
         });
     });
 
@@ -70,8 +70,12 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
     group.bench_function("cache_key_only", |b| {
         let norm = normalize(short);
         b.iter(|| {
-            let key = cache_key(black_box(&norm), black_box("v0"), black_box("balanced"));
-            black_box(key);
+            let key = cache_key(
+                std::hint::black_box(&norm),
+                std::hint::black_box("v0"),
+                std::hint::black_box("balanced"),
+            );
+            std::hint::black_box(key);
         });
     });
 
@@ -79,7 +83,7 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
     group.bench_function("throughput_100_short", |b| {
         b.iter(|| {
             for _ in 0..100 {
-                black_box(normalize(black_box(short)));
+                std::hint::black_box(normalize(std::hint::black_box(short)));
             }
         });
     });
@@ -89,7 +93,7 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
     // Hints: warn if long normalize exceeds budget
     let start = std::time::Instant::now();
     for _ in 0..500 {
-        black_box(normalize(black_box(long_static)));
+        std::hint::black_box(normalize(std::hint::black_box(long_static)));
     }
     let avg_ns = start.elapsed().as_nanos() as f64 / 500.0;
     eprintln!(
