@@ -1,9 +1,7 @@
 //! Criterion bench for `algo-daemon` Pipeline::decide L0/L1 path
 //! `cargo bench -p algo-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit`
 //! Group name: `pipeline_L0L1` per spec.
-//! Benches:
-//!   - L0 policy deny (`rm -rf /`) — hard-deny hot path, no network, no regex beyond OnceLock
-//!   - L1 cache hit (`ls -la` after warm) — blake3 + DashMap hit, no Jev
+//! Benches: L0 policy deny (rm -rf hot path), L1 cache hit (blake3 + DashMap).
 //! Budget: L0/L1 p50<3ms p99<10ms, 100 rps burst; L3 p50<250 p99<800 report-only (mock Jev 700ms timeout).
 //! Absolute thresholds + >10% regression fail in scripts/latency-budget.* (scaffold parses criterion JSON).
 //! Reference: hyperfine hook-client cold start ~1ms (see scripts/latency-budget.sh).

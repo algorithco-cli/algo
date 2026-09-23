@@ -60,6 +60,54 @@ fn dirs_home() -> PathBuf {
     PathBuf::from(".")
 }
 
+fn resolve_home() -> PathBuf {
+    if let Ok(v) = std::env::var("ALGO_HOME") {
+        if !v.trim().is_empty() {
+            return PathBuf::from(v);
+        }
+    }
+    dirs_home()
+}
+
+fn read_shadow_mode() -> bool {
+    // P1-08 shadow default, P2-04 `algo enforce on|off`.
+    // Precedence: ALGO_ENFORCE > ALGO_SHADOW > config.json > default true.
+    // Any I/O/parse error => shadow=true (default, never block in private MVP).
+    if let Ok(v) = std::env::var("ALGO_ENFORCE") {
+        let t = v.trim().to_ascii_lowercase();
+        if ["1", "true", "on", "enforce"].contains(&t.as_str()) {
+            return false;
+        }
+        if ["0", "false", "off", "shadow"].contains(&t.as_str()) {
+            return true;
+        }
+    }
+    if let Ok(v) = std::env::var("ALGO_SHADOW") {
+        let t = v.trim().to_ascii_lowercase();
+        if ["0", "false", "off"].contains(&t.as_str()) {
+            return false;
+        }
+        if ["1", "true", "on"].contains(&t.as_str()) {
+            return true;
+        }
+    }
+    let cfg_path = resolve_home().join(".algo").join("config.json");
+    if let Ok(bytes) = std::fs::read(&cfg_path) {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if json.get("enforce").and_then(|x| x.as_bool()) == Some(true) {
+                return false;
+            }
+            if json.get("shadow").and_then(|x| x.as_bool()) == Some(false) {
+                return false;
+            }
+            if json.get("enforce").and_then(|x| x.as_bool()) == Some(false) {
+                return true;
+            }
+        }
+    }
+    true
+}
+
 fn ensure_algo_dir() -> std::io::Result<PathBuf> {
     let home = dirs_home();
     let dir = home.join(".algo");
@@ -80,16 +128,18 @@ async fn main() -> std::io::Result<()> {
     let (writer_tx, writer_rx) = tokio::sync::mpsc::channel::<DbRecord>(1000);
     spawn_writer_task(writer_rx, db_path);
 
-    // Setup pipeline components
+    // Setup pipeline components — shadow default P1 (P2-04 enforce to disable).
+    // Requires daemon restart after `algo enforce on|off` (documented private-MVP limit).
     let engine = Arc::new(algo_policy::Engine::new());
     let cache = Arc::new(Cache::new());
     let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));
     pool.warm();
+    let shadow = read_shadow_mode();
 
     #[cfg(unix)]
-    let pipeline = Arc::new(Pipeline::new(engine, cache, pool, writer_tx));
+    let pipeline = Arc::new(Pipeline::new(engine, cache, pool, writer_tx).with_shadow(shadow));
     #[cfg(not(unix))]
-    let _pipeline = Arc::new(Pipeline::new(engine, cache, pool, writer_tx));
+    let _pipeline = Arc::new(Pipeline::new(engine, cache, pool, writer_tx).with_shadow(shadow));
 
     // Bind transport
     // On Unix we use UnixTransport; on Windows we stub and exit fail-safe.
@@ -112,7 +162,12 @@ async fn main() -> std::io::Result<()> {
 
     #[cfg(unix)]
     {
-        eprintln!("algo-daemon listening on {}", socket_path);
+        eprintln!(
+            "algo-daemon listening on {} shadow={} (enforce {})",
+            socket_path,
+            shadow,
+            if shadow { "off" } else { "on" }
+        );
 
         if args.oneshot {
             // Single request then exit
@@ -309,6 +364,10 @@ struct DecisionJson {
     // Aliases for hook-client fallback compatibility
     decision: String,
     source: String,
+    // P1-08 shadow observability (no proto change until P2-01): shadow=true means
+    // returned Allow is a shadow approve; would_have holds the real computed action.
+    shadow: bool,
+    would_have: String,
 }
 
 fn decision_to_json(d: &algo_types::Decision) -> DecisionJson {
@@ -327,6 +386,14 @@ fn decision_to_json(d: &algo_types::Decision) -> DecisionJson {
         _ => "fallback",
     }
     .to_string();
+    let shadow = pipeline::is_shadow_reason(&d.reason);
+    let would_have = if shadow {
+        pipeline::parse_would_have(&d.reason)
+            .unwrap_or("unknown")
+            .to_string()
+    } else {
+        action_str.clone()
+    };
     DecisionJson {
         action: action_str.clone(),
         reason: d.reason.clone(),
@@ -337,6 +404,8 @@ fn decision_to_json(d: &algo_types::Decision) -> DecisionJson {
         trace_id: d.trace_id.clone(),
         decision: action_str,
         source: source_str,
+        shadow,
+        would_have,
     }
 }
 
@@ -482,5 +551,27 @@ mod tests {
         let s = serde_json::to_string(&j).unwrap();
         assert!(s.contains("\"decision\":\"ask\""));
         assert!(s.contains("\"source\":\"fallback\""));
+        assert!(s.contains("\"shadow\":false"));
+        assert!(s.contains("\"would_have\":\"ask\""));
+    }
+
+    #[test]
+    fn decision_json_shadow_would_have() {
+        let d = algo_types::Decision {
+            action: algo_types::Action::Allow as i32,
+            reason: "shadow: would_have deny (hard deny) → approve (shadow)".into(),
+            confidence_0_1: 0.95,
+            source_level: algo_types::SourceLevel::Rule as i32,
+            latency_ms: 1,
+            policy_version: "v0".into(),
+            trace_id: "t-shadow".into(),
+        };
+        let j = decision_to_json(&d);
+        assert!(j.shadow);
+        assert_eq!(j.would_have, "deny");
+        assert_eq!(j.action, "allow");
+        let s = serde_json::to_string(&j).unwrap();
+        assert!(s.contains("\"shadow\":true"));
+        assert!(s.contains("\"would_have\":\"deny\""));
     }
 }

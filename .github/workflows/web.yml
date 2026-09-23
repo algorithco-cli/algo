@@ -1,0 +1,72 @@
+name: Web
+
+# Web + dashboard gates: typecheck, lint, tests, build, dep audit.
+# Always runs (required check "Web / web") — no path filters.
+# ADR-0011 records the Vite 5 + React 18 pin and a known HIGH advisory
+# accepted loopback-only for the private MVP: `npm audit` therefore fails
+# only on CRITICAL until the Vite 8 upgrade lands (see ADR-0011).
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ["web", "dashboard"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: npm ci (${{ matrix.dir }})
+        working-directory: ${{ matrix.dir }}
+        run: npm ci --no-audit --no-fund
+
+      - name: lint (${{ matrix.dir }})
+        working-directory: ${{ matrix.dir }}
+        run: npm run lint
+
+      - name: test (${{ matrix.dir }})
+        working-directory: ${{ matrix.dir }}
+        run: npm run test --if-present
+
+      - name: build (${{ matrix.dir }})
+        working-directory: ${{ matrix.dir }}
+        run: npm run build
+
+      - name: npm audit (critical only; HIGH accepted per ADR-0011)
+        working-directory: ${{ matrix.dir }}
+        run: npm audit --audit-level=critical
+
+  gate:
+    needs: [web]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Web gate verdict
+        run: |
+          if [ "${{ needs.web.result }}" != "success" ]; then
+            echo "WEB GATE FAIL: web=${{ needs.web.result }}" >&2
+            exit 1
+          fi
+          echo "Web gate passed (web + dashboard)"

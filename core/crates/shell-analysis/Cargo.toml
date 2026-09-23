@@ -9,7 +9,11 @@ description = "Shell analysis via tree-sitter-bash (parse, facts, obfuscation)"
 readme = "README.md"
 
 [dependencies]
-tree-sitter = "0.20"
-tree-sitter-bash = "0.20"
+# Upgraded 0.20 → 0.27/0.25.1 on 2026-09-23: CI fuzz-smoke found a SEGV in
+# the 0.20 C parser (AddressSanitizer, fuzz_shell_parse). Newer grammar
+# carries upstream memory-safety fixes; API usage here is version-agnostic
+# (Parser::new/set_language/parse + Node walk).
+tree-sitter = "0.27"
+tree-sitter-bash = "0.25"
 
 [dev-dependencies]

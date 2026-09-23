@@ -1,0 +1,45 @@
+# Gitleaks baseline — extends the default rules, allowlists ONLY the 13
+# fingerprints below.
+#
+# Verified 2026-09-23 (CI run 35836035692, `secrets` job): every fingerprint
+# is a documented SYNTHETIC fixture, not a credential —
+#   - core/crates/redact/benches/redact_10k.rs (10): `SECRETS` array header
+#     says "Secret samples (synthetic, not real)" (redact_10k.rs:14-15);
+#     fixtures exist so the redactor has something to mask in benchmarks.
+#   - backend/src/audit.rs (2): `ingest_rejects_high_entropy_token` test —
+#     asserts unredacted payloads are REJECTED (audit.rs:311-321).
+#   - agent/tui/src/app.rs + ui.rs (2): `login_apikey_flow_validation`
+#     login-form tests (placeholder API-key input, never sent anywhere).
+# New leaks still fail the gate (`--exit-code 2`). To allowlist a future
+# fixture: add its fingerprint (commit:file:rule:line from CI output) here
+# with a justification comment + human review (CODEOWNERS /.github).
+
+[extend]
+useDefault = true
+
+# NOTE (gitleaks v8.30): an [[allowlists]] entry with ONLY fingerprints is
+# rejected ("must contain at least one check for: commits, paths, regexes,
+# or stopwords"). The `commits` scoping below carries the exemption (3
+# historical commits); fingerprints pin the exact findings. Both must match.
+[[allowlists]]
+description = "synthetic redact-bench + rejection-test + login-validation fixtures (verified 2026-09-23, no real secrets)"
+commits = [
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0",
+  "147abc481aa5d2427282eeba467edf2b355387be",
+  "5ae30e7006e874b9c71413c2b55e854f8a11f7be",
+]
+fingerprints = [
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:aws-access-token:18",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:gcp-api-key:25",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:generic-api-key:27",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:generic-api-key:28",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:github-oauth:20",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:github-pat:19",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:github-pat:46",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:jwt:26",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:slack-bot-token:21",
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0:backend/src/audit.rs:generic-api-key:316",
+  "147abc481aa5d2427282eeba467edf2b355387be:backend/src/audit.rs:generic-api-key:311",
+  "5ae30e7006e874b9c71413c2b55e854f8a11f7be:agent/tui/src/app.rs:generic-api-key:874",
+  "5ae30e7006e874b9c71413c2b55e854f8a11f7be:agent/tui/src/ui.rs:generic-api-key:1067",
+]

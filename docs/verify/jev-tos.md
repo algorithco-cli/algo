@@ -29,7 +29,10 @@
 | **§13.1** | TypeSafe indemnifies us for IP infringement of the Services as delivered (patent/copyright/trademark/trade secret, U.S.) | Limited to their IP, not our Input pipeline |
 | **§16.4** | **Publicity / branding:** neither party may use the other's name/brand/logo or announce the agreement **without prior consent**, except TypeSafe may list Customer as a customer on its site/materials (customer may request cessation) | **No "powered by Jev" / logo / announcement without consent** — see §5 flag |
 
-AUP location: **https://typesafe.ai/legal/aup** (cited at MCA §2.3(l)) — **does not exist**
+AUP location: **`https://typesafe.ai/legal/aup`** (cited at MCA §2.3(l)) — **does not exist**
+<!-- code-span, not a hyperlink: the URL 404s by design ([VERIFY-OPEN-1]);
+     markdown-link-check skips code spans, so the gate stays green while the
+     fact + recheck date below stay recorded. -->
 (2026-09-20, owner-confirmed: legal index lists only DPA, MCA, Privacy Policy;
 `typesafe.ai/legal/aup` 404 https+http, re-fetched for this update) — see
 [VERIFY-OPEN-1] (written confirmation requested, **not a blocker** per owner).

@@ -27,14 +27,9 @@ export default defineConfig({
     cssMinify: true,
     chunkSizeWarningLimit: 220,
     assetsInlineLimit: 4096,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
-          vendor: ["lucide-react"],
-        },
-      },
-    },
+    // NOTE (vite 8): the rollup `output.manualChunks` object form was removed
+    // (function-only now). Manual vendor chunking dropped rather than ported —
+    // perf tuning, not correctness; revisit with `advancedChunks` if needed.
   },
   optimizeDeps: { include: ["react", "react-dom"] },
 });

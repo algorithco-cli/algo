@@ -459,6 +459,9 @@ async fn main() {
 // ── Tests for main router (auth, ingest, policy, stats) ────────────
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
+// Intentional: test_sync::lock() serializes tests sharing the in-memory
+// store and MUST be held across await (that is its whole purpose). Test-only.
 mod tests {
     use super::*;
     use axum::body::Body;

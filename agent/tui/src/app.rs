@@ -218,8 +218,7 @@ impl App {
                     if let Some(p) = json.get("privacy").and_then(|x| x.as_str()) {
                         self.privacy = p.to_string();
                     }
-                    self.enforce =
-                        json.get("enforce").and_then(|x| x.as_bool()) == Some(true);
+                    self.enforce = json.get("enforce").and_then(|x| x.as_bool()) == Some(true);
                 }
             }
         }
@@ -353,7 +352,8 @@ impl App {
         self.login_ticks = 0;
         self.login_pending = true;
         self.login_note = Some("Waiting for browser confirmation…".to_string());
-        self.login_status_msg = Some("Waiting for browser confirmation…  Press Esc to cancel.".to_string());
+        self.login_status_msg =
+            Some("Waiting for browser confirmation…  Press Esc to cancel.".to_string());
         self.login_focus = LoginFocus::Browser;
     }
 
@@ -441,8 +441,11 @@ impl App {
             return false;
         }
         if trimmed.chars().count() < 8 {
-            self.login_status = LoginStatus::Error("API key too short — must be at least 8 characters.".to_string());
-            self.login_status_msg = Some("API key too short — must be at least 8 characters.".to_string());
+            self.login_status = LoginStatus::Error(
+                "API key too short — must be at least 8 characters.".to_string(),
+            );
+            self.login_status_msg =
+                Some("API key too short — must be at least 8 characters.".to_string());
             self.login_ticks = 0;
             return false;
         }
@@ -568,8 +571,9 @@ impl App {
                     // Simulate validation: if input contains "invalid" or "error", fail, else success if length ok
                     let input = self.login_api_input.trim().to_lowercase();
                     if input.contains("invalid") || input.contains("error") || input == "fail" {
-                        self.login_status =
-                            LoginStatus::Error("Invalid API key — please check and try again.".to_string());
+                        self.login_status = LoginStatus::Error(
+                            "Invalid API key — please check and try again.".to_string(),
+                        );
                         self.login_status_msg =
                             Some("Invalid API key — please check and try again.".to_string());
                         self.login_pending = false;
@@ -607,7 +611,10 @@ impl App {
 
     fn hit(rect: &Option<ratatui::layout::Rect>, x: u16, y: u16) -> bool {
         if let Some(r) = rect {
-            x >= r.x && x < r.x.saturating_add(r.width) && y >= r.y && y < r.y.saturating_add(r.height)
+            x >= r.x
+                && x < r.x.saturating_add(r.width)
+                && y >= r.y
+                && y < r.y.saturating_add(r.height)
         } else {
             false
         }
@@ -626,7 +633,10 @@ impl App {
             }
             if Self::hit(&self.login_submit, x, y) {
                 // Submit button only active when editing
-                if matches!(self.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_)) {
+                if matches!(
+                    self.login_status,
+                    LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
+                ) {
                     self.submit_api_key();
                 }
                 return false;
@@ -646,7 +656,9 @@ impl App {
                         // If clicking browser while editing, switch to browser flow? For now just focus browser and keep editing unless user confirms
                         // Simpler: focus browser but stay in editing — user must press Esc or click cancel to leave editing
                         // We'll just set focus to Browser without changing status, unless idle
-                        if self.login_status == LoginStatus::ApiKeyEditing && self.login_api_input.is_empty() {
+                        if self.login_status == LoginStatus::ApiKeyEditing
+                            && self.login_api_input.is_empty()
+                        {
                             self.login_status = LoginStatus::Idle;
                             self.login_focus = LoginFocus::Browser;
                         }
