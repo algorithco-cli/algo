@@ -1,6 +1,12 @@
 # CODEOWNERS — algorithcoguard/docs
 # Human review is mandatory for security-critical paths.
 # Agent approval is never sufficient on these lines.
+# Canonical location: docs/ (recognized by GitHub alongside root and
+# .github/ — no duplicate copies; see docs/github-org-plan.md §2).
+#
+# NOTE: @algorithcoguard/* teams must exist in the org for review requests
+# to fire. Until then these lines are documentation of intent + the PR
+# template checklist — track team creation in docs/github-org-plan.md §2.
 
 # Hard deny list + threshold logic (eval gate, allow/deny tuning)
 /docs/threat-model-v0.md            @algorithcoguard/security
@@ -21,6 +27,23 @@
 # Auth (device flow, orgs, tokens, GitHub App) — backend scope stub in Phase 0
 /docs/threat-model-v0.md            @algorithcoguard/backend @algorithcoguard/security
 /docs/roadmap.md                    @algorithcoguard/backend @algorithcoguard/security
+
+# Product code — ownership per directory (AGENTS.md §0.9 human sign-off paths
+# are subsets of these; agent approval never sufficient on security lines)
+/proto/                             @algorithcoguard/core @algorithcoguard/security
+/core/                              @algorithcoguard/core @algorithcoguard/security
+/agent/                             @algorithcoguard/agent @algorithcoguard/security
+/backend/                           @algorithcoguard/backend @algorithcoguard/security
+/eval/                              @algorithcoguard/eval @algorithcoguard/security
+/dashboard/                         @algorithcoguard/backend @algorithcoguard/security
+/web/                               @algorithcoguard/maintainers @algorithcoguard/security
+
+# CI / merge gates themselves (workflows, protection JSON, apply scripts,
+# PR template, dependabot) — changes to the gates need security review
+/.github/                           @algorithcoguard/security @algorithcoguard/maintainers
+/scripts/                           @algorithcoguard/security @algorithcoguard/maintainers
+/docs/branch-protection.json        @algorithcoguard/security @algorithcoguard/maintainers
+/docs/CODEOWNERS                    @algorithcoguard/security @algorithcoguard/maintainers
 
 # Default: everything else needs one human
 *                                   @algorithcoguard/maintainers

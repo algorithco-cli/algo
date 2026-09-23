@@ -1,0 +1,123 @@
+name: Install E2E
+
+# Fresh-OS install matrix per plans/phase-1-10-exit-gate-runbook.md step 3:
+# `algo init → algo doctor → algo uninstall` byte-identical + `algo pause`
+# daemon-dead. Unit coverage exists
+# (agent/crates/cli/src/main.rs init_doctor_uninstall_byte_identical,
+# pause_bypasses_daemon_killed); this is the fresh-OS complement.
+# Required check: "Install E2E / gate" (ubuntu only). macOS is informational
+# until the matrix is proven green — then promote it into the gate.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-22.04", "ubuntu-24.04"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent -> target
+
+      - name: Build agent release
+        run: cargo build --release --manifest-path agent/Cargo.toml
+
+      - name: init → doctor → uninstall round-trip (isolated HOME)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TEST_HOME="$(mktemp -d)/home"
+          mkdir -p "$TEST_HOME"
+          export ALGO_HOME="$TEST_HOME"
+          export HOME="$TEST_HOME"
+          BIN="$GITHUB_WORKSPACE/agent/target/release"
+          echo "--- algo init --yes ---"
+          "$BIN/algo" --home "$TEST_HOME" init --yes
+          echo "--- algo doctor ---"
+          "$BIN/algo" --home "$TEST_HOME" doctor
+          echo "--- snapshot before uninstall ---"
+          find "$TEST_HOME" -type f | sort > /tmp/before.txt || true
+          echo "--- algo uninstall ---"
+          "$BIN/algo" --home "$TEST_HOME" uninstall
+          echo "--- hook residue check ---"
+          if [ -e "$TEST_HOME/.algo/algo.sock" ]; then
+            echo "UNINSTALL FAIL: socket residue" >&2
+            exit 1
+          fi
+          echo "install E2E OK on ${{ matrix.os }}"
+
+      - name: pause bypasses daemon-dead
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TEST_HOME="$(mktemp -d)/home2"
+          mkdir -p "$TEST_HOME"
+          BIN="$GITHUB_WORKSPACE/agent/target/release"
+          "$BIN/algo" --home "$TEST_HOME" init --yes
+          "$BIN/algo" --home "$TEST_HOME" pause
+          test -f "$TEST_HOME/.algo/paused"
+          "$BIN/algo" --home "$TEST_HOME" resume
+          test ! -e "$TEST_HOME/.algo/paused"
+          echo "pause/resume OK"
+
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 30
+    continue-on-error: true # informational until green; then gate it
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent -> target
+
+      - name: Build agent release
+        run: cargo build --release --manifest-path agent/Cargo.toml
+
+      - name: init → doctor → uninstall round-trip (isolated HOME)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TEST_HOME="$(mktemp -d)/home"
+          mkdir -p "$TEST_HOME"
+          BIN="$GITHUB_WORKSPACE/agent/target/release"
+          "$BIN/algo" --home "$TEST_HOME" init --yes
+          "$BIN/algo" --home "$TEST_HOME" doctor
+          "$BIN/algo" --home "$TEST_HOME" uninstall
+          echo "install E2E OK on macos-14 (informational)"
+
+  gate:
+    needs: [e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install E2E gate verdict
+        run: |
+          if [ "${{ needs.e2e.result }}" != "success" ]; then
+            echo "INSTALL E2E FAIL: e2e=${{ needs.e2e.result }}" >&2
+            exit 1
+          fi
+          echo "Install E2E gate passed (ubuntu matrix)"

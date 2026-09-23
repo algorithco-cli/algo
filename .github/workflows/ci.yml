@@ -1,0 +1,173 @@
+name: CI Gate
+
+# Always-run orchestrator + repo hygiene gates (AGENTS.md §2, per-PR merge blockers).
+# Required check: "CI Gate / gate". No path filters here on purpose — required
+# checks that do not run block merging, so every required context must come
+# from a workflow/job that always runs on pull_request/push/merge_group.
+# Heavy path-specific suites live in their own workflows (rust/eval/buf/web/
+# fuzz/install-e2e/latency/secrets); each exposes an always-run gate context
+# listed in docs/branch-protection.json.
+#
+# Action pins (verified 2026-09-23):
+#   actions/checkout@v6, codeql-action@v4 are current majors; setup-node@v6,
+#   setup-python@v6, upload-artifact@v6 are node24/current.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: YAML self-lint (all workflows + dependabot)
+        run: |
+          python3 - <<'EOF'
+          import sys
+          from pathlib import Path
+          try:
+              import yaml
+          except ImportError:
+              print("pyyaml missing; installing")
+              import subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pyyaml"])
+              import yaml
+          bad = []
+          files = sorted(Path(".github/workflows").glob("*.yml")) + sorted(Path(".github/workflows").glob("*.yaml"))
+          dep = Path(".github/dependabot.yml")
+          if dep.exists():
+              files.append(dep)
+          assert files, "no workflow files found"
+          for f in files:
+              try:
+                  list(yaml.safe_load_all(f.read_text(encoding="utf-8")))
+              except Exception as exc:  # noqa: BLE001 — report any parse failure
+                  bad.append(f"{f}: {exc}")
+          if bad:
+              print("WORKFLOW YAML FAIL:", file=sys.stderr)
+              for b in bad:
+                  print(f"  - {b}", file=sys.stderr)
+              sys.exit(1)
+          print(f"YAML OK: {len(files)} files")
+          EOF
+
+      - name: CODEOWNERS + PR template sanity
+        run: |
+          python3 - <<'EOF'
+          import sys
+          from pathlib import Path
+          failures = []
+          co = Path("docs/CODEOWNERS")
+          if not co.exists():
+              failures.append("docs/CODEOWNERS missing (canonical location per docs/github-org-plan.md §2)")
+          else:
+              for n, line in enumerate(co.read_text(encoding="utf-8").splitlines(), 1):
+                  s = line.strip()
+                  if not s or s.startswith("#"):
+                      continue
+                  parts = s.split()
+                  if len(parts) < 2 or not any(p.startswith("@") for p in parts[1:]):
+                      failures.append(f"docs/CODEOWNERS:{n} has no @owner: {s}")
+                  target = parts[0].lstrip("/").split("*")[0].rstrip("/")
+                  if target and not Path(target).exists():
+                      failures.append(f"docs/CODEOWNERS:{n} target does not exist: {parts[0]}")
+          if not Path(".github/PULL_REQUEST_TEMPLATE.md").exists():
+              failures.append(".github/PULL_REQUEST_TEMPLATE.md missing")
+          if failures:
+              print("OWNERSHIP FAIL:", file=sys.stderr)
+              for f in failures:
+                  print(f"  - {f}", file=sys.stderr)
+              sys.exit(1)
+          print("CODEOWNERS + PR template OK")
+          EOF
+
+      - name: ADR gate (D-* implementation needs a merged ADR)
+        # AGENTS.md: "CI blocks D-* implementation without a merged ADR."
+        # Precise rule (low false-positive): if added lines in product paths
+        # reference a decision ID (D-01..D-10, D-A..D-G) while the diff contains
+        # no docs/adr/*.md change, fail with instructions.
+        run: |
+          python3 - <<'EOF'
+          import re
+          import subprocess
+          import sys
+
+          def sh(*args):
+              return subprocess.run(args, capture_output=True, text=True, check=False)
+
+          base = "origin/main"
+          r = sh("git", "rev-parse", "--verify", "--quiet", f"{base}...HEAD")
+          rev_range = f"{base}...HEAD" if r.returncode == 0 else "HEAD~1...HEAD"
+          files = sh("git", "diff", "--name-only", rev_range).stdout.splitlines()
+          product = tuple(["core/", "agent/", "backend/", "proto/", "eval/", "dashboard/", "web/"])
+          adr_touched = any(f.startswith("docs/adr/") and f.endswith(".md") for f in files)
+          if adr_touched:
+              print("ADR gate: docs/adr touched in this diff — pass")
+              sys.exit(0)
+          pat = re.compile(r"^\+.*\bD-(?:0[1-9]|10|[A-G])\b")
+          hits = []
+          for f in files:
+              if not f.startswith(product):
+                  continue
+              d = sh("git", "diff", "-U0", rev_range, "--", f).stdout.splitlines()
+              for line in d:
+                  if line.startswith("+++"):
+                      continue
+                  if pat.match(line):
+                      hits.append(f"{f}: {line[:160]}")
+          if hits:
+              print("ADR GATE FAIL: product diff references decision ID(s) with no docs/adr change:", file=sys.stderr)
+              for h in hits[:20]:
+                  print(f"  - {h}", file=sys.stderr)
+              print("Add the merged ADR to docs/adr/ in this PR (branch adr/D0X-*) or remove the D-* reference.", file=sys.stderr)
+              sys.exit(1)
+          print(f"ADR gate OK ({len(files)} changed files, no unlinked D-* references)")
+          EOF
+
+      - name: Conventional-commit title check
+        # One-repo-per-PR + conventional commits (AGENTS.md §0.8, CONTRIBUTING).
+        # PR events: lint the PR title. Push/merge_group: lint HEAD subject.
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            TITLE="$PR_TITLE"
+          else
+            TITLE="$(git log -1 --pretty=%s)"
+          fi
+          echo "title: $TITLE"
+          if ! printf '%s' "$TITLE" | grep -Eq '^(feat|fix|docs|chore|refactor|test|ci|perf|build|style|revert)(\(.+\))?(!)?: .+'; then
+            echo "TITLE FAIL: must be conventional-commit style, e.g. 'feat(agent): shadow default'" >&2
+            exit 1
+          fi
+          echo "title OK"
+
+  gate:
+    needs: [meta]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: CI gate verdict
+        run: |
+          if [ "${{ needs.meta.result }}" != "success" ]; then
+            echo "CI GATE FAIL: meta=${{ needs.meta.result }}" >&2
+            exit 1
+          fi
+          echo "CI gate passed"

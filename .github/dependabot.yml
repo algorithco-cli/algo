@@ -1,0 +1,68 @@
+# Dependabot — keep Actions, Rust, npm, and pip dependencies current.
+# Security updates land as PRs and go through the same required checks
+# (docs/branch-protection.json) as any other change.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, ci]
+
+  - package-ecosystem: cargo
+    directory: /core
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, core]
+
+  - package-ecosystem: cargo
+    directory: /agent
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, agent]
+
+  - package-ecosystem: cargo
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, backend]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, web]
+
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, dashboard]
+
+  - package-ecosystem: pip
+    directory: /eval
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: chore
+    labels: [dependencies, eval]

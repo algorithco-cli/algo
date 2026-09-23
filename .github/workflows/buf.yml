@@ -1,20 +1,32 @@
 name: buf
 
+# Proto contracts gate (AGENTS.md §2): buf lint + breaking on every PR.
+# Always runs (required check "buf / lint-breaking") — no path filters, since
+# required checks that do not run block merging.
+# codegen-smoke runs only on v* tags (Rust+TS generation proof).
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 on:
   push:
+    branches: ["main"]
     tags:
       - "v*"
-    paths:
-      - "proto/**"
   pull_request:
-    paths:
-      - "proto/**"
+    branches: ["main"]
+  merge_group:
 
 jobs:
   lint-breaking:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -42,6 +54,7 @@ jobs:
 
   codegen-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: lint-breaking
     if: startsWith(github.ref, 'refs/tags/v')
     env:
@@ -56,11 +69,11 @@ jobs:
       # (https://github.com/bufbuild/protobuf-es/issues/1175). Verified 2026-09-20.
       PROTOC_GEN_ES_VERSION: 2.2.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
       - uses: dtolnay/rust-toolchain@stable

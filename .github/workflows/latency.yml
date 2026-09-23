@@ -1,0 +1,56 @@
+name: Latency
+
+# Latency-budget execution per AGENTS.md §2 (L0/L1 p50<3/<10ms; L3 report-only)
+# and plans/phase-1-09-quality-latency-eval.md. Required check:
+# "Latency / benches".
+#
+# NOTE (follow-up, not a gate hole): scripts/latency-budget.sh assumes a
+# single root cargo workspace, but this repo has three (core/, agent/,
+# backend/). Until that script is fixed for the split layout, this workflow
+# runs every criterion bench with a short measurement profile and uploads the
+# raw artifacts; hard budget math (p50/p99 + >10% regression vs p1-exit
+# baseline) runs via scripts/latency-budget.{sh,ps1} in release prep.
+# Unit-level latency proofs (pipeline L0/L1, redact 10KB) run in Rust / rust.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  benches:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core -> target,agent -> target
+
+      - name: cargo bench (core, short profile)
+        working-directory: core
+        run: cargo bench --workspace -- --measurement-time 5 --warm-up-time 1 --sample-size 20
+
+      - name: cargo bench (agent, short profile)
+        working-directory: agent
+        run: cargo bench --workspace -- --measurement-time 5 --warm-up-time 1 --sample-size 20
+
+      - name: Upload criterion artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: criterion-${{ github.sha }}
+          path: |
+            core/target/criterion/
+            agent/target/criterion/

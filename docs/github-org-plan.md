@@ -48,15 +48,34 @@ Each top-level dir keeps its own `AGENTS.md` (build/test commands, conventions, 
 
 - Canonical file: `docs/CODEOWNERS`. GitHub natively recognizes CODEOWNERS in repository
 > root, `.github/`, AND `docs/` — so `docs/CODEOWNERS` **IS enforced**; no action needed.
+> (Verified against the CODEOWNERS reference 2026-09-23: locations searched in
+> that order, first hit wins.)
 - Verified 2026-09-20: no `CODEOWNERS` copy exists at repo root or under `.github/`
 > (checked via `**/CODEOWNERS` glob — single hit: `docs/CODEOWNERS`; `.github/` contains
 > only `PULL_REQUEST_TEMPLATE.md` + `workflows/`).
 - Rule: do NOT duplicate the file. Keep `docs/CODEOWNERS` as the single canonical copy.
 > If a root or `.github/` copy ever appears, remove the duplicate and keep `docs/` canonical.
+- Coverage 2026-09-23: extended beyond docs to product paths (`/proto /core
+> /agent /backend /eval /dashboard /web`), gates (`/.github /scripts`,
+> `docs/branch-protection.json`, `docs/CODEOWNERS` itself). Remaining human
+> step: CREATE the `@algorithcoguard/*` teams (security, core, agent, backend,
+> eval, privacy, release, maintainers) — CODEOWNERS lines referencing missing
+> teams request no reviews until the teams exist.
 - One-repo-per-PR still applies at directory granularity: one top-level dir per PR
 > (plus `docs/` linkage), so CODEOWNERS reviewers stay scoped.
 
 ## 3. Branch protection (enforce at monorepo creation)
+
+> Status 2026-09-23: protection-as-code is READY but NOT APPLIED. Preflight
+> verified via `gh api`: `GET branches/main/protection` → HTTP 404 "Branch
+> not protected"; `GET rulesets` → empty list. The PUT is NOT attempted by
+> agents (human act: repo admin runs `scripts/apply-branch-protection.{sh,ps1}`
+> after creating the §2 teams). Note: GitHub docs gate protected branches to
+> Pro/Team/Enterprise for private repos (Free covers public repos) — if the
+> apply run hits HTTP 403 "Upgrade to GitHub Pro", that is the expected
+> plan-gate: flip to Pro (or public after license ADR-0001 + legal sign-off)
+> and re-run. Until enforcement lands, every check below still RUNS visibly
+> on each PR; merging discipline is human-enforced via the PR-template box.
 
 - Default branch `main`. Require PR + passing CI (fmt/lint/type, tests, relevant gates per §4) before merge.
 - **CODEOWNERS required reviewers** (agent approval never sufficient) on:
@@ -65,10 +84,25 @@ Each top-level dir keeps its own `AGENTS.md` (build/test commands, conventions, 
   - signature verification (policy bundles, releases, self-update)
   - `algo init` / `algo uninstall` file-modification paths
   - auth (device flow, tokens, orgs/roles)
-- Path-scoped required checks (same repo, scoped by path):
-  - `proto/**`: require `buf lint` + `buf breaking` green on every PR touching contracts.
-  - `core/**`, `agent/**`: require latency benchmarks + eval false-allow gate green.
-  - `docs/adr/**`: ADR rule — CI blocks any `D-*` implementation PR without a merged ADR in `docs/adr/`.
+- Required status checks (exact contexts in `docs/branch-protection.json`;
+  strict = branches must be up to date; admins enforced; stale reviews
+  dismissed; code-owner review required; 1 approval; conversation resolution
+  required; force-push/deletion blocked):
+  - `CI Gate / gate` (repo hygiene: YAML lint, CODEOWNERS sanity, ADR gate, title)
+  - `Rust / rust` (fmt + clippy `-D warnings` + test + deny + audit on core/agent/backend)
+  - `eval / gate` (ruff + format + mypy + pytest + harness baselines, 3.11+3.12)
+  - `buf / lint-breaking` (proto lint + breaking; codegen-smoke on v* tags)
+  - `secrets / gitleaks` (pinned OSS scan, no org license)
+  - `Web / gate` (web + dashboard lint/test/build, audit critical-only per ADR-0011)
+  - `Fuzz Smoke / smoke` (60s per target; nightly 1h informational)
+  - `Install E2E / gate` (ubuntu 22.04/24.04 init→doctor→uninstall; macOS informational)
+  - `Latency / benches` (criterion execution + artifacts; hard budget math via scripts in release prep)
+- Informational (run, not required): `links` (md-only paths), CodeQL
+  (actions/python/js-ts + weekly schedule).
+- Path-scoped intent from the original plan is preserved by the workflows
+  that own each path (`proto/**` → buf, `core|agent/**` → rust+latency+fuzz,
+  `docs/adr/**` → ADR gate in CI Gate); required contexts are the always-run
+  gate jobs because required checks that do not run block merging.
 
 ## 4. Release flow (monorepo tags, consumers-pin-exact)
 
@@ -96,7 +130,12 @@ gh repo view algorithcoguard/algorithco-guard
 # Visibility flips to public only after license ADR (D-B/D-07) + legal sign-off.
 
 # 3. After creation: set defaults, branch protection, required checks per §3
-#    (monorepo-wide protection + path-scoped checks; single docs/CODEOWNERS enforced — no copy needed)
+#    Protection-as-code now exists — DO NOT run until the Pro/public flip
+#    (human act). Preflight today returns the expected plan-gated 403:
+#    ./scripts/apply-branch-protection.sh --check-only
+#    # or: ./scripts/apply-branch-protection.ps1 -CheckOnly
+#    # after flip: ./scripts/apply-branch-protection.sh  (PUTs docs/branch-protection.json)
+#    (monorepo-wide protection + always-run gate contexts; single docs/CODEOWNERS enforced — no copy needed)
 ```
 
 Why not created now: Phase 0 gate needs license ADR (D-B/D-07, legal sign-off pending —

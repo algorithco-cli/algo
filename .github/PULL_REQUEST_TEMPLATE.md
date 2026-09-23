@@ -15,6 +15,7 @@ Task ID:
 - [ ] No secrets (gitleaks clean; no secrets in code/logs/fixtures/datasets)
 - [ ] Tests + docs updated; conventional commit; one repo per PR; linked tracking issue in `docs`
 - [ ] CODEOWNERS human review requested (required for: deny list, thresholds, redaction, sig-verify, `algo init`/`algo uninstall`, auth)
+- [ ] Required status checks green per `docs/branch-protection.json` (CI Gate, Rust, Eval, Buf, Secrets, Web, Fuzz Smoke, Install E2E, Latency) — N/A needs reason; until branch protection is applied (preflight 2026-09-23: 404 not-protected; apply is a human admin act, see `docs/github-org-plan.md` §5), this box is enforced by reviewer discipline, not by GitHub
 - [ ] Install-path E2E included (`algo init → algo doctor → algo uninstall → diff` proves reversible) — N/A if not install path
 - [ ] UX checklist considered (§7: shadow-first, `algo why`, profiles, privacy modes, quiet-unless-attention, Variant 1 tokens) — N/A if not user-facing
 

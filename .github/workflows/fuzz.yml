@@ -1,0 +1,78 @@
+name: Fuzz Smoke
+
+# cargo-fuzz smoke per fuzz/README.md: 60s per target on PR (required check
+# "Fuzz Smoke / smoke"); 1h per target on schedule (informational `nightly`
+# job — NOT required, does not run on PRs).
+# Targets: fuzz_shell_parse, fuzz_policy_evaluate, fuzz_adapter_parse.
+# Fail-safe invariant: never panic; error → ask, never allow.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+  schedule:
+    - cron: "0 2 * * *" # nightly 1h each (see `nightly` job)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  smoke:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz -> target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz smoke 60s per target
+        working-directory: fuzz
+        run: |
+          for t in fuzz_shell_parse fuzz_policy_evaluate fuzz_adapter_parse; do
+            echo "=== $t (60s) ==="
+            cargo fuzz run "$t" -- -max_total_time=60
+          done
+
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz -> target
+
+      - uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz nightly 1h per target
+        working-directory: fuzz
+        run: |
+          for t in fuzz_shell_parse fuzz_policy_evaluate fuzz_adapter_parse; do
+            echo "=== $t (3600s) ==="
+            cargo fuzz run "$t" -- -max_total_time=3600
+          done

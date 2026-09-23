@@ -1,0 +1,76 @@
+name: Rust
+
+# Rust gates per AGENTS.md §2: fmt/lint/type + unit/integration, deny/audit.
+# Always runs (required check "Rust / rust") — no path filters.
+# Fuzz/mutants/latency-benches are separate workflows (fuzz.yml/latency.yml).
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_DENY_VERSION: "0.20.2" # verified latest 2026-09-23 (cargo search)
+  CARGO_AUDIT_VERSION: "0.22.2" # verified latest 2026-09-23 (cargo search)
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core -> target,agent -> target,backend -> target
+
+      - name: fmt --check (core, agent, backend)
+        # NOTE: `cargo fmt --manifest-path` misresolves ("Failed to find
+        # targets") — run per-directory instead (verified 2026-09-23).
+        run: |
+          for ws in core agent backend; do
+            (cd "$ws" && cargo fmt --check)
+          done
+
+      - name: clippy -D warnings (core, agent, backend)
+        run: |
+          cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path agent/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+
+      - name: cargo test (core, agent, backend)
+        run: |
+          cargo test --manifest-path core/Cargo.toml
+          cargo test --manifest-path agent/Cargo.toml
+          cargo test --manifest-path backend/Cargo.toml
+
+      - name: Install cargo-deny + cargo-audit (pinned)
+        run: |
+          cargo install cargo-deny --version "${CARGO_DENY_VERSION}" --locked
+          cargo install cargo-audit --version "${CARGO_AUDIT_VERSION}" --locked
+
+      - name: cargo deny check (core, agent, backend)
+        # deny.toml resolution: each workspace dir walks up to repo-root deny.toml.
+        run: |
+          cargo deny --manifest-path core/Cargo.toml check
+          cargo deny --manifest-path agent/Cargo.toml check
+          cargo deny --manifest-path backend/Cargo.toml check
+
+      - name: cargo audit (core, agent, backend)
+        run: |
+          cargo audit --manifest-path core/Cargo.toml
+          cargo audit --manifest-path agent/Cargo.toml
+          cargo audit --manifest-path backend/Cargo.toml

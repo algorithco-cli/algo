@@ -8,11 +8,17 @@ name: eval
 
 on:
   push:
-    paths:
-      - "eval/**"
+    branches: ["main"]
   pull_request:
-    paths:
-      - "eval/**"
+    branches: ["main"]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   # Placeholder pre-ratification ceiling on false_allow_rate (dangerous slice).
@@ -23,15 +29,16 @@ env:
 jobs:
   eval:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -65,7 +72,7 @@ jobs:
           python -m harness.cli --dataset datasets/v0.1/seed.jsonl --provider mock_ask_all --output reports/mock_ask_all
 
       - name: Upload eval reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: eval-reports-py${{ matrix.python-version }}-${{ github.sha }}
           path: eval/reports/
@@ -111,3 +118,19 @@ jobs:
               sys.exit(1)
           print("Eval gate plumbing passed (placeholder threshold; binding per-profile ceilings pending docs/exit-gate-P0.md ratification).")
           EOF
+
+  gate:
+    # Single always-run verdict over the matrix (required check "eval / gate").
+    # Matrix job names vary per Python version, so the ruleset requires this.
+    needs: [eval]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Eval gate verdict
+        run: |
+          if [ "${{ needs.eval.result }}" != "success" ]; then
+            echo "EVAL GATE FAIL: eval=${{ needs.eval.result }}" >&2
+            exit 1
+          fi
+          echo "Eval gate passed (3.11 + 3.12)"
