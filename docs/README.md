@@ -1,6 +1,6 @@
 # algorithco guard — Docs (Phase 0)
 
-Product: **algorithco guard**. CLI: **`algo`**. Proto: `algorithco_guard.v0`. Crates: `algo-*`. Home: `~/.algo/`.
+Product: **algorithco guard**. CLI: **`algo`**. Proto: `algorithco_guard.v0`. Crates: `algo-*`. Home: `~/.algo/`. (canonical naming: [adr/0002-naming](./adr/0002-naming.md))
 
 Org: `algorithcoguard` on GitHub.
 

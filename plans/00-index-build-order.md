@@ -1,8 +1,8 @@
 # algorithco guard — Plans Index + Build Order
 
-> Source: `../jev-guard-project-plan.md` (397 lines, master plan).
+> Source: `../jev-guard-project-plan.md` (402 lines; was 397 before the 2026-09-23 docs-consolidation pointer note in its §3 — master plan is historical source, this index is canonical for layout/DAG/order).
 > Product: **algorithco guard**. CLI: **`algo`** (`algo init|doctor|status|why|log|enforce|pause|login|policy`).
-> Naming: proto package `algorithco_guard.v0`, Rust crates `algo-*`, home dir `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`.
+> Naming: proto package `algorithco_guard.v0`, Rust crates `algo-*`, home dir `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db` (canonical: [`../docs/adr/0002-naming.md`](../docs/adr/0002-naming.md)).
 > `plans/` is the executable breakdown. Each file is one reviewable scope.
 > Build order is strict: `proto → core → agent/backend → dashboard`. `eval` gates thresholds.
 
