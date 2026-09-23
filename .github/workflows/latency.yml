@@ -40,12 +40,18 @@ jobs:
           workspaces: core -> target,agent -> target
 
       - name: cargo bench (core, short profile)
+        # Explicit --bench targets: trailing criterion args must NOT reach
+        # libtest harnesses (they reject --measurement-time). Verified 2026-09-23.
+        # Spike bench (spike_eval) excluded — not a product budget.
         working-directory: core
-        run: cargo bench --workspace -- --measurement-time 5 --warm-up-time 1 --sample-size 20
+        run: |
+          for b in normalize policy_eval redact_10k; do
+            cargo bench --bench "$b" -- --measurement-time 5 --warm-up-time 1 --sample-size 20
+          done
 
       - name: cargo bench (agent, short profile)
         working-directory: agent
-        run: cargo bench --workspace -- --measurement-time 5 --warm-up-time 1 --sample-size 20
+        run: cargo bench --bench pipeline_L0L1 -- --measurement-time 5 --warm-up-time 1 --sample-size 20
 
       - name: Upload criterion artifacts
         uses: actions/upload-artifact@v6

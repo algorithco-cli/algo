@@ -46,13 +46,17 @@ rustup toolchain install nightly
 ## Smoke (PR, 60s each) — required merge gate
 
 ```powershell
-cargo fuzz run fuzz_shell_parse       -- -max_total_time=60
-cargo fuzz run fuzz_policy_evaluate   -- -max_total_time=60
-cargo fuzz run fuzz_adapter_parse     -- -max_total_time=60
+# --fuzz-dir required (verified 2026-09-23, cargo-fuzz 0.13.2): fuzz/ is a
+# STANDALONE crate, but cargo-fuzz discovers <cwd>/fuzz by default, so bare
+# `cargo fuzz` fails with "could not find a cargo project" both from root
+# and from fuzz/. Always run from the REPO ROOT with --fuzz-dir fuzz.
+cargo fuzz run --fuzz-dir fuzz fuzz_shell_parse       -- -max_total_time=60
+cargo fuzz run --fuzz-dir fuzz fuzz_policy_evaluate   -- -max_total_time=60
+cargo fuzz run --fuzz-dir fuzz fuzz_adapter_parse     -- -max_total_time=60
 
 # or all three via loop
 foreach ($t in "fuzz_shell_parse","fuzz_policy_evaluate","fuzz_adapter_parse") {
-  cargo fuzz run $t -- -max_total_time=60
+  cargo fuzz run --fuzz-dir fuzz $t -- -max_total_time=60
 }
 ```
 
@@ -61,9 +65,9 @@ CI PR job `fuzz-smoke` runs the 60s smoke per `plans/phase-1-09-quality-latency-
 ## Nightly (1h each) — scheduled
 
 ```powershell
-cargo +nightly fuzz run fuzz_shell_parse       -- -max_total_time=3600
-cargo +nightly fuzz run fuzz_policy_evaluate   -- -max_total_time=3600
-cargo +nightly fuzz run fuzz_adapter_parse     -- -max_total_time=3600
+cargo +nightly fuzz run --fuzz-dir fuzz fuzz_shell_parse       -- -max_total_time=3600
+cargo +nightly fuzz run --fuzz-dir fuzz fuzz_policy_evaluate   -- -max_total_time=3600
+cargo +nightly fuzz run --fuzz-dir fuzz fuzz_adapter_parse     -- -max_total_time=3600
 ```
 
 Recommended CI schedule: nightly `fuzz-nightly` workflow (1h per target, corpus persisted via `actions/cache` on `fuzz/corpus/<target>/`).

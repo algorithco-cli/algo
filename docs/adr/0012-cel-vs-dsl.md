@@ -81,8 +81,8 @@ fallback if CEL conditions fail at merge review.
   https://docs.rs/crate/cel-interpreter/latest/source/CHANGELOG.md;
   API `https://docs.rs/cel-interpreter/latest/cel_interpreter/struct.Program.html`
   (`compile`/`execute`/`references` — additionally proven by compiling
-  tests, not docs alone); crate https://crates.io/crates/cel-interpreter
-  (0.10.0 2025-07-23); advisory CVE-2025-62162 fixed ≥0.11.4.
+  tests, not docs alone); crate https://crates.io/crates/cel
+  (`cel-interpreter` was renamed to `cel`; old crates.io page 404s); advisory CVE-2025-62162 fixed ≥0.11.4.
 - Merge conditions (human): (1) sign below; (2) MSRV ≥1.82 ratified;
   (3) `cel >=0.11.4` floor + never-panics test ported to product gates;
   (4) migration note filed as tracking issue (port 13 rules to CEL bundle,

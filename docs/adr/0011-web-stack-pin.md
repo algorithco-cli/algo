@@ -91,6 +91,31 @@ Pin `web/` for the private MVP and record the upgrade plan:
 - Official links (2026-09-22): https://github.com/advisories/GHSA-fx2h-pf6j-xcff,
   https://vite.dev/guide/migration, https://react.dev/blog/2024/04/25/react-19-upgrade-guide
 
+## Update 2026-09-23 — upgrade step 1 pulled forward (supersedes the pin above)
+
+CI (`Web / web`, PR #1) proved a **critical** advisory the 2026-09-22 audit
+did not list: `vitest ≤4.1.10` "When Vitest UI server is listening, arbitrary
+file can be read and executed" (fix: `vitest@5.0.1`, semver-major), plus
+react-router highs. The "no Vite 6+ during private MVP" pin is therefore
+superseded for `web/` by this update (still draft, unsigned — human merge
+of the PR ratifies it):
+
+- `vite ^5.4.8 → ^8.3.0`, `@vitejs/plugin-react ^4.3.3 → ^6.1.1`,
+  `vitest ^2.1.9 → ^5.0.1` (vitest 5 peers `vite ^6.4 || ^7 || ^8`, so the
+  critical fix requires the Vite major). Installed sequentially (joint
+  `vite+plugin+vitest` install ERESOLVEs) + compatible `npm audit fix`
+  (react-router-dom → 6.30.6).
+- `vite.config.ts`: dropped `rollupOptions.output.manualChunks` object form
+  (removed in Vite 8 — function-only now); chunking loss is perf tuning, not
+  correctness.
+- Verified 2026-09-23: `npm run lint` (tsc + biome, 61 files) clean,
+  `vitest run` 28/28 passed, `vite build` + prerender (11 routes) green.
+  `npm audit`: **0 critical, 0 high**, 2 moderate remaining
+  (react-router pair — dev-server open-redirect scope, same loopback-only
+  acceptance as before).
+- `dashboard/` untouched (its audit gate passed: 1 moderate esbuild, dev-only).
+- Remaining plan steps (TS 7, React 19) stay deferred to pre-public-release.
+
 ## Sign-off (leave blank — human act)
 
 - [ ] Human sign-off: __________ Date: __________
