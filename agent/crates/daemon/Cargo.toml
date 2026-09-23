@@ -35,7 +35,11 @@ harness = false
 [dev-dependencies]
 tokio = { version = "1.53", features = ["full"] }
 tempfile = "3.10"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[features]
+# Real Jev client in the pool (default OFF — Mock only, Jev stays OFF per waiver).
+jev = ["algo-provider/jev"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

@@ -21,6 +21,12 @@ auto-approve value (see §3 gating note — always-ask must not pass).
 Latency `p50` is over the `250ms` budget on both vantages (p99 passes).
 Calibration is poor: ECE 0.56 / Brier 0.52 (both vantages) on provisional questions.
 
+> **Precondition note 2026-09-23:** R2 (retention SLA) is resolved per owner decision
+> (`docs/DEFERRED.md:4.2`, `docs/verify/blocked-on-typesafe.md:R2` — vendor link TBD).
+> This changes nothing below: real (non-shadow) Jev traffic stays gated on the redact
+> crate + `--show-egress` + `local-only` default + consent flow
+> (`docs/redact-consent-readiness.md`) **and** on R1/R3/R4, all still open.
+
 ## Decision
 
 Phase 1 Jev stays **advisory / shadow-only**: daemon computes the Jev decision,
@@ -29,7 +35,8 @@ adapter **always renders `approve`** and never blocks on Jev. No Phase 1
 enforcement may depend on Jev auto-allow/deny.
 
 The **L3 p50 target stays `< 250 ms`** and the **p99 stays `< 800 ms`**
-(`docs/exit-gate-P0.md:1.3`). No increase to 500 ms in this ADR.
+(`docs/exit-gate-P0.md:1.3` — canonical threshold source; numbers repeated here
+so this Decision block stays self-contained). No increase to 500 ms in this ADR.
 Revisit only after question tuning (EVAL-6) shows real utility
 (before/after: false_ask ceiling, allow_rate, false_allow at fixed ask, AUROC,
 ECE/Brier, p50/p99, cost). Latency improvement must come from design
@@ -66,6 +73,9 @@ budget inflation.
 
 ## Verification
 
+- L2/distillation is separately and permanently closed per MCA §2.3(b) (see
+  `docs/DEFERRED.md:4.3`) — do not confuse Jev's shadow-only status below (which a
+  superseding ADR may change) with L2's status (which will not change).
 - Phase 1 ships with `shadow: true` only; any PR touching Jev enforcement beyond
   shadow is CI-blocked until this ADR is superseded.
 - `docs/exit-gate-P0.md:1.3` still shows `p50 < 250` / `p99 < 800` with measured
@@ -76,6 +86,8 @@ budget inflation.
   (b) false_ask ≤ ceiling or allow_rate / AUROC headroom versus always-ask
   baseline (see §3), (c) ECE/Brier monotonic post-calibration, and
   (d) p50/p99 + cost/1k within maintained budgets.
+  (§1.1/§1.3/§1.5 numbers are canonical in `docs/exit-gate-P0.md`; claim ledger
+  in `docs/verify/jev-claims.md`.)
 
 ## Sign-off (leave blank — human act)
 

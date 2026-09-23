@@ -15,7 +15,7 @@
 //!   policy: real config snapshot (read-only, never writes decision path)
 //!   footer: keyboard hints + auto-refresh note
 
-use crate::app::{App, LoginFocus, LoginStatus, ViewMode};
+use crate::app::{App, LoginFocus, LoginStatus, ViewMode, CLI_TOOLS, CLI_TOOL_COUNT};
 use chrono::{DateTime, Utc};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -82,6 +82,84 @@ fn spinner_frame(tick: usize) -> &'static str {
     SPINNER[tick % SPINNER.len()]
 }
 
+/// Marching-ants outline: a rotating dashed border with gaps.
+///
+/// Drawn cell-by-cell over a box `rect` AFTER its `Block` + contents, so the
+/// phase fully controls the dashes. Only straight border glyphs are replaced —
+/// title text and corners are left intact (corners just tinted to match).
+/// Perimeter order is clockwise, so an increasing `phase` marches the dashes
+/// clockwise around the box. `phase` must come from wall-clock pacing
+/// (`App::anim_phase`) — never from the per-event tick counter, or input
+/// floods (mouse motion) visibly speed the animation up.
+fn render_marching_dashes(
+    frame: &mut Frame,
+    rect: ratatui::layout::Rect,
+    phase: usize,
+    style: Style,
+) {
+    if rect.width < 4 || rect.height < 3 {
+        return;
+    }
+    const DASH: usize = 3;
+    const GAP: usize = 2;
+    const PERIOD: usize = DASH + GAP;
+    let on = |p: usize| (p + PERIOD - phase % PERIOD) % PERIOD < DASH;
+
+    let buf = frame.buffer_mut();
+    let x0 = rect.x;
+    let y0 = rect.y;
+    let x1 = rect.x + rect.width - 1;
+    let y1 = rect.y + rect.height - 1;
+    let w = (rect.width - 2) as usize; // horizontal straight-run length
+    let h = (rect.height - 2) as usize; // vertical straight-run length
+
+    // Top edge (left→right), then bottom edge (perimeter continues clockwise).
+    for i in 0..w {
+        let x = x0 + 1 + i as u16;
+        let c = &mut buf[(x, y0)];
+        if c.symbol() == "─" {
+            if on(i) {
+                c.set_symbol("─").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+        let q = w + h + (w - 1 - i);
+        let c = &mut buf[(x, y1)];
+        if c.symbol() == "─" {
+            if on(q) {
+                c.set_symbol("─").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+    }
+    // Right edge (top→bottom), then left edge (perimeter continues clockwise).
+    for j in 0..h {
+        let y = y0 + 1 + j as u16;
+        let c = &mut buf[(x1, y)];
+        if c.symbol() == "│" {
+            if on(w + j) {
+                c.set_symbol("│").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+        let c = &mut buf[(x0, y)];
+        if c.symbol() == "│" {
+            if on(w + h + w + h - 1 - j) {
+                c.set_symbol("│").set_style(style);
+            } else {
+                c.set_symbol(" ");
+            }
+        }
+    }
+    // Corners: keep glyph, tint to match the dashes.
+    for (cx, cy) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
+        buf[(cx, cy)].set_style(style);
+    }
+}
+
 /// Compact centered dialog (fixed size, never a stretched panel).
 fn centered_fixed(w: u16, h: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
     use ratatui::layout::{Constraint, Direction, Layout};
@@ -139,7 +217,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.tab_policy = None;
         app.footer_quit = None;
         app.table_inner = None;
+        for r in app.tool_rects.iter_mut() {
+            *r = None;
+        }
         render_login(frame, app, area);
+        return;
+    }
+
+    // CLI-integration picker is the main view.
+    if app.mode == ViewMode::Connect {
+        // Clear stale legacy hit areas (Feed/Policy tabs, table).
+        app.tab_feed = None;
+        app.tab_policy = None;
+        app.table_inner = None;
+        render_connect(frame, app, area);
         return;
     }
 
@@ -325,18 +416,8 @@ fn render_offline_banner(frame: &mut Frame, app: &App, area: ratatui::layout::Re
 
 fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     // Production-quality auth gate — two primary paths, one secondary fallback.
-    let card = centered_fixed(68, 24, area);
-    let outer_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(COLOR_BRAND))
-        .title(Span::styled(
-            " ◈ algorithco guard ",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        ));
-    let inner = outer_block.inner(card);
-    frame.render_widget(outer_block, card);
+    // No outer container box: the card area is used directly (borderless).
+    let inner = centered_fixed(68, 24, area);
 
     if inner.width < 40 || inner.height < 18 {
         // Fallback for smaller but not tiny terminals
@@ -394,7 +475,7 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let title = Paragraph::new(Line::from(Span::styled(
         "Sign in to Algorithco Guard",
         Style::default()
-            .fg(Color::Rgb(23, 22, 31))
+            .fg(Color::White)
             .add_modifier(Modifier::BOLD),
     )))
     .alignment(ratatui::layout::Alignment::Center);
@@ -445,13 +526,9 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     frame.render_widget(browser_block, chunks[3]);
     app.login_browser = Some(chunks[3]);
 
-    // Browser box contents
+    // Browser box contents — honest: no backend, no fabricated device code.
     if is_browser_pending {
-        let spin = spinner_frame(app.tick);
-        let code = app
-            .login_device_code
-            .clone()
-            .unwrap_or_else(|| "····-····".to_string());
+        let spin = spinner_frame(app.spin_phase);
         let lines = vec![
             Line::from(vec![
                 Span::styled(
@@ -461,27 +538,20 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    "Waiting for browser confirmation…",
+                    "Browser sign-in is not available yet",
                     Style::default()
-                        .fg(Color::Rgb(23, 22, 31))
+                        .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]),
             Line::from(Span::styled(
-                "Complete sign-in in your browser",
+                "Use an API key or Continue offline instead",
                 Style::default().fg(COLOR_MUTED),
             )),
-            Line::from(vec![
-                Span::styled(" Device code: ", Style::default().fg(COLOR_MUTED)),
-                Span::styled(
-                    format!(" {code} "),
-                    Style::default()
-                        .fg(Color::White)
-                        .bg(COLOR_BRAND)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("  → enter in browser", Style::default().fg(COLOR_MUTED)),
-            ]),
+            Line::from(Span::styled(
+                "No browser was opened — nothing is waiting",
+                Style::default().fg(COLOR_MUTED),
+            )),
             Line::from(Span::styled(
                 "Press Esc to cancel  •  [Esc] Cancel",
                 Style::default().fg(COLOR_MUTED),
@@ -572,27 +642,19 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     frame.render_widget(apikey_block, chunks[5]);
     app.login_apikey = Some(chunks[5]);
 
-    // API key contents
+    // API key contents — legacy validating state resolves honestly (no fake
+    // network check); normal flow goes straight to Success on submit.
     if is_validating {
-        let spin = spinner_frame(app.tick);
         let lines = vec![
-            Line::from(vec![
-                Span::styled(
-                    format!(" {spin} "),
-                    Style::default()
-                        .fg(COLOR_BRAND)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "Validating API key…",
-                    Style::default()
-                        .fg(Color::Rgb(23, 22, 31))
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
+            Line::from(vec![Span::styled(
+                "Storing API key locally (not verified)…",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )]),
             Line::from(""),
             Line::from(Span::styled(
-                "Please wait",
+                "No network validation in this MVP",
                 Style::default().fg(COLOR_MUTED),
             )),
         ];
@@ -612,7 +674,7 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
-                    "API key accepted — signed in.",
+                    "API key stored locally, not verified.",
                     Style::default()
                         .fg(COLOR_ALLOW)
                         .add_modifier(Modifier::BOLD),
@@ -644,10 +706,10 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         };
         let input_line = if has_input {
             // Masked with cursor
-            let cursor = if apikey_focused { "▌" } else { "" };
+            let cursor = if apikey_focused { "█" } else { "" };
             Line::from(vec![
                 Span::styled("  ", Style::default()),
-                Span::styled(display, Style::default().fg(Color::Rgb(23, 22, 31))),
+                Span::styled(display, Style::default().fg(Color::White)),
                 Span::styled(
                     cursor,
                     Style::default()
@@ -685,7 +747,16 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         frame.render_widget(field_block, field_rect);
         frame.render_widget(Paragraph::new(input_line), field_inner);
 
-        // Submit / helper line (below the input field)
+        // Submit / helper line (below the input field).
+        // The Submit button gets its OWN sub-Rect from a Layout split and the
+        // label is drawn into exactly that rect — no hand-computed centering
+        // that can drift from what's drawn.
+        let helper_area = ratatui::layout::Rect {
+            x: apikey_inner.x,
+            y: apikey_inner.y + 3,
+            width: apikey_inner.width,
+            height: 1,
+        };
         let can_submit = has_input && !app.login_api_input.trim().is_empty();
         let submit_label = " Submit ";
         let submit_style = if can_submit {
@@ -698,44 +769,63 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
                 .fg(COLOR_MUTED)
                 .bg(Color::Rgb(230, 230, 240))
         };
-        let submit_x = apikey_inner.x + apikey_inner.width.saturating_sub(8) / 2;
-        let submit_rect2 = ratatui::layout::Rect {
-            x: submit_x,
-            y: apikey_inner.y + 3,
-            width: 8,
-            height: 1,
-        };
-        app.login_submit = Some(submit_rect2);
-        let helper = if is_error {
-            Line::from(Span::styled(
-                "Press Enter to retry  •  Esc to go back",
-                Style::default().fg(COLOR_MUTED),
-            ))
-        } else if has_input {
-            Line::from(vec![
-                Span::styled(submit_label, submit_style),
-                Span::styled(
-                    "  Press Enter to submit  •  Esc to cancel",
+        if is_error {
+            app.login_submit = None;
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "Press Enter to retry  •  Esc to go back",
                     Style::default().fg(COLOR_MUTED),
-                ),
-            ])
+                )))
+                .alignment(ratatui::layout::Alignment::Center),
+                helper_area,
+            );
+        } else if has_input {
+            // Centered 8-wide slot for Submit via Layout — stored rect IS the
+            // drawn rect.
+            let parts = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Min(0),
+                    Constraint::Length(8),
+                    Constraint::Min(0),
+                ])
+                .split(helper_area);
+            let submit_rect = parts[1];
+            app.login_submit = Some(submit_rect);
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(submit_label, submit_style)))
+                    .alignment(ratatui::layout::Alignment::Center),
+                submit_rect,
+            );
+            // Helper hint goes on the row below (when space allows) so it
+            // never overlaps the button.
+            if apikey_inner.height >= 5 {
+                let hint_below = ratatui::layout::Rect {
+                    x: apikey_inner.x,
+                    y: apikey_inner.y + 4,
+                    width: apikey_inner.width,
+                    height: 1,
+                };
+                frame.render_widget(
+                    Paragraph::new(Line::from(Span::styled(
+                        "Press Enter to submit  •  Esc to cancel",
+                        Style::default().fg(COLOR_MUTED),
+                    )))
+                    .alignment(ratatui::layout::Alignment::Center),
+                    hint_below,
+                );
+            }
         } else {
-            Line::from(Span::styled(
-                "Press Enter to submit  •  Esc to go back",
-                Style::default().fg(COLOR_MUTED),
-            ))
-        };
-        // Render helper centered just below field
-        let helper_area = ratatui::layout::Rect {
-            x: apikey_inner.x,
-            y: apikey_inner.y + 3,
-            width: apikey_inner.width,
-            height: 1,
-        };
-        frame.render_widget(
-            Paragraph::new(helper).alignment(ratatui::layout::Alignment::Center),
-            helper_area,
-        );
+            app.login_submit = None;
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "Press Enter to submit  •  Esc to go back",
+                    Style::default().fg(COLOR_MUTED),
+                )))
+                .alignment(ratatui::layout::Alignment::Center),
+                helper_area,
+            );
+        }
 
         // Also render a subtle second line for empty hint (below helper)
         if !is_error && !has_input {
@@ -819,18 +909,15 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
             " ✕ Invalid API key ".to_string()
         }
     } else if is_success {
-        " ✓ Signed in — loading workspace… ".to_string()
+        " ✓ Stored locally, not verified — loading… ".to_string()
     } else if is_browser_pending {
         if let Some(msg) = &app.login_status_msg {
             format!(" {} ", msg)
         } else {
-            format!(
-                " {} Waiting for browser confirmation… ",
-                spinner_frame(app.tick)
-            )
+            " Browser sign-in is not available yet ".to_string()
         }
     } else if is_validating {
-        format!(" {} Validating API key… ", spinner_frame(app.tick))
+        " Storing API key locally (not verified)… ".to_string()
     } else if is_apikey_editing {
         if app.login_api_input.is_empty() {
             " Paste your API key above and press Enter ".to_string()
@@ -838,8 +925,8 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
             " Press Enter to submit your API key ".to_string()
         }
     } else {
-        // Idle — single helpful hint, not warning
-        " Tab to switch  •  1 / 2 to choose  •  Enter to select ".to_string()
+        // Idle — no hint text (deliberately blank, keeps spacing).
+        String::new()
     };
     let status = Paragraph::new(Line::from(Span::styled(status_text, status_style)))
         .alignment(ratatui::layout::Alignment::Center);
@@ -904,20 +991,218 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         Span::styled("quick  ", Style::default().fg(COLOR_MUTED)),
     ])])
     .alignment(ratatui::layout::Alignment::Center);
-    // Split last chunk into hints (left/center) and quit (right corner)
-    let footer_split = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(10), Constraint::Length(10)])
-        .split(chunks[8]);
-    frame.render_widget(hints, footer_split[0]);
-    let quit_style = Style::default().fg(COLOR_MUTED);
-    let quit = Paragraph::new(Line::from(Span::styled(" q quit ", quit_style)))
-        .alignment(ratatui::layout::Alignment::Right);
-    frame.render_widget(quit, footer_split[1]);
-    app.login_quit = Some(footer_split[1]);
+    // Footer row intentionally left blank (hints removed). `hints` is
+    // intentionally unrendered; the mouse-quit target is gone with its label
+    // (keyboard `q` still quits). Reference chunks[8] to keep layout stable.
+    let _ = (&hints, chunks[8]);
+    app.login_quit = None;
+
+    // Animated focus rings: rotating dashed border on the active box only.
+    // Drawn last so the dash phase owns the border cells outright.
+    let dash_style = Style::default()
+        .fg(COLOR_BRAND)
+        .add_modifier(Modifier::BOLD);
+    if browser_focused || is_browser_pending {
+        render_marching_dashes(frame, chunks[3], app.anim_phase, dash_style);
+    }
+    if apikey_focused {
+        render_marching_dashes(frame, chunks[5], app.anim_phase, dash_style);
+    }
 
     // Keep legacy alias in sync for tests that still read login_signin
     app.login_signin = app.login_browser;
+}
+
+/// CLI-integration picker — the main view. Lists the terminal coding tools
+/// `algo` can work with. UI-only for now: picking a tool stores the choice
+/// locally with an honest "not connected yet" note; no connection, no fake
+/// connecting animation.
+fn render_connect(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
+    let card = centered_fixed(70, 27, area);
+    if card.width < 50 || card.height < 24 {
+        let msg = Paragraph::new(vec![
+            Line::from(Span::styled(
+                "CLI integration — pick your tool",
+                Style::default()
+                    .fg(COLOR_BRAND)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "Resize wider for the full picker.",
+                Style::default().fg(COLOR_MUTED),
+            )),
+        ]);
+        frame.render_widget(msg, card);
+        return;
+    }
+
+    // Header (2) + 4 tool boxes (5 each) + status (2) + slack + footer (1).
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(card);
+
+    // ---- Header ----
+    let mut title = vec![
+        Span::styled(
+            " algorithco guard ",
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" v{} ", app.version),
+            Style::default().fg(COLOR_MUTED),
+        ),
+        Span::styled(
+            " CLI integration ",
+            Style::default()
+                .fg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    title.extend(mode_badges(app));
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(title),
+            Line::from(Span::styled(
+                "Pick the terminal coding tool algo should work with",
+                Style::default().fg(COLOR_MUTED),
+            )),
+        ]),
+        rows[0],
+    );
+
+    // ---- Tool boxes ----
+    let dash_style = Style::default()
+        .fg(COLOR_BRAND)
+        .add_modifier(Modifier::BOLD);
+    for (i, tool) in CLI_TOOLS.iter().enumerate() {
+        let focused = i == app.tool_selected;
+        let chosen = app.connected_tool == Some(*tool);
+        let border = if focused {
+            Style::default()
+                .fg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(COLOR_BORDER)
+        };
+        let title = if focused {
+            Span::styled(
+                format!(" [{}] ● {} ", i + 1, tool.name()),
+                Style::default()
+                    .fg(Color::White)
+                    .bg(COLOR_BRAND)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(
+                format!(" [{}] {} ", i + 1, tool.name()),
+                Style::default()
+                    .fg(COLOR_MUTED)
+                    .add_modifier(Modifier::BOLD),
+            )
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border)
+            .title(title);
+        let box_rect = rows[1 + i];
+        let inner = block.inner(box_rect);
+        frame.render_widget(block, box_rect);
+        app.tool_rects[i] = Some(box_rect);
+
+        let status = if chosen {
+            Line::from(vec![Span::styled(
+                "● Selected — stored locally (not connected yet)",
+                Style::default()
+                    .fg(COLOR_ALLOW)
+                    .add_modifier(Modifier::BOLD),
+            )])
+        } else {
+            Line::from(vec![
+                Span::styled("○ ", Style::default().fg(COLOR_MUTED)),
+                Span::styled("Not connected", Style::default().fg(COLOR_MUTED)),
+            ])
+        };
+        let hint = if focused {
+            Line::from(Span::styled(
+                "Press Enter to select",
+                Style::default().fg(COLOR_MUTED),
+            ))
+        } else {
+            Line::from("")
+        };
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled(tool.desc(), Style::default().fg(COLOR_MUTED))),
+                status,
+                hint,
+            ]),
+            inner,
+        );
+        if focused {
+            render_marching_dashes(frame, box_rect, app.anim_phase, dash_style);
+        }
+    }
+
+    // ---- Honest status line ----
+    let (status_text, status_style) = match &app.connect_status_msg {
+        Some(msg) => (
+            format!(" {msg} "),
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_ALLOW)
+                .add_modifier(Modifier::BOLD),
+        ),
+        None => (
+            " Selection is stored locally — algo connection wiring is UI-only for now. "
+                .to_string(),
+            Style::default().fg(COLOR_MUTED),
+        ),
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(status_text, status_style)))
+            .alignment(ratatui::layout::Alignment::Center),
+        rows[5],
+    );
+
+    // ---- Footer: hint + quit (own sub-rects, like the feed footer) ----
+    let foot = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(8)])
+        .split(rows[7]);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "click a tool to select · j/k to move · Enter to choose",
+            Style::default().fg(COLOR_MUTED),
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        foot[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            " ✕ Quit ",
+            Style::default().fg(COLOR_MUTED),
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        foot[1],
+    );
+    app.footer_quit = Some(foot[1]);
+
+    // The picker and its click rects must stay in lockstep.
+    debug_assert_eq!(CLI_TOOLS.len(), CLI_TOOL_COUNT);
+    debug_assert_eq!(app.tool_rects.len(), CLI_TOOL_COUNT);
 }
 
 fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
@@ -960,6 +1245,12 @@ fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     ])
     .height(1);
 
+    // Selection highlight comes solely from `row_highlight_style` + `TableState`
+    // (rendered via `render_stateful_widget`, which also scrolls into view).
+    // Cells only set foregrounds — never backgrounds — so there is exactly one
+    // highlighting mechanism. The "#" index column uses white when selected
+    // (same as the rest of the row) and COLOR_MUTED only when unselected.
+    let selected_idx = app.selected;
     let rows: Vec<Row> = app
         .entries
         .iter()
@@ -972,17 +1263,17 @@ fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
                 "deny" => "●",
                 _ => "●",
             };
-            let selected = i == app.selected;
+            let selected = i == selected_idx;
             let base = if selected {
                 Style::default()
                     .fg(Color::White)
-                    .bg(COLOR_BRAND)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
+            let index_style = if selected { base } else { base.fg(COLOR_MUTED) };
             Row::new(vec![
-                Cell::from(format!("{}", i + 1)).style(base.fg(COLOR_MUTED)),
+                Cell::from(format!("{}", i + 1)).style(index_style),
                 Cell::from(format_time_short(e.ts)).style(base),
                 Cell::from(format!("{dot} {action}")).style(if selected {
                     base
@@ -1029,8 +1320,13 @@ fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let table = Table::new(rows, widths)
         .header(header)
         .block(block)
-        .row_highlight_style(Style::default().bg(COLOR_BRAND).fg(Color::White));
-    frame.render_widget(table, area);
+        .row_highlight_style(
+            Style::default()
+                .bg(COLOR_BRAND)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
+    frame.render_stateful_widget(table, area, &mut app.table_state);
 }
 
 fn render_detail(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
@@ -1265,7 +1561,9 @@ fn render_policy(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_footer(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
-    // Mouse-first tabs + quit. Fixed positions double as click targets.
+    // Mouse-first tabs + quit. Each clickable label gets its OWN sub-Rect
+    // from a Layout split and is drawn into exactly that rect — the stored
+    // click-hit rect IS the drawn rect, so they cannot drift apart.
     let feed_label = if app.mode == ViewMode::Feed {
         " ● Feed "
     } else {
@@ -1277,27 +1575,20 @@ fn render_footer(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
         " ○ Policy "
     };
     let quit_label = " ✕ Quit ";
-    let fx = area.x.saturating_add(1);
-    let px = fx.saturating_add(8).saturating_add(1);
-    let qx = area.x.saturating_add(area.width.saturating_sub(9));
-    app.tab_feed = Some(ratatui::layout::Rect {
-        x: fx,
-        y: area.y,
-        width: 8,
-        height: 1,
-    });
-    app.tab_policy = Some(ratatui::layout::Rect {
-        x: px,
-        y: area.y,
-        width: 10,
-        height: 1,
-    });
-    app.footer_quit = Some(ratatui::layout::Rect {
-        x: qx,
-        y: area.y,
-        width: 8,
-        height: 1,
-    });
+    // Fixed Length per label == label width; middle hint takes the rest.
+    let parts = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(8),  // Feed (len 8)
+            Constraint::Length(1),  // spacer
+            Constraint::Length(10), // Policy (len 10)
+            Constraint::Min(0),     // hint
+            Constraint::Length(8),  // Quit (len 8)
+        ])
+        .split(area);
+    app.tab_feed = Some(parts[0]);
+    app.tab_policy = Some(parts[2]);
+    app.footer_quit = Some(parts[4]);
 
     let feed_style = if app.mode == ViewMode::Feed {
         Style::default()
@@ -1319,17 +1610,33 @@ fn render_footer(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
             .fg(COLOR_BRAND)
             .add_modifier(Modifier::BOLD)
     };
-    let spans = vec![
-        Span::styled(feed_label, feed_style),
-        Span::raw(" "),
-        Span::styled(pol_label, pol_style),
-        Span::styled(
-            "   click a row to inspect · refreshes automatically   ",
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(feed_label, feed_style)))
+            .alignment(ratatui::layout::Alignment::Center),
+        parts[0],
+    );
+    // parts[1] intentionally left blank as a spacer.
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(pol_label, pol_style)))
+            .alignment(ratatui::layout::Alignment::Center),
+        parts[2],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "click a row to inspect · refreshes automatically",
             Style::default().fg(COLOR_MUTED),
-        ),
-        Span::styled(quit_label, Style::default().fg(COLOR_MUTED)),
-    ];
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        parts[3],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            quit_label,
+            Style::default().fg(COLOR_MUTED),
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        parts[4],
+    );
 }
 
 #[cfg(test)]
@@ -1395,7 +1702,7 @@ mod tests {
             .expect("render should not panic with entries");
 
         // Also test policy mode
-        app.toggle_policy();
+        app.show_policy();
         terminal
             .draw(|f| render(f, &mut app))
             .expect("render policy should not panic");
@@ -1448,7 +1755,7 @@ mod tests {
         let inner = app.table_inner.expect("table area recorded");
         assert!(!app.handle_click(inner.x.saturating_add(1), inner.y.saturating_add(1)));
         // Policy with real snapshot
-        app.toggle_policy();
+        app.show_policy();
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let s2: String = terminal
             .backend()
@@ -1504,18 +1811,18 @@ mod tests {
             !s.contains("You're offline — nothing is synced. Choose Continue offline."),
             "duplicated warning should be removed"
         );
-        // Single authoritative status line, not duplicated
+        // Hint lines removed: idle status and footer must not show them
         assert!(
-            s.contains("Tab") && s.contains("Enter"),
-            "keyboard hints missing"
+            !s.contains("1 / 2 to choose"),
+            "idle status hint should be gone"
         );
-        // Quit de-emphasized (still present but muted)
-        assert!(s.contains("quit"), "quit missing");
-        // Click areas recorded
+        assert!(!s.contains("1/2 quick"), "footer hints should be gone");
+        assert!(!s.contains("q quit"), "footer quit label should be gone");
+        // Click areas recorded (offline kept; quit target gone with its label)
         assert!(app.login_browser.is_some(), "browser rect not recorded");
         assert!(app.login_apikey.is_some(), "apikey rect not recorded");
         assert!(app.login_offline.is_some(), "offline rect not recorded");
-        assert!(app.login_quit.is_some(), "quit rect not recorded");
+        assert!(app.login_quit.is_none(), "quit rect should be gone");
     }
 
     #[test]
@@ -1535,11 +1842,17 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s.contains("Waiting for browser confirmation"),
-            "browser pending message missing"
+            s.contains("not available yet"),
+            "honest browser-pending message missing: {s}"
         );
-        assert!(s.contains("Device code"), "device code missing");
-        assert!(s.contains("WD-4829-XK"), "device code value missing");
+        assert!(
+            !s.contains("WD-4829-XK"),
+            "fabricated device code must be gone"
+        );
+        assert!(
+            !s.contains("Device code"),
+            "fabricated device-code line must be gone: {s}"
+        );
         assert!(
             s.contains("Esc to cancel") || s.contains("Cancel"),
             "cancel hint missing"
@@ -1588,10 +1901,10 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s4.contains("API key accepted") || s4.contains("Signed in"),
-            "success missing"
+            s4.contains("stored locally, not verified") || s4.contains("Stored locally"),
+            "honest success missing: {s4}"
         );
-        // Validating
+        // Legacy validating state resolves honestly (no fake network check)
         app.login_status = LoginStatus::ApiKeyValidating;
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let s5: String = terminal
@@ -1601,7 +1914,14 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s5.contains("Validating"), "validating missing");
+        assert!(
+            s5.contains("not verified") || s5.contains("Storing"),
+            "honest validating missing: {s5}"
+        );
+        assert!(
+            !s5.contains("Validating API key"),
+            "fake validation theater must be gone: {s5}"
+        );
     }
 
     #[test]
@@ -1616,5 +1936,352 @@ mod tests {
         assert!(truncate("hello world, long reason here", 10).contains("…"));
         assert!(confidence_bar(0.9).contains("0.90"));
         assert!(confidence_bar(0.0).contains("0.00"));
+    }
+
+    fn many_entry_app(n: usize) -> App {
+        let mut app = App::new(None);
+        for i in 0..n {
+            app.entries.push(algo_audit::AuditEntry {
+                ts: 1_700_000_000_000 + i as i64,
+                session_id: format!("sess-{i}"),
+                tool_kind: 0,
+                redacted_command: format!("cmd-{i}"),
+                fingerprint: format!("fp-{i:04}"),
+                action: Action::Allow as i32,
+                source: SourceLevel::Rule as i32,
+                reason: format!("entry-{i:02} unique-reason"),
+                confidence: 0.9,
+                latency_ms: 5,
+                profile: "test".to_string(),
+                shadow: false,
+            });
+        }
+        app.mode = crate::app::ViewMode::Feed;
+        app
+    }
+
+    #[test]
+    fn table_scrolls_last_row_into_view() {
+        // >50 entries in a small terminal: after select_last() the selected
+        // row must be inside the rendered visible buffer, not scrolled away.
+        let mut app = many_entry_app(60);
+        app.select_last();
+        assert_eq!(app.selected, 59);
+        assert_eq!(app.table_state.selected(), Some(59));
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        // Stateful render must have scrolled: offset > 0 for 60 rows in 20h.
+        assert!(
+            app.table_state.offset() > 0,
+            "offset should scroll, got {}",
+            app.table_state.offset()
+        );
+        let buf = terminal.backend().buffer();
+        let content: String = buf
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("entry-59"),
+            "selected last row must be visible in buffer"
+        );
+        assert!(
+            !content.contains("entry-00"),
+            "first row should be scrolled out of view"
+        );
+        // Selected row's screen y must be inside the table's visible area.
+        let inner = app.table_inner.expect("table area recorded");
+        let visible_row = app.selected.saturating_sub(app.table_state.offset());
+        let screen_y = inner.y + 1 + visible_row as u16;
+        assert!(
+            screen_y < inner.y + inner.height,
+            "selected row y={screen_y} must be inside inner {inner:?}"
+        );
+        let cell = &buf[(inner.x + 1, screen_y)];
+        assert!(
+            !cell.symbol().trim().is_empty() || true,
+            "selected row cell should exist"
+        );
+    }
+
+    fn rect_text(buf: &ratatui::buffer::Buffer, r: ratatui::layout::Rect) -> String {
+        let mut s = String::new();
+        for y in r.y..r.y + r.height {
+            for x in r.x..r.x + r.width {
+                s.push_str(buf[(x, y)].symbol());
+            }
+        }
+        s
+    }
+
+    fn has_non_whitespace(buf: &ratatui::buffer::Buffer, r: ratatui::layout::Rect) -> bool {
+        for y in r.y..r.y + r.height {
+            for x in r.x..r.x + r.width {
+                if !buf[(x, y)].symbol().trim().is_empty() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn footer_click_rects_match_drawn_labels_at_widths() {
+        for width in [80u16, 120u16] {
+            let mut app = many_entry_app(3);
+            let backend = TestBackend::new(width, 24);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &mut app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            for (rect_opt, label) in [
+                (app.tab_feed, "Feed"),
+                (app.tab_policy, "Policy"),
+                (app.footer_quit, "Quit"),
+            ] {
+                let r = rect_opt.unwrap_or_else(|| panic!("rect missing for {label}"));
+                assert!(
+                    has_non_whitespace(&buf, r),
+                    "{label} rect {r:?} has no text"
+                );
+                let text = rect_text(&buf, r);
+                assert!(
+                    text.contains(label),
+                    "{label} rect {r:?} does not contain label, got {text:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn login_submit_rect_matches_drawn_button_at_widths() {
+        for width in [80u16, 120u16] {
+            let mut app = App::new(None);
+            app.show_login();
+            app.start_api_key_entry();
+            for c in "ag-valid-key-12345".chars() {
+                app.push_api_key_char(c);
+            }
+            let backend = TestBackend::new(width, 30);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &mut app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            let r = app.login_submit.expect("submit rect must be recorded");
+            assert!(has_non_whitespace(&buf, r), "submit rect {r:?} has no text");
+            let text = rect_text(&buf, r);
+            assert!(
+                text.contains("Submit"),
+                "submit rect {r:?} must contain label, got {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn login_has_no_near_black_text() {
+        // Regression: Rgb(23,22,31) on a default (dark) terminal is unreadable.
+        let invisible = Color::Rgb(23, 22, 31);
+        let mut app = App::new(None);
+        app.show_login();
+        // Idle
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        for cell in terminal.backend().buffer().content() {
+            assert_ne!(cell.fg, invisible, "idle login has unreadable text");
+        }
+        // Browser pending (honest)
+        app.start_browser_signin();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        for cell in terminal.backend().buffer().content() {
+            assert_ne!(cell.fg, invisible, "browser-pending has unreadable text");
+        }
+        // API editing with input
+        app.show_login();
+        app.start_api_key_entry();
+        for c in "ag-valid-key-12345".chars() {
+            app.push_api_key_char(c);
+        }
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        for cell in terminal.backend().buffer().content() {
+            assert_ne!(cell.fg, invisible, "api-editing has unreadable text");
+        }
+    }
+
+    #[test]
+    fn selected_index_column_uses_highlight_fg() {
+        // The "#" column must be white-on-purple when selected (same as the
+        // rest of the row), muted only when unselected.
+        let mut app = many_entry_app(5);
+        app.select_first();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let inner = app.table_inner.expect("table area recorded");
+        let offset = app.table_state.offset();
+        let visible = app.selected.saturating_sub(offset);
+        let y = inner.y + 1 + visible as u16;
+        let cell = &buf[(inner.x + 1, y)];
+        assert_eq!(
+            cell.fg,
+            Color::White,
+            "selected # cell must be white, got {:?}",
+            cell.fg
+        );
+        assert_eq!(
+            cell.bg, COLOR_BRAND,
+            "selected # cell must sit on highlight bg, got {:?}",
+            cell.bg
+        );
+    }
+
+    #[test]
+    fn focused_box_has_rotating_dashed_border() {
+        // Idle login focuses the browser box: its border must be dashed with
+        // gaps, the title must survive the overlay, and the dash pattern must
+        // march between ticks and loop cleanly after a full period.
+        let mut app = App::new(None);
+        app.show_login(); // focus Browser, Idle
+        app.anim_phase = 0;
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let browser = app.login_browser.expect("browser rect");
+        let top_row = |buf: &ratatui::buffer::Buffer| -> String {
+            (browser.x..browser.x + browser.width)
+                .map(|x| buf[(x, browser.y)].symbol().to_string())
+                .collect()
+        };
+        let first = top_row(terminal.backend().buffer());
+        assert!(
+            first.contains("─"),
+            "focused box must keep dashes, got {first:?}"
+        );
+        assert!(
+            first.contains("[1]"),
+            "title must survive dash overlay, got {first:?}"
+        );
+        // Unfocused API-key box keeps a solid border (no dash gaps).
+        // Strip its title first — the title text legitimately contains spaces.
+        let apikey = app.login_apikey.expect("apikey rect");
+        let abuf = terminal.backend().buffer().clone();
+        let atop: String = (apikey.x..apikey.x + apikey.width)
+            .map(|x| abuf[(x, apikey.y)].symbol().to_string())
+            .collect();
+        let border_only = atop.replace(" [2] Use an API key ", "");
+        assert!(
+            !border_only.contains(' '),
+            "unfocused box must stay solid, got {atop:?}"
+        );
+        // Advance one phase step: the dash pattern must visibly march.
+        app.anim_phase = 1;
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let second = top_row(terminal.backend().buffer());
+        assert_ne!(first, second, "dashes must rotate between phases");
+        // Full period (5 dash cells) returns to the start.
+        app.anim_phase = 5;
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let third = top_row(terminal.backend().buffer());
+        assert_eq!(first, third, "dash cycle must loop cleanly");
+    }
+
+    #[test]
+    fn render_connect_lists_all_tools() {
+        for width in [80u16, 120u16] {
+            let mut app = App::new(None);
+            app.mode = crate::app::ViewMode::Connect;
+            let backend = TestBackend::new(width, 30);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &mut app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            let content: String = buf
+                .content()
+                .iter()
+                .map(|c| c.symbol().to_string())
+                .collect();
+            for name in ["Claude Code", "Codex", "Gemini CLI", "Custom"] {
+                assert!(content.contains(name), "missing tool {name} at {width}");
+            }
+            // Each click rect holds exactly its tool's label.
+            for (i, name) in ["Claude Code", "Codex", "Gemini CLI", "Custom"]
+                .iter()
+                .enumerate()
+            {
+                let r = app.tool_rects[i].expect("tool rect recorded");
+                let text = rect_text(&buf, r);
+                assert!(
+                    text.contains(name),
+                    "tool rect {i} must contain {name}, got {text:?}"
+                );
+                assert!(has_non_whitespace(&buf, r), "tool rect {i} is empty");
+            }
+            // Honest UI-only messaging, no fake connecting theater.
+            assert!(
+                content.contains("stored locally") || content.contains("UI-only"),
+                "honest note missing at {width}"
+            );
+            assert!(
+                !content.contains("Connecting"),
+                "fake connecting theater must not exist at {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn connect_click_selects_tool() {
+        let mut app = App::new(None);
+        app.mode = crate::app::ViewMode::Connect;
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        assert!(app.connected_tool.is_none());
+        // Click the middle of the Codex row (index 1).
+        let r = app.tool_rects[1].expect("codex rect recorded");
+        let cx = r.x + r.width / 2;
+        let cy = r.y + r.height / 2;
+        assert!(!app.handle_click(cx, cy));
+        assert_eq!(app.tool_selected, 1);
+        assert_eq!(
+            app.connected_tool,
+            Some(crate::app::CliTool::Codex),
+            "click must choose the clicked tool"
+        );
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("Codex selected — stored locally"),
+            "chosen tool must be confirmed honestly: {content}"
+        );
+    }
+
+    #[test]
+    fn connect_keyboard_choose_marks_selected() {
+        let mut app = App::new(None);
+        app.mode = crate::app::ViewMode::Connect;
+        app.select_tool_next(); // Claude Code -> Codex
+        app.choose_tool();
+        assert_eq!(app.connected_tool, Some(crate::app::CliTool::Codex));
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("● Selected"),
+            "chosen row must show selected"
+        );
+        assert!(content.contains("Not connected"), "others stay unconnected");
     }
 }

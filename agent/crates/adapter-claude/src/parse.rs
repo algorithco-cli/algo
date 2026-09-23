@@ -1,6 +1,6 @@
-//! Parse Claude PreToolUse hook JSON → `CanonicalEvent` (shell-only, P1).
+//! Parse Claude PreToolUse hook JSON → `CanonicalEvent` (P2: shell + edit/write/read).
 //!
-//! Pure function, no policy logic. Redacts `command` via `algo_redact` before any logging
+//! Pure function, no policy logic. Redacts via `algo_redact` before any logging
 //! (just calls `redact`, does not log secrets). Fuzz-friendly: no `unwrap`/`expect`,
 //! all fallible paths return `ParseError`.
 
@@ -63,26 +63,15 @@ pub fn proves_ask_on_parse_fail_with_trace(err: ParseError, trace_id: &str) -> D
 
 /// Parse Claude hook JSON (string) → `CanonicalEvent`.
 ///
-/// Expected shape (PreToolUse, Bash):
-/// ```json
-/// {
-///   "hook_event_name": "PreToolUse",
-///   "tool_name": "Bash",
-///   "tool_input": { "command": "ls -la" },
-///   "cwd": "/tmp",
-///   "session_id": "sess-123",
-///   "version": "1"
-/// }
-/// ```
-/// - `tool_name` must be `"Bash"` – any other value (e.g. `"Edit"`, `"Write"`, `"Read"`) returns
-///   `Err(SkippedUnsupportedTool)` for the caller to ask-passthrough.
-/// - `tool_input.command` is required for Bash.
-/// - `cwd`, `session_id`, `hook_event_name`, `version` are optional; absent values default to `""`
-///   (pure, no panic). Schema version gating is **not** done here – unknown `version`/
-///   `hook_event_name` is handled in `render::render_with_schema`, not in parse.
-/// - Redacts `command` via `algo_redact::redact` before any logging (call only, no secret egress).
-///
-/// Fuzz-friendly: no `unwrap`/`expect`, no panics on arbitrary input.
+/// Expected shapes:
+/// - Bash:  `tool_name: "Bash",  tool_input: { "command": "..." }` → `ToolKind::Shell`
+/// - Edit:  `tool_name: "Edit",  tool_input: { "file_path": "...", "old_string": "...", "new_string": "..." }` → `ToolKind::Edit`
+/// - Write: `tool_name: "Write", tool_input: { "file_path": "...", "content": "..." }` → `ToolKind::Write`
+/// - Read:  `tool_name: "Read",  tool_input: { "file_path": "..." }` → `ToolKind::Read`
+/// - Other: still `SkippedUnsupportedTool` → caller asks.
+/// - `cwd`, `session_id`, `hook_event_name`, `version` are optional; absent defaults to `""`.
+/// - Redacts `command`/preview via `algo_redact::redact` before any logging.
+/// - Fuzz-friendly: no `unwrap`/`expect`, no panics on arbitrary input.
 pub fn parse_hook(input: &str) -> Result<CanonicalEvent, ParseError> {
     if input.trim().is_empty() {
         return Err(ParseError::EmptyInput);
@@ -91,37 +80,13 @@ pub fn parse_hook(input: &str) -> Result<CanonicalEvent, ParseError> {
         serde_json::from_str(input).map_err(|e| ParseError::InvalidJson(e.to_string()))?;
     let raw = value.clone();
 
-    // tool_name is required to decide Bash vs unsupported.
+    // tool_name is required to decide kind.
     let tool_name = value
         .get("tool_name")
         .and_then(|v| v.as_str())
         .ok_or(ParseError::MissingField("tool_name"))?;
 
-    if tool_name != "Bash" {
-        return Err(ParseError::SkippedUnsupportedTool);
-    }
-
-    // tool_input.command – required for Bash.
-    let tool_input = value
-        .get("tool_input")
-        .ok_or(ParseError::MissingField("tool_input"))?;
-
-    // tool_input may be object with "command", or in some payloads the SDK may send
-    // tool_input as a stringified JSON – handle object case correctly and fail gracefully otherwise.
-    let command_str: &str = match tool_input {
-        Value::Object(map) => map
-            .get("command")
-            .and_then(|v| v.as_str())
-            .ok_or(ParseError::MissingField("tool_input.command"))?,
-        // If tool_input is not an object, it cannot contain command.
-        _ => return Err(ParseError::MissingField("tool_input.command")),
-    };
-
-    // Redact before logging – call redactor, ignore result except to prove we did it.
-    // Use the global redactor so the same pattern set as the daemon/audit path is exercised.
-    let _ = algo_redact::redact(command_str);
-
-    // cwd and session_id are optional in some Claude versions – default to empty string rather than error.
+    // cwd and session_id are optional – default to empty.
     let cwd = value
         .get("cwd")
         .and_then(|v| v.as_str())
@@ -133,13 +98,79 @@ pub fn parse_hook(input: &str) -> Result<CanonicalEvent, ParseError> {
         .unwrap_or("")
         .to_string();
 
-    // hook_event_name / version are carried in raw but not validated here (render gates unknown schema).
+    let tool_input = value
+        .get("tool_input")
+        .ok_or(ParseError::MissingField("tool_input"))?;
+
+    let (tool_kind, command, file_path) = match tool_name {
+        "Bash" => {
+            let command_str: &str = match tool_input {
+                Value::Object(map) => map
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .ok_or(ParseError::MissingField("tool_input.command"))?,
+                _ => return Err(ParseError::MissingField("tool_input.command")),
+            };
+            let _ = algo_redact::redact(command_str);
+            (ToolKind::Shell, command_str.to_string(), None)
+        }
+        "Edit" => {
+            let obj = tool_input
+                .as_object()
+                .ok_or(ParseError::MissingField("tool_input"))?;
+            let file_path = obj
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .ok_or(ParseError::MissingField("tool_input.file_path"))?
+                .to_string();
+            let new_str = obj.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
+            let preview = if new_str.len() > 512 {
+                &new_str[..512]
+            } else {
+                new_str
+            };
+            let _ = algo_redact::redact(preview);
+            (ToolKind::Edit, preview.to_string(), Some(file_path))
+        }
+        "Write" => {
+            let obj = tool_input
+                .as_object()
+                .ok_or(ParseError::MissingField("tool_input"))?;
+            let file_path = obj
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .ok_or(ParseError::MissingField("tool_input.file_path"))?
+                .to_string();
+            let content = obj.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let preview = if content.len() > 512 {
+                &content[..512]
+            } else {
+                content
+            };
+            let _ = algo_redact::redact(preview);
+            (ToolKind::Write, preview.to_string(), Some(file_path))
+        }
+        "Read" => {
+            let obj = tool_input
+                .as_object()
+                .ok_or(ParseError::MissingField("tool_input"))?;
+            let file_path = obj
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .ok_or(ParseError::MissingField("tool_input.file_path"))?
+                .to_string();
+            let _ = algo_redact::redact(&file_path);
+            (ToolKind::Read, file_path.clone(), Some(file_path))
+        }
+        _ => return Err(ParseError::SkippedUnsupportedTool),
+    };
 
     Ok(CanonicalEvent {
-        tool_kind: ToolKind::Shell,
-        command: command_str.to_string(),
+        tool_kind,
+        command,
         cwd,
         session_id,
+        file_path,
         raw,
     })
 }
@@ -433,10 +464,10 @@ mod tests {
         assert!(ev.command.contains("eval"));
     }
 
-    // ---------- Unsupported tools (P1: ask passthrough) ----------
+    // ---------- File tools (P2: Edit/Write/Read now parsed, not skipped) ----------
 
     #[test]
-    fn unsupported_edit_returns_skipped() {
+    fn edit_parses_to_edit_kind() {
         let payload = serde_json::json!({
             "hook_event_name": "PreToolUse",
             "tool_name": "Edit",
@@ -445,19 +476,15 @@ mod tests {
             "session_id": "sess-edit"
         })
         .to_string();
-        let err = parse_hook(&payload).expect_err("Edit must be skipped");
-        assert_eq!(err, ParseError::SkippedUnsupportedTool);
-        assert!(err.is_skipped());
-        // proves fail-safe
-        let d = proves_ask_on_parse_fail(err);
-        assert_eq!(d.action, Action::Ask as i32);
-        assert_eq!(d.reason, "skipped:unsupported_tool");
-        assert_ne!(d.action, Action::Allow as i32);
-        assert_ne!(d.action, Action::Deny as i32);
+        let ev = parse_hook(&payload).expect("Edit must parse in P2");
+        assert_eq!(ev.tool_kind, ToolKind::Edit);
+        assert_eq!(ev.file_path.as_deref(), Some("/tmp/foo.txt"));
+        assert_eq!(ev.command, "b");
+        assert!(ev.is_edit());
     }
 
     #[test]
-    fn unsupported_write_returns_skipped() {
+    fn write_parses_to_write_kind() {
         let payload = serde_json::json!({
             "tool_name": "Write",
             "tool_input": { "file_path": "/tmp/new.txt", "content": "hello" },
@@ -465,14 +492,15 @@ mod tests {
             "session_id": "sess-write"
         })
         .to_string();
-        let err = parse_hook(&payload).unwrap_err();
-        assert_eq!(err, ParseError::SkippedUnsupportedTool);
-        let d = proves_ask_on_parse_fail(err);
-        assert!(d.reason.contains("skipped:unsupported_tool"));
+        let ev = parse_hook(&payload).expect("Write must parse");
+        assert_eq!(ev.tool_kind, ToolKind::Write);
+        assert_eq!(ev.file_path.as_deref(), Some("/tmp/new.txt"));
+        assert_eq!(ev.command, "hello");
+        assert!(ev.is_write());
     }
 
     #[test]
-    fn unsupported_read_returns_skipped() {
+    fn read_parses_to_read_kind() {
         let payload = serde_json::json!({
             "tool_name": "Read",
             "tool_input": { "file_path": "/tmp/foo.txt" },
@@ -480,10 +508,9 @@ mod tests {
             "session_id": "sess-read"
         })
         .to_string();
-        assert_eq!(
-            parse_hook(&payload).unwrap_err(),
-            ParseError::SkippedUnsupportedTool
-        );
+        let ev = parse_hook(&payload).expect("Read must parse");
+        assert_eq!(ev.tool_kind, ToolKind::Read);
+        assert_eq!(ev.file_path.as_deref(), Some("/tmp/foo.txt"));
     }
 
     #[test]
@@ -627,13 +654,19 @@ mod tests {
                 "session_id": "sess"
             }).to_string();
             let res = parse_hook(&payload);
-            // If tool_name != Bash, must be SkippedUnsupportedTool, never panic.
-            if tool_name != "Bash" {
+            // Truly unsupported tools (not Bash/Edit/Write/Read) must be SkippedUnsupportedTool.
+            let supported = ["Bash", "Edit", "Write", "Read"];
+            if !supported.contains(&tool_name.as_str()) {
                 if let Err(e) = &res {
                     prop_assert_eq!(e, &ParseError::SkippedUnsupportedTool);
                     let d = proves_ask_on_parse_fail(e.clone());
                     prop_assert_eq!(d.action, Action::Ask as i32);
                 }
+            } else if let Err(e) = &res {
+                // Supported tools with mismatched shape (e.g. Edit with command) may fail with
+                // MissingField – still must map to ask, never allow.
+                let d = proves_ask_on_parse_fail(e.clone());
+                prop_assert_eq!(d.action, Action::Ask as i32);
             }
         }
     }

@@ -54,3 +54,41 @@ message Decision {
   // Trace id correlating ToolBefore -> Decision -> audit (UUID v4 string).
   string trace_id = 7;
 }
+
+// Policy profile selecting confidence thresholds (P2-01).
+enum PolicyProfile {
+  // Default sentinel.
+  POLICY_PROFILE_UNSPECIFIED = 0;
+  // Strict: lowest false-allow, highest ask rate.
+  POLICY_PROFILE_STRICT = 1;
+  // Balanced: default trade-off.
+  POLICY_PROFILE_BALANCED = 2;
+  // Fast: higher throughput, slightly higher risk.
+  POLICY_PROFILE_FAST = 3;
+}
+
+// Verifier verdict for agent.stop (P2-01).
+enum VerifierVerdict {
+  // Default sentinel.
+  VERIFIER_VERDICT_UNSPECIFIED = 0;
+  // Work is truly done (tests pass + diff matches task).
+  VERIFIER_VERDICT_PASS = 1;
+  // Not done: send agent back to work.
+  VERIFIER_VERDICT_FAIL_BACK_TO_WORK = 2;
+  // Needs human judgment.
+  VERIFIER_VERDICT_ASK = 3;
+}
+
+// Loop controller action for repeated-failure handling (P2-01).
+enum LoopAction {
+  // Default sentinel.
+  LOOP_ACTION_UNSPECIFIED = 0;
+  // Continue as-is.
+  LOOP_ACTION_CONTINUE = 1;
+  // Retry with a different approach/hint.
+  LOOP_ACTION_RETRY_DIFFERENTLY = 2;
+  // Stop the loop entirely.
+  LOOP_ACTION_STOP = 3;
+  // Escalate to human.
+  LOOP_ACTION_ASK = 4;
+}
