@@ -70,7 +70,9 @@ jobs:
           cargo deny --manifest-path backend/Cargo.toml check
 
       - name: cargo audit (core, agent, backend)
+        # NOTE: cargo-audit has no --manifest-path (verified 2026-09-23:
+        # "unexpected argument"); run per-directory like fmt.
         run: |
-          cargo audit --manifest-path core/Cargo.toml
-          cargo audit --manifest-path agent/Cargo.toml
-          cargo audit --manifest-path backend/Cargo.toml
+          for ws in core agent backend; do
+            (cd "$ws" && cargo audit)
+          done
