@@ -10,7 +10,7 @@ readme = "README.md"
 
 [dependencies]
 algo-types = { path = "../types" }
-thiserror = "1.0"
+thiserror = "2.0"
 
 [features]
 jev = []  # placeholder for future Jev provider behind feature flag (currently OFF, see ADR-0009)
