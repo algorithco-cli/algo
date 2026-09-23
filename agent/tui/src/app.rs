@@ -4,6 +4,8 @@
 //! If daemon is down or DB missing, `store` is `None` and UI shows offline banner.
 //! Crash of this process never blocks hooks.
 
+#![allow(dead_code)]
+
 use algo_audit::{AuditEntry, AuditStore, Counts};
 use ratatui::widgets::TableState;
 
@@ -370,6 +372,8 @@ impl App {
     }
 
     /// Move selection down (j).
+    /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
+    #[cfg(test)]
     pub fn select_next(&mut self) {
         if self.entries.is_empty() {
             return;
@@ -381,6 +385,8 @@ impl App {
     }
 
     /// Move selection up (k).
+    /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
+    #[cfg(test)]
     pub fn select_prev(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
@@ -389,12 +395,16 @@ impl App {
     }
 
     /// Jump to first row (g / Home).
+    /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
+    #[cfg(test)]
     pub fn select_first(&mut self) {
         self.selected = 0;
         self.sync_table_state();
     }
 
     /// Jump to last row (G / End).
+    /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
+    #[cfg(test)]
     pub fn select_last(&mut self) {
         if !self.entries.is_empty() {
             self.selected = self.entries.len() - 1;
@@ -408,8 +418,10 @@ impl App {
     }
 
     /// Single authoritative way to change views. No-op when the login gate
-    /// is up (use `show_login` / `continue_offline` for those transitions)
-    /// so adding a third `ViewMode` cannot silently misbehave.
+    /// is up (use `show_login` / `continue_offline` for those transitions).
+    /// Test-only right now: the live flow switches views via
+    /// `show_login` / `continue_offline`.
+    #[cfg(test)]
     pub fn set_mode(&mut self, mode: ViewMode) {
         if self.mode == ViewMode::Login {
             return;
@@ -421,17 +433,21 @@ impl App {
         self.mode = mode;
     }
 
-    /// Show the live feed (explicit, unambiguous).
+    /// Show the live feed (explicit, unambiguous). Test-only (legacy view).
+    #[cfg(test)]
     pub fn show_feed(&mut self) {
         self.set_mode(ViewMode::Feed);
     }
 
-    /// Show the policy snapshot (explicit, unambiguous).
+    /// Show the policy snapshot (explicit, unambiguous). Test-only (legacy view).
+    #[cfg(test)]
     pub fn show_policy(&mut self) {
         self.set_mode(ViewMode::Policy);
     }
 
-    /// Show the CLI-integration picker (explicit, unambiguous).
+    /// Show the CLI-integration picker (explicit, unambiguous). Test-only:
+    /// the live flow reaches Connect via `continue_offline`.
+    #[cfg(test)]
     pub fn show_connect(&mut self) {
         self.set_mode(ViewMode::Connect);
     }
@@ -863,6 +879,18 @@ impl App {
             }
             return false;
         }
+        if self.mode == ViewMode::Connect {
+            if Self::hit(&self.footer_quit, x, y) {
+                return true;
+            }
+            for i in 0..CLI_TOOL_COUNT {
+                if Self::hit(&self.tool_rects[i], x, y) {
+                    self.choose_tool_idx(i);
+                    return false;
+                }
+            }
+            return false;
+        }
         if Self::hit(&self.footer_quit, x, y) {
             return true;
         }
@@ -1055,9 +1083,9 @@ mod tests {
         app.cancel_login();
         assert_eq!(app.login_status, LoginStatus::Idle);
         assert!(app.login_device_code.is_none());
-        // Offline shortcut
+        // Offline shortcut lands on the Connect picker
         app.continue_offline();
-        assert_eq!(app.mode, ViewMode::Feed);
+        assert_eq!(app.mode, ViewMode::Connect);
     }
 
     #[test]
@@ -1108,11 +1136,54 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("stored locally, not verified"));
-        // Tick drives auto-transition to feed
+        // Tick drives auto-transition to the Connect picker
         for _ in 0..13 {
             app.tick();
         }
+        assert_eq!(app.mode, ViewMode::Connect);
+    }
+
+    #[test]
+    fn post_login_lands_on_connect_picker() {
+        let mut app = App::new(None);
+        app.show_login();
+        app.continue_offline();
+        assert_eq!(app.mode, ViewMode::Connect);
+        assert_eq!(app.tool_selected, 0);
+        assert!(app.connected_tool.is_none());
+        // Explicit show_connect round-trips through set_mode.
+        app.set_mode(ViewMode::Feed);
         assert_eq!(app.mode, ViewMode::Feed);
+        app.show_connect();
+        assert_eq!(app.mode, ViewMode::Connect);
+    }
+
+    #[test]
+    fn connect_nav_wraps_around() {
+        let mut app = App::new(None);
+        assert_eq!(app.tool_selected, 0);
+        app.select_tool_prev();
+        assert_eq!(app.tool_selected, CLI_TOOL_COUNT - 1);
+        app.select_tool_next();
+        assert_eq!(app.tool_selected, 0);
+        app.select_tool_next();
+        assert_eq!(app.tool_selected, 1);
+    }
+
+    #[test]
+    fn connect_choose_is_honest_not_fake() {
+        let mut app = App::new(None);
+        app.choose_tool_idx(1);
+        assert_eq!(app.tool_selected, 1);
+        assert_eq!(app.connected_tool, Some(CliTool::Codex));
+        let msg = app.connect_status_msg.clone().unwrap_or_default();
+        assert!(msg.contains("Codex"), "msg was: {msg}");
+        assert!(msg.contains("stored locally"), "msg was: {msg}");
+        assert!(!msg.to_lowercase().contains("connecting"), "msg was: {msg}");
+        assert!(!msg.to_lowercase().contains("connected —"), "msg was: {msg}");
+        // Out of range is ignored, never panics.
+        app.choose_tool_idx(99);
+        assert_eq!(app.connected_tool, Some(CliTool::Codex));
     }
 
     #[test]
