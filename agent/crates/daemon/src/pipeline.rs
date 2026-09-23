@@ -75,6 +75,7 @@ pub struct Pipeline {
     writer_tx: mpsc::Sender<DbRecord>,
     policy_version: String,
     shadow: bool,
+    profile: algo_policy::Profile,
 }
 
 impl Pipeline {
@@ -94,7 +95,13 @@ impl Pipeline {
             // Daemon runtime enables shadow by default via with_shadow(true) unless
             // `algo enforce on` / ALGO_ENFORCE=1 (see daemon read_shadow_mode).
             shadow: false,
+            profile: algo_policy::Profile::Balanced,
         }
+    }
+
+    pub fn with_profile(mut self, profile: algo_policy::Profile) -> Self {
+        self.profile = profile;
+        self
     }
 
     pub fn with_shadow(mut self, shadow: bool) -> Self {
@@ -128,12 +135,23 @@ impl Pipeline {
             .unwrap_or_default();
         let tool_kind = event.tool_kind;
 
-        // Fingerprint for cache/DB
-        let norm = algo_fingerprint::normalize(&event.redacted_payload);
+        // Fingerprint for cache/DB — P2-03: file tools include project-relative path.
+        let cache_input = if let Some(fp) = event.file_path.as_deref() {
+            let rel = normalize_file_path(
+                fp,
+                event
+                    .agent
+                    .as_ref()
+                    .map(|a| a.working_dir.as_str())
+                    .unwrap_or(""),
+            );
+            format!("{}:{}", rel, event.redacted_payload)
+        } else {
+            event.redacted_payload.clone()
+        };
+        let norm = algo_fingerprint::normalize(&cache_input);
         let fingerprint = if norm.is_empty() || norm == "unparseable:nested" {
-            blake3::hash(event.redacted_payload.as_bytes())
-                .to_hex()
-                .to_string()
+            blake3::hash(cache_input.as_bytes()).to_hex().to_string()
         } else {
             algo_fingerprint::cache_key(&norm, &self.policy_version, "balanced")
         };
@@ -273,7 +291,12 @@ impl Pipeline {
         let jev_result = self.pool.judge(&event, &[]).await;
 
         let mut decision = match jev_result {
-            Ok(answers) => map_answers_to_decision(&answers, &self.policy_version, &event.event_id),
+            Ok(answers) => map_answers_to_decision(
+                &answers,
+                &self.policy_version,
+                &event.event_id,
+                &self.profile,
+            ),
             Err(e) => {
                 let mut d = algo_types::ask_on_error(
                     format!("provider error → ask: {e}"),
@@ -346,6 +369,7 @@ fn map_answers_to_decision(
     answers: &[TypedAnswer],
     policy_version: &str,
     trace_id: &str,
+    profile: &algo_policy::Profile,
 ) -> Decision {
     let (action, confidence, reason, source) = if let Some(ans) = answers.first() {
         match ans {
@@ -362,12 +386,24 @@ fn map_answers_to_decision(
                         "jev deny".to_string(),
                         SourceLevel::Jev as i32,
                     ),
-                    "allow" => (
-                        Action::Allow as i32,
-                        conf,
-                        "jev allow".to_string(),
-                        SourceLevel::Jev as i32,
-                    ),
+                    "allow" => {
+                        let threshold = profile.jev_allow_threshold();
+                        if conf < threshold {
+                            (
+                                Action::Ask as i32,
+                                conf,
+                                format!("jev allow {conf:.2} < {threshold:.2} → ask"),
+                                SourceLevel::Jev as i32,
+                            )
+                        } else {
+                            (
+                                Action::Allow as i32,
+                                conf,
+                                "jev allow".to_string(),
+                                SourceLevel::Jev as i32,
+                            )
+                        }
+                    }
                     "ask" => (
                         Action::Ask as i32,
                         conf,
@@ -389,12 +425,22 @@ fn map_answers_to_decision(
             } => {
                 let conf = *c;
                 if *value {
-                    (
-                        Action::Allow as i32,
-                        conf,
-                        "jev bool true".to_string(),
-                        SourceLevel::Jev as i32,
-                    )
+                    let threshold = profile.jev_allow_threshold();
+                    if conf < threshold {
+                        (
+                            Action::Ask as i32,
+                            conf,
+                            format!("jev bool true {conf:.2} < {threshold:.2} → ask"),
+                            SourceLevel::Jev as i32,
+                        )
+                    } else {
+                        (
+                            Action::Allow as i32,
+                            conf,
+                            "jev bool true".to_string(),
+                            SourceLevel::Jev as i32,
+                        )
+                    }
                 } else {
                     (
                         Action::Ask as i32,
@@ -452,6 +498,21 @@ fn map_answers_to_decision(
         policy_version: policy_version.to_string(),
         trace_id: trace_id.to_string(),
     }
+}
+
+/// P2-03: abs path → project-relative for L1 key; whitespace/hash/timestamp stripped
+/// via normalize; never merges dangerous↔safe (proptest guards). Pure, no I/O.
+fn normalize_file_path(path: &str, cwd: &str) -> String {
+    let p = path.trim();
+    // If absolute and under cwd, strip cwd prefix → relative.
+    if !cwd.is_empty() && p.starts_with(cwd) {
+        let rel = p[cwd.len()..].trim_start_matches('/');
+        if !rel.is_empty() {
+            return rel.to_string();
+        }
+    }
+    // Otherwise strip leading "/" and common prefixes, keep project-relative.
+    p.trim_start_matches('/').to_string()
 }
 
 #[cfg(test)]

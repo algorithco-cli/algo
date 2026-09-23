@@ -123,11 +123,12 @@ pub fn parse_hook(input: &str) -> Result<CanonicalEvent, ParseError> {
                 .and_then(|v| v.as_str())
                 .ok_or(ParseError::MissingField("tool_input.file_path"))?
                 .to_string();
-            let new_str = obj
-                .get("new_string")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let preview = if new_str.len() > 512 { &new_str[..512] } else { new_str };
+            let new_str = obj.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
+            let preview = if new_str.len() > 512 {
+                &new_str[..512]
+            } else {
+                new_str
+            };
             let _ = algo_redact::redact(preview);
             (ToolKind::Edit, preview.to_string(), Some(file_path))
         }
@@ -140,11 +141,12 @@ pub fn parse_hook(input: &str) -> Result<CanonicalEvent, ParseError> {
                 .and_then(|v| v.as_str())
                 .ok_or(ParseError::MissingField("tool_input.file_path"))?
                 .to_string();
-            let content = obj
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let preview = if content.len() > 512 { &content[..512] } else { content };
+            let content = obj.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let preview = if content.len() > 512 {
+                &content[..512]
+            } else {
+                content
+            };
             let _ = algo_redact::redact(preview);
             (ToolKind::Write, preview.to_string(), Some(file_path))
         }
