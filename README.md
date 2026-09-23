@@ -2,7 +2,7 @@
 
 > Intelligent control layer for CLI coding agents (Claude Code, Codex CLI, OpenCode).
 > Attaches via hooks / plugins / MCP. Makes agents safer, quieter, and auditable.
-> Product **DECIDED**: `algorithco guard`. CLI: **`algo`**.
+> Product **DECIDED**: `algorithco guard`. CLI: **`algo`**. (canonical naming: [`docs/adr/0002-naming.md`](docs/adr/0002-naming.md))
 
 ## CLI
 
@@ -36,55 +36,16 @@ Most requests never reach Jev. Hypotheses — measured in Phase 0/1, not facts.
 |---|---|---|
 | L0 | Hard deny/allow rules on shell syntax tree | p50 < 3 ms / p99 < 10 ms |
 | L1 | Cache by normalized action fingerprint | p50 < 3 ms / p99 < 10 ms |
-| L2 | Small local classifier (CPU, distilled) | p50 < 10 ms / p99 < 25 ms |
+| L2 | Small local classifier (CPU, human-labeled/deterministic training only — never Jev outputs, MCA §2.3(b)) | p50 < 10 ms / p99 < 25 ms |
 | L3 | Jev evaluation (remote) | p50 < 250 ms / p99 < 800 ms |
 | L4 | Ask the user (universal fallback) | human |
 
 Fail-safe: any error / timeout / crash / parse-fail → `ask`. Never `allow`.
 
-## Multi-repo layout (org `algorithcoguard`)
+## Repo layout / dependency DAG (canonical: [`plans/00-index-build-order.md`](plans/00-index-build-order.md))
 
-| Repo | Language | Responsibility |
-|---|---|---|
-| `proto` | Protobuf + buf | Contracts: events, decisions, daemon ↔ backend API, dataset schema. |
-| `core` | Rust (`algo-*`) | types, shell-analysis, policy, redact, provider, fingerprint. |
-| `agent` | Rust | Hook client, daemon, adapters, CLI (`algo`), TUI, verifier, loop controller, scanner, MCP. |
-| `backend` | Rust | Auth, orgs, signed policy sync, opt-in audit ingest, GitHub App. |
-| `dashboard` | TS React+Vite | Team web app: history, findings, policy editor, stats. |
-| `web` | TS Astro+Starlight | Marketing + docs site, install script hosting. |
-| `eval` | Python | Datasets, harness, threshold tuning, distillation. Most important repo in Phase 0. |
-| `docs` | Markdown | ADRs, threat model, this plan, roadmap. |
-| `infra` | (later) | Placeholder. Out of scope for now. |
-
-Local scaffold dirs in this workspace (`core/`, `agent/`, `backend/`, `dashboard/`, `web/`) are
-**Phase 0 stubs — no product code yet**. Each has a `README.md` stub. Real code lives in the
-org repos starting Phase 1.
-
-## Dependency DAG (no cycles)
-
-```
-proto ──► core ──► agent
-  │         │
-  │         └──────► backend
-  ├───────────────► dashboard  (generated TS client)
-  └───────────────► eval       (dataset schemas)
-
-eval ──(exports model artifact)──► agent
-
-docs-skeleton ─┬─► ADR-process ─► threat-v0
-               ├─► proto-v0 (buf lint/breaking, tag) ─► core(types→fingerprint→shell→policy→redact→provider)
-               │                                              │
-               │                                              └─► agent(daemon+hook→claude-shell→CLI/audit+shadow)
-               ├─► eval(dataset→harness→baselines) ─► jev-measure ─► exit-gate
-               └─► web/docs (parallel, privacy text must match behavior)
-
-P1 done ─► P2(proto deltas→thresholds→enforce→verifier/loop→edit/write→web)
-        ─► P3(proto backend API→core verify→backend→agent sync→dashboard→L2 gated)
-        ─► P4(proto findings→codex/opencode spikes→scanner→questions→TUI/github/windows)
-```
-
-Rules: `proto` tag first → consumers pin exact version → generate at build → never hand-edit
-generated code. Cross-repo change = `docs` tracking issue → `proto` PR → version bump → consumer PRs.
+Monorepo `algorithcoguard/algorithco-guard` (private until release): `proto → core → agent/backend → dashboard`, `eval` gates thresholds.
+Strict build order, per-package specs, and the full DAG live in the index — this section intentionally keeps only this summary + link.
 
 ## Plans (executable breakdown)
 

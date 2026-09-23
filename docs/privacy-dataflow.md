@@ -8,6 +8,10 @@
 > **will not train on Input** and **will not disclose Input except to service
 > providers**; retention is **"as long as reasonably necessary"** with **no fixed SLA**;
 > hosted in the **US**; ZDR is **enterprise-only via `privacy@typesafe.ai`**.
+> **R4 confirmed 2026-09-23** (owner-researched; Privacy Policy "International
+> Visitors" Nov 19, 2025 + DPA §6 Apr 24, 2026): US-only hosting, no region-selection
+> option; EEA/UK transfers under EU SCCs / UK Addendum — reflected in the consent
+> text below.
 > Text here must match future `algo init` behavior and the consent below.
 > No vendor claims without a measurement link.
 
@@ -42,8 +46,10 @@ blocked until legal review (`docs/adr/0004-byok-vs-proxy.md`).
 > as `ALGO_JEV_API_KEY` (BYOK, env-only, never embedded). TypeSafe says it **will
 > not train on your Input** and **will not disclose Input except to its US service
 > providers** listed above. It keeps your data **as long as reasonably necessary**
-> (no fixed deletion date). If you are outside the US, your data is **transferred
-> to the US**. You can inspect exactly what would leave with `algo log --show-egress`.
+> (no fixed deletion date). **Jev requests are processed in the United States
+> regardless of your location. If you are in the EEA or UK, TypeSafe transfers
+> this data under Standard Contractual Clauses / the UK Addendum.** If you are
+> outside the US, your data is **transferred to the US**. You can inspect exactly what would leave with `algo log --show-egress`.
 > Switching back to `local-only` stops all sending.
 
 > **Privacy notice draft (for `web/` / docs footers):** "When Jev is enabled (BYOK,
@@ -52,7 +58,8 @@ blocked until legal review (`docs/adr/0004-byok-vs-proxy.md`).
 > subprocessors (AWS / Modal / Nebius / CoreWeave), retained as long as reasonably
 > necessary (no fixed SLA is published), and covered by TypeSafe's Privacy Policy
 > statement that it will not train on Input and will not disclose Input except to
-> service providers. Non-US users transfer data to the US. `local-only` sends
+> service providers. Non-US users transfer data to the US (EEA/UK: under Standard
+> Contractual Clauses / the UK Addendum). `local-only` sends
 > nothing. ZDR is available only via enterprise `privacy@typesafe.ai`."
 
 ## Rules
