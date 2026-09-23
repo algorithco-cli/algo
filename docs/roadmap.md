@@ -27,7 +27,7 @@ Build order is strict: `proto -> core -> agent/backend -> dashboard`. `eval` gat
 
 - `backend`: auth device flow, orgs, signed policy sync, opt-in audit ingestion.
 - `dashboard`: history, stats, policy editor dry-run.
-- L2 local model only if ToS-cleared, parity-gated.
+- L2 local model (human-labeled/deterministic data only; Jev-output distillation is out of scope per MCA §2.3(b)), parity-gated.
 - Exit gate: login -> org -> policy -> daemon -> audit -> dashboard E2E, backup/restore tested.
 
 ## Phase 4 — Expansion

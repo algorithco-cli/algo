@@ -119,7 +119,7 @@ Speed comes from the fact that **most requests never reach Jev**. The traffic sh
 |---|---|---|---|
 | **L0** | Hard rules (deny/allow lists) evaluated on the **syntax tree** of the command, not raw text | microseconds | Highest authority. Cannot be overridden. |
 | **L1** | Cache keyed by normalized action fingerprint | microseconds | Normalization removes irrelevant variation (paths, hashes, timestamps). |
-| **L2** | Small local classifier (CPU), trained from Jev outputs and user confirmations | 1 to 5 ms | Distillation. Grows more useful over time. See caveats below. |
+| **L2** | Small local classifier (CPU), trained on human labels / deterministic rules / user confirmations only — **never on Jev outputs** (Jev-output distillation is contractually prohibited, MCA §2.3(b); see caveats below) | 1 to 5 ms | Human-only training. Grows more useful over time. See caveats below. |
 | **L3** | Jev evaluation (remote) | network-bound | Only for new or uncertain cases. Multiple questions per single request. |
 | **L4** | Ask the user | human | Also the universal fallback. |
 
@@ -141,9 +141,13 @@ If real measurements show these are unreachable, adjust through an ADR, not sile
 - **Daemon:** avoids cold-start cost per hook call. The hook client is a tiny binary whose only job is to talk to the daemon.
 - **Degraded mode:** if the network or Jev is unavailable, L0 to L2 keep working; everything else becomes `ask`.
 
-**Caveats on L2 distillation (must be resolved before building it):**
+**Caveats on L2 training (closed items — must hold before building it):**
 
-- **[VERIFY]** TypeSafe's terms of service: are we allowed to use Jev outputs to train another model?
+- **Contractual prohibition (CLOSED 2026-09-23, not [VERIFY]):** TypeSafe MCA §2.3(b)
+  prohibits using Jev outputs to perform model distillation or train an imitating
+  model (see `docs/verify/jev-tos.md:Q1` + `docs/DEFERRED.md:4.3`). Jev-output
+  distillation is permanently out of scope and is not being pursued — L2, if built,
+  trains on human labels / deterministic rules / user confirmations only.
 - User confirmations as training data require explicit user consent and must never include unredacted secrets or source code.
 - L2 must be evaluated against the same eval set as Jev. It ships only if its false-allow rate is no worse than the agreed threshold.
 
@@ -364,7 +368,7 @@ Each phase has an **exit gate**. Do not start the next phase until the gate pass
 |---|---|---|
 | 1 | **Jev access mode [DECISION]:** users bring their own API key (better privacy, cheaper for us) versus routing through our server (single billing, shared cache and learning, but code passes through us). Design the `provider` interface to support both. | Determines privacy policy, backend scope, and cost model. |
 | 2 | **Jev API and SDK [VERIFY]:** official REST spec, auth, rate limits, zero-data-retention options, availability of an on-prem/enterprise option. | Everything in L3 depends on it. |
-| 3 | **Terms of use for training on Jev outputs [VERIFY].** | Gates the L2 distillation strategy. |
+| 3 | **Terms of use for training on Jev outputs — CLOSED 2026-09-23:** Jev-output distillation is contractually prohibited (MCA §2.3(b)) and permanently out of scope; L2, if built, is human-labeled/deterministic only (see `docs/DEFERRED.md:4.3`). | No L2 distillation strategy exists to gate; human-only L2 path only. |
 | 4 | **Hook/plugin capabilities of each agent [VERIFY].** | Determines what is possible per adapter. |
 | 5 | Policy language: CEL vs custom DSL **[DECISION]**. | Core design. |
 | 6 | Local model runtime: `ort` vs `candle` **[DECISION]**. | L2 performance and binary size. |

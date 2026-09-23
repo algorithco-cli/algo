@@ -73,6 +73,9 @@ budget inflation.
 
 ## Verification
 
+- L2/distillation is separately and permanently closed per MCA §2.3(b) (see
+  `docs/DEFERRED.md:4.3`) — do not confuse Jev's shadow-only status below (which a
+  superseding ADR may change) with L2's status (which will not change).
 - Phase 1 ships with `shadow: true` only; any PR touching Jev enforcement beyond
   shadow is CI-blocked until this ADR is superseded.
 - `docs/exit-gate-P0.md:1.3` still shows `p50 < 250` / `p99 < 800` with measured

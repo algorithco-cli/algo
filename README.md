@@ -36,7 +36,7 @@ Most requests never reach Jev. Hypotheses — measured in Phase 0/1, not facts.
 |---|---|---|
 | L0 | Hard deny/allow rules on shell syntax tree | p50 < 3 ms / p99 < 10 ms |
 | L1 | Cache by normalized action fingerprint | p50 < 3 ms / p99 < 10 ms |
-| L2 | Small local classifier (CPU, distilled) | p50 < 10 ms / p99 < 25 ms |
+| L2 | Small local classifier (CPU, human-labeled/deterministic training only — never Jev outputs, MCA §2.3(b)) | p50 < 10 ms / p99 < 25 ms |
 | L3 | Jev evaluation (remote) | p50 < 250 ms / p99 < 800 ms |
 | L4 | Ask the user (universal fallback) | human |
 
