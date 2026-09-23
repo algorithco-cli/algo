@@ -72,11 +72,6 @@ export function Footer(): JSX.Element {
           </div>
         </div>
 
-        {/* Giant wordmark */}
-        <div className="footer-impact-wordmark" aria-hidden>
-          algorithco
-        </div>
-
         {/* Bottom bar */}
         <div className="footer-impact-bottom">
           <span>© 2026 Algorithco</span>

@@ -2072,19 +2072,6 @@ h4 {
 .footer-impact-links a:hover {
   color: var(--ag-brand);
 }
-.footer-impact-wordmark {
-  margin: 8px 0 4px;
-  font-size: min(15vw, 220px);
-  font-weight: 900;
-  line-height: 0.9;
-  letter-spacing: -0.02em;
-  text-transform: lowercase;
-  color: color-mix(in srgb, var(--term-text) 9%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  user-select: none;
-  pointer-events: none;
-}
 .footer-impact-bottom {
   display: flex;
   align-items: center;
@@ -2116,9 +2103,6 @@ h4 {
   .footer-impact-backtop {
     width: 36px;
     height: 36px;
-  }
-  .footer-impact-wordmark {
-    font-size: min(18vw, 140px);
   }
   .footer-impact-bottom {
     flex-direction: column;
