@@ -9,8 +9,8 @@ pub mod proto {
 
 pub use prost_types::Timestamp;
 pub use proto::{
-    Action, AgentIdentity, AgentQuestion, AgentStop, Decision, PrivacyMode, QuestionKind,
-    SourceLevel, ToolAfter, ToolBefore, ToolKind,
+    Action, AgentIdentity, AgentQuestion, AgentStop, Decision, LoopAction, PolicyProfile,
+    PrivacyMode, QuestionKind, SourceLevel, ToolAfter, ToolBefore, ToolKind, VerifierVerdict,
 };
 
 // Re-export dataset types (they import events/decision, so they live in the same proto package).

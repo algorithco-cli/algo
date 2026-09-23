@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "DecisionProvider trait + mock (Jev OFF, only mock per waiver)"
+description = "DecisionProvider trait + mock + feature-gated Jev client (Jev OFF by default)"
 readme = "README.md"
 
 [dependencies]
@@ -13,7 +13,9 @@ algo-types = { path = "../types" }
 thiserror = "2.0"
 
 [features]
-jev = []  # placeholder for future Jev provider behind feature flag (currently OFF, see ADR-0009)
+# Real Jev client (BYOK, shadow-only use). OFF by default per ADR-0009; the daemon
+# keeps MockProvider until the redact + consent + shadow gates clear.
+jev = ["dep:reqwest", "dep:serde_json"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

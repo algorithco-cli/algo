@@ -7,9 +7,9 @@ ADR required before code for every open item. Branch `adr/D0X-*`.
 
 | ID | Title | Blocks | Default / Proposal | Owner | Date | Status |
 |----|-------|--------|--------------------|-------|------|--------|
-| D-01 | Jev BYOK vs proxy | P3 scope/privacy/cost | provider supports both; ship BYOK first | @algorithcoguard/backend | 2026-09-20 | draft (see [ADR 0004](./adr/0004-byok-vs-proxy.md)) |
+| D-01 | Jev BYOK vs proxy | P3 scope/privacy/cost | BYOK only — no proxy mode will be built | @algorithcoguard/backend | 2026-09-20 | accepted (BYOK only — see [ADR 0004](./adr/0004-byok-vs-proxy.md)) |
 | D-02 | Jev API + SDK | all L3 | no default until verified (links+dates) | @algorithcoguard/core | 2026-09-20 | verify-open |
-| D-03 | ToS training on Jev outputs | P3 L2 | L2 blocked until written clearance | @algorithcoguard/eval | 2026-09-20 | blocked |
+| D-03 | ToS training on Jev outputs | P3 L2 | Jev-output distillation not built — permanently out of scope | @algorithcoguard/eval | 2026-09-20 | closed — rejected by MCA §2.3(b), will not build (see `docs/DEFERRED.md:4.3`) |
 | D-04 | Hook caps per agent | P2 stop/edit, P4 adapters | per-agent spike docs first | @algorithcoguard/agent | 2026-09-20 | draft |
 | D-05 | CEL vs DSL | P1/P2 policy | spike both, bias CEL if mature | @algorithcoguard/core | 2026-09-20 | spike complete 2026-09-23, ADR-0012 draft (CEL proposed, human merge pending — policy stays regex until merged) |
 | D-06 | ort vs candle | P3 L2 runtime | benchmark both | @algorithcoguard/agent | 2026-09-20 | deferred to P3 |

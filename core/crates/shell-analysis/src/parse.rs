@@ -28,6 +28,11 @@ impl std::fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
+    // Guard: tree-sitter's C parser can SEGV on null bytes or lone surrogates
+    // (fuzz crash bd621...: "ppp\x00..."). Fail-safe → Err (caller maps to ASK).
+    if input.as_bytes().contains(&0) {
+        return Err(ParseError("input contains null".into()));
+    }
     let mut parser = Parser::new();
     let lang: tree_sitter::Language = tree_sitter_bash::LANGUAGE.into();
     parser

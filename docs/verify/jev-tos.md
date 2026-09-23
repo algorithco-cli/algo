@@ -163,17 +163,16 @@ publish "powered by Jev," TypeSafe logo, or "we use Jev" announcements without
 **prior written consent**. TypeSafe may list us as a customer unless we request
 cessation. See §5 flag for wording fixes.
 
-### Q7 — Vendor cookbook vs MCA (ambiguity → ticket, unchanged)
+### Q7 — Vendor cookbook vs MCA (CLOSED 2026-09-23 — permanently out of scope, not ticketed)
 
 The official AutoResearch cookbook trains a downstream classical (CatBoost) model on
 Jev probabilities (https://docs.typesafe.ai/cookbooks/autoresearch_feature_discovery,
 verified 2026-09-20), which reads in tension with §2.3(b) Q1 above.
-Verdict: **Still AMBIGUOUS vs PROHIBITED** — ticket to TypeSafe support/sales:
-"Does §2.3(b) prohibit training a small local safety classifier on Jev outputs for
-use inside our own product, and is an enterprise amendment available?"
-Ticket ID: TBD (file before any L2 training; record ID here).
-Until answered in writing: the PROHIBITED verdict (Q1) **stands**; the redesign in §3
-(human-only training) is the controlling plan.
+Verdict: **CLOSED — Jev-output distillation for L2 will not be built under the current
+MCA, and no exception ticket will be filed** (owner decision 2026-09-23; see
+`docs/DEFERRED.md:4.3`). The Q1 PROHIBITED verdict stands permanently; the cookbook
+tension is recorded here for the trail but is not being pursued. L2, if ever built,
+uses human labels / deterministic rules / user confirmations only (see §3).
 
 ### Verdict summary
 
@@ -181,9 +180,9 @@ Until answered in writing: the PROHIBITED verdict (Q1) **stands**; the redesign 
 |---|---|---|
 | L3 runtime judgments (allow/ask/deny) | allowed | MCA §2.1 license + §4.2 |
 | Threshold tuning on OUR labels | allowed | §4.2; no Jev-output training |
-| L2 classifier trained on Jev outputs | **PROHIBITED (standard MCA) unless written exception** | §2.3(b) Q1 above |
-| L2 trained on human labels / deterministic rules / user confirmations **only** | allowed (redesigned) | §2.3(b) does not cover human-origin labels — see §3 |
-| L2 enterprise exception | ambiguous → ticket TBD | cookbook vs §2.3(b) tension — §2.4/§16.4 enterprise path |
+| L2 classifier trained on Jev outputs | **CLOSED — will not be built under the current MCA** | §2.3(b) Q1 above + `docs/DEFERRED.md:4.3` |
+| L2 trained on human labels / deterministic rules / user confirmations **only** | allowed (only permitted L2 path) | §2.3(b) does not cover human-origin labels — see §3 |
+| L2 enterprise exception | **closed — not pursued** | decided 2026-09-23; cookbook tension recorded in Q7 for the trail |
 | Security / vuln testing of TypeSafe Services | **prohibited** | §2.3(g) Q1b above |
 | API keys shared / embedded in binaries | **prohibited** | §2.4 Q2 above |
 | Sending redacted states to Jev | conditional (redact + consent + ZDR path) | §4.1/§4.3 + §5 Q3 |
@@ -250,8 +249,7 @@ Visitors" + subprocessors all USA) — see `docs/privacy-dataflow.md` + `docs/re
   Telemetry opt-out / ZDR need on standard plans (ZDR enterprise-only via
   `privacy@typesafe.ai` per Privacy Policy). Owner: product/legal. Recheck:
   2026-10-20.
-- [VERIFY-OPEN-3] Distillation exception ticket (see Q7) — file + record ID.
-  Owner: product. Recheck: 2026-10-20.
+- [VERIFY-OPEN-3] Distillation exception ticket (see Q7) — **CLOSED 2026-09-23: no ticket will be filed; Jev-output distillation is permanently out of scope** (owner decision; see `docs/DEFERRED.md:4.3`). Item retained for the trail only.
 
 ## Human sign-off
 

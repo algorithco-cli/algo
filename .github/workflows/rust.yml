@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -56,6 +56,12 @@ jobs:
           cargo test --manifest-path core/Cargo.toml
           cargo test --manifest-path agent/Cargo.toml
           cargo test --manifest-path backend/Cargo.toml
+
+      - name: cargo test + clippy provider jev feature (core)
+        # The real Jev client is feature-gated (default OFF); its tests only run here.
+        run: |
+          (cd core && cargo test -p algo-provider --features jev)
+          (cd core && cargo clippy -p algo-provider --features jev --all-targets -- -D warnings)
 
       - name: Install cargo-deny + cargo-audit (pinned)
         run: |
