@@ -1,0 +1,22 @@
+[package]
+name = "algo-policy-spike"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "P1-01 spike ONLY: CEL (cel crate) vs pest-DSL for policy language — not product code, no product crate may depend on this"
+readme = "README.md"
+
+[dependencies]
+cel = "0.14"
+pest = "2.9"
+pest_derive = "2.9"
+regex = "1.12"
+
+[[bench]]
+name = "spike_eval"
+harness = false
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }

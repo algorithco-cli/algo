@@ -1,0 +1,23 @@
+// P1-01 spike DSL grammar (minimal deny language):
+//   deny if "rm" in bin && "-rf" in flag
+//   deny if raw contains "mkfs"
+//   deny if net == true && pipe_to_shell == true
+//   deny if A || B, !A, (A) — full boolean combination.
+
+rule = { SOI ~ "deny" ~ "if" ~ expr ~ EOI }
+expr = { or }
+or = { and ~ ("||" ~ and)* }
+and = { unary ~ ("&&" ~ unary)* }
+unary = { "!" ~ unary | primary }
+primary = { "(" ~ expr ~ ")" | pred }
+pred = { contains_pred | in_pred | eq_pred }
+contains_pred = { ident ~ "contains" ~ string }
+in_pred = { string ~ "in" ~ list_ident }
+eq_pred = { bool_ident ~ eq_op ~ boolean }
+ident = { list_ident | bool_ident | "raw" }
+list_ident = { "bin" | "flag" | "tok" }
+bool_ident = { "pipe_to_shell" | "net" }
+eq_op = { "==" | "!=" }
+string = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+boolean = { "true" | "false" }
+WHITESPACE = _{ " " | "\t" }
