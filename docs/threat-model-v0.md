@@ -27,6 +27,7 @@
 - Disclosure: source code or secrets leave machine. Mitigation: redact-before-network; `local-only` mode sends nothing except via explicit Jev path; `algo log --show-egress` inspector.
 - Spoofing / Tampering: fake Jev endpoint. Mitigation: TLS + pinned host; signature check where applicable; timeout/error -> `ask`, never `allow`.
 - Denial: Jev slow or down. Mitigation: L0-L2 keep working; L3 timeout -> `ask`. Budget L3 p50 < 250ms / p99 < 800ms.
+- Residency (informational, R4 CONFIRMED 2026-09-23 — not a mitigation to build): cross-border transfer to the US is inherent to the current Jev integration (US-only hosting, EEA/UK under SCCs/UK Addendum); no region-pinning is available. Disclosed in consent (`docs/privacy-dataflow.md`).
 - Jev API shape `[VERIFY]` — 2026-09-20 — official TypeSafe AI Jev docs (link on verification; no SDK assumed).
 
 ### B3: daemon -> backend (opt-in cloud, Phase 3)
