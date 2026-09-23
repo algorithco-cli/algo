@@ -262,20 +262,22 @@ fn run_tui(mut app: App) -> io::Result<()> {
                                     app.refresh();
                                     last_auto = Instant::now();
                                 }
-                                KeyCode::Char('p') => app.toggle_policy(),
-                                KeyCode::Char('1') => {
-                                    if app.mode != ViewMode::Feed {
-                                        app.toggle_policy();
+                                KeyCode::Char('p') => {
+                                    if app.mode == ViewMode::Feed {
+                                        app.show_policy();
+                                    } else if app.mode == ViewMode::Policy {
+                                        app.show_feed();
                                     }
                                 }
+                                KeyCode::Char('1') => {
+                                    app.show_feed();
+                                }
                                 KeyCode::Char('2') => {
-                                    if app.mode != ViewMode::Policy {
-                                        app.toggle_policy();
-                                    }
+                                    app.show_policy();
                                 }
                                 KeyCode::Esc => {
                                     if app.mode == ViewMode::Policy {
-                                        app.toggle_policy();
+                                        app.show_feed();
                                     } else {
                                         break;
                                     }

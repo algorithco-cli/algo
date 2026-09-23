@@ -5,6 +5,13 @@
 //! Crash of this process never blocks hooks.
 
 use algo_audit::{AuditEntry, AuditStore, Counts};
+use ratatui::widgets::TableState;
+
+/// Ticks (at ~100ms UI poll) before a pending browser sign-in times out
+/// with an honest "not available yet" error instead of spinning forever.
+pub const BROWSER_TIMEOUT_TICKS: usize = 300;
+/// Ticks before a successful login auto-transitions to the feed.
+pub const SUCCESS_TICKS: usize = 12;
 
 /// View mode for the TUI.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -58,6 +65,9 @@ pub struct App {
     pub entries: Vec<AuditEntry>,
     /// Currently selected row in `entries`.
     pub selected: usize,
+    /// Stateful table scroll/selection — kept in sync with `selected`.
+    /// Rendered via `render_stateful_widget` so highlight + scroll-into-view work.
+    pub table_state: TableState,
     /// Current view mode.
     pub mode: ViewMode,
     /// Whether we are in offline read-only mode.
@@ -152,6 +162,7 @@ impl App {
             },
             entries: Vec::new(),
             selected: 0,
+            table_state: TableState::default(),
             mode: ViewMode::Feed,
             is_offline,
             error: None,
@@ -266,12 +277,22 @@ impl App {
         }
     }
 
+    /// Keep `table_state.selected` in sync with `selected`.
+    fn sync_table_state(&mut self) {
+        if self.entries.is_empty() {
+            self.table_state.select(None);
+        } else {
+            self.table_state.select(Some(self.selected));
+        }
+    }
+
     fn clamp_selection(&mut self) {
         if self.entries.is_empty() {
             self.selected = 0;
         } else if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
+        self.sync_table_state();
     }
 
     /// Move selection down (j).
@@ -282,6 +303,7 @@ impl App {
         if self.selected + 1 < self.entries.len() {
             self.selected += 1;
         }
+        self.sync_table_state();
     }
 
     /// Move selection up (k).
@@ -289,11 +311,13 @@ impl App {
         if self.selected > 0 {
             self.selected -= 1;
         }
+        self.sync_table_state();
     }
 
     /// Jump to first row (g / Home).
     pub fn select_first(&mut self) {
         self.selected = 0;
+        self.sync_table_state();
     }
 
     /// Jump to last row (G / End).
@@ -301,6 +325,7 @@ impl App {
         if !self.entries.is_empty() {
             self.selected = self.entries.len() - 1;
         }
+        self.sync_table_state();
     }
 
     /// Currently selected entry, if any.
@@ -308,13 +333,28 @@ impl App {
         self.entries.get(self.selected)
     }
 
-    /// Toggle between Feed and Policy view (p). No-op on Login gate.
-    pub fn toggle_policy(&mut self) {
-        self.mode = match self.mode {
-            ViewMode::Feed => ViewMode::Policy,
-            ViewMode::Policy => ViewMode::Feed,
-            ViewMode::Login => ViewMode::Login,
-        };
+    /// Single authoritative way to change views. No-op when the login gate
+    /// is up (use `show_login` / `continue_offline` for those transitions)
+    /// so adding a third `ViewMode` cannot silently misbehave.
+    pub fn set_mode(&mut self, mode: ViewMode) {
+        if self.mode == ViewMode::Login {
+            return;
+        }
+        // Never allow switching *into* Login via set_mode; use show_login().
+        if mode == ViewMode::Login {
+            return;
+        }
+        self.mode = mode;
+    }
+
+    /// Show the live feed (explicit, unambiguous).
+    pub fn show_feed(&mut self) {
+        self.set_mode(ViewMode::Feed);
+    }
+
+    /// Show the policy snapshot (explicit, unambiguous).
+    pub fn show_policy(&mut self) {
+        self.set_mode(ViewMode::Policy);
     }
 
     /// Show the login gate (called once on launch). Resets to clean Idle state.
@@ -344,23 +384,24 @@ impl App {
         self.mode = ViewMode::Feed;
     }
 
-    /// Start a browser sign-in attempt (animated; backend deferred in MVP).
-    /// Generates a device code for display.
+    /// Start a browser sign-in attempt.
+    ///
+    /// No OAuth backend exists in this MVP, so this is honest: it enters a
+    /// pending state with NO fabricated device code and `tick()` surfaces a
+    /// clear "not available yet" timeout instead of spinning forever.
     pub fn start_browser_signin(&mut self) {
         self.login_status = LoginStatus::BrowserPending;
-        self.login_device_code = Some(Self::generate_device_code());
+        self.login_device_code = None;
         self.login_ticks = 0;
         self.login_pending = true;
-        self.login_note = Some("Waiting for browser confirmation…".to_string());
-        self.login_status_msg =
-            Some("Waiting for browser confirmation…  Press Esc to cancel.".to_string());
+        self.login_note = Some(
+            "Browser sign-in is not available yet — use an API key or Continue offline."
+                .to_string(),
+        );
+        self.login_status_msg = Some(
+            "Browser sign-in is not available yet — use an API key or Continue offline.  Press Esc to cancel.".to_string(),
+        );
         self.login_focus = LoginFocus::Browser;
-    }
-
-    fn generate_device_code() -> String {
-        // Deterministic for tests, but looks like a real device code.
-        // In production this would come from OAuth device flow.
-        "WD-4829-XK".to_string()
     }
 
     /// Enter API key entry mode (reveals input field).
@@ -430,14 +471,20 @@ impl App {
         }
     }
 
-    /// Submit the current API key — validates not empty, then enters validating state.
-    /// Returns true if submission started (validating), false if validation error immediately.
+    /// Submit the current API key.
+    ///
+    /// No validation backend exists in this MVP, so there is no fake network
+    /// validation theater: basic local sanity (non-empty, >=8 chars) is
+    /// checked, then the key is accepted locally with a clear "stored
+    /// locally, not verified" message. Returns true on accept, false on
+    /// immediate local error.
     pub fn submit_api_key(&mut self) -> bool {
-        let trimmed = self.login_api_input.trim();
+        let trimmed = self.login_api_input.trim().to_string();
         if trimmed.is_empty() {
             self.login_status = LoginStatus::Error("API key cannot be empty.".to_string());
             self.login_status_msg = Some("API key cannot be empty.".to_string());
             self.login_ticks = 0;
+            self.login_pending = false;
             return false;
         }
         if trimmed.chars().count() < 8 {
@@ -447,13 +494,16 @@ impl App {
             self.login_status_msg =
                 Some("API key too short — must be at least 8 characters.".to_string());
             self.login_ticks = 0;
+            self.login_pending = false;
             return false;
         }
-        // Enter validating — tick will drive success after delay
-        self.login_status = LoginStatus::ApiKeyValidating;
+        // Accepted locally — honestly labelled, no fake spinner.
+        self.login_status = LoginStatus::Success;
         self.login_ticks = 0;
-        self.login_pending = true;
-        self.login_status_msg = Some("Validating API key…".to_string());
+        self.login_pending = false;
+        self.login_status_msg =
+            Some("API key stored locally, not verified (offline MVP).".to_string());
+        self.login_note = self.login_status_msg.clone();
         true
     }
 
@@ -562,40 +612,33 @@ impl App {
         match self.login_status.clone() {
             LoginStatus::BrowserPending => {
                 self.login_ticks += 1;
-                // Keep device code visible; no auto-success — user cancels or we stay pending.
-                // Optional: after very long time (e.g. 40 ticks ~4s) we could keep spinner forever — do nothing.
+                if self.login_ticks >= BROWSER_TIMEOUT_TICKS {
+                    // Honest timeout — no backend, no infinite spinner.
+                    let msg = "Browser sign-in is not available yet — use an API key or Continue offline."
+                        .to_string();
+                    self.login_status = LoginStatus::Error(msg.clone());
+                    self.login_status_msg = Some(msg.clone());
+                    self.login_note = Some(msg);
+                    self.login_pending = false;
+                    self.login_ticks = 0;
+                }
             }
             LoginStatus::ApiKeyValidating => {
+                // Legacy state: no backend ever validated here. Resolve honestly
+                // to a local (unverified) accept so old callers can't spin forever.
                 self.login_ticks += 1;
-                if self.login_ticks >= 10 {
-                    // Simulate validation: if input contains "invalid" or "error", fail, else success if length ok
-                    let input = self.login_api_input.trim().to_lowercase();
-                    if input.contains("invalid") || input.contains("error") || input == "fail" {
-                        self.login_status = LoginStatus::Error(
-                            "Invalid API key — please check and try again.".to_string(),
-                        );
-                        self.login_status_msg =
-                            Some("Invalid API key — please check and try again.".to_string());
-                        self.login_pending = false;
-                    } else if input.chars().count() >= 8 {
-                        self.login_status = LoginStatus::Success;
-                        self.login_status_msg = Some("✓ API key accepted — signed in.".to_string());
-                        self.login_pending = false;
-                        self.login_ticks = 0;
-                    } else {
-                        self.login_status = LoginStatus::Error(
-                            "API key too short — must be at least 8 characters.".to_string(),
-                        );
-                        self.login_status_msg =
-                            Some("API key too short — must be at least 8 characters.".to_string());
-                        self.login_pending = false;
-                    }
+                if self.login_ticks >= 2 {
+                    self.login_status = LoginStatus::Success;
+                    self.login_status_msg =
+                        Some("API key stored locally, not verified (offline MVP).".to_string());
+                    self.login_note = self.login_status_msg.clone();
+                    self.login_pending = false;
                     self.login_ticks = 0;
                 }
             }
             LoginStatus::Success => {
                 self.login_ticks += 1;
-                if self.login_ticks >= 12 {
+                if self.login_ticks >= SUCCESS_TICKS {
                     // Brief confirmation done — transition to feed
                     self.continue_offline();
                 }
@@ -711,14 +754,18 @@ impl App {
         if self.mode == ViewMode::Feed {
             if let Some(inner) = self.table_inner {
                 // Header occupies the first inner row; data rows follow.
+                // Account for the table's actual scroll offset so a click
+                // always selects the row actually clicked, even after scrolling.
                 if x >= inner.x
                     && x < inner.x.saturating_add(inner.width)
                     && y > inner.y
                     && y < inner.y.saturating_add(inner.height)
                 {
-                    let idx = (y - inner.y - 1) as usize;
+                    let visible_row = (y - inner.y - 1) as usize;
+                    let idx = self.table_state.offset().saturating_add(visible_row);
                     if idx < self.entries.len() {
                         self.selected = idx;
+                        self.sync_table_state();
                     }
                 }
             }
@@ -822,9 +869,28 @@ mod tests {
         assert_eq!(app.selected, 2); // clamp
         app.select_prev();
         assert_eq!(app.selected, 1);
-        app.toggle_policy();
+        app.show_policy();
         assert_eq!(app.mode, ViewMode::Policy);
-        app.toggle_policy();
+        app.show_feed();
+        assert_eq!(app.mode, ViewMode::Feed);
+    }
+
+    #[test]
+    fn set_mode_is_authoritative() {
+        let mut app = App::new(None);
+        // Explicit, unambiguous — each call lands exactly where asked.
+        app.show_policy();
+        assert_eq!(app.mode, ViewMode::Policy);
+        app.show_policy();
+        assert_eq!(app.mode, ViewMode::Policy);
+        app.show_feed();
+        assert_eq!(app.mode, ViewMode::Feed);
+        app.show_feed();
+        assert_eq!(app.mode, ViewMode::Feed);
+        // Direct set_mode works too.
+        app.set_mode(ViewMode::Policy);
+        assert_eq!(app.mode, ViewMode::Policy);
+        app.set_mode(ViewMode::Feed);
         assert_eq!(app.mode, ViewMode::Feed);
     }
 
@@ -837,8 +903,10 @@ mod tests {
         assert_eq!(app.login_focus, LoginFocus::Browser);
         assert!(app.login_device_code.is_none());
         assert!(app.login_api_input.is_empty());
-        // Policy toggle is a no-op on login
-        app.toggle_policy();
+        // View switching is a no-op on login gate
+        app.set_mode(ViewMode::Feed);
+        assert_eq!(app.mode, ViewMode::Login);
+        app.show_policy();
         assert_eq!(app.mode, ViewMode::Login);
     }
 
@@ -846,12 +914,16 @@ mod tests {
     fn login_browser_flow_with_cancel() {
         let mut app = App::new(None);
         app.show_login();
-        // Idle + Browser focused -> Enter starts browser
+        // Idle + Browser focused -> Enter starts browser (honest: no fake code)
         app.login_confirm();
         assert_eq!(app.login_status, LoginStatus::BrowserPending);
-        assert!(app.login_device_code.is_some());
-        assert_eq!(app.login_device_code.as_deref(), Some("WD-4829-XK"));
-        // Spinner tick does not auto-finish
+        assert!(app.login_device_code.is_none());
+        assert!(app
+            .login_status_msg
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not available yet"));
+        // Short wait does not auto-finish
         for _ in 0..20 {
             app.tick();
         }
@@ -863,6 +935,28 @@ mod tests {
         // Offline shortcut
         app.continue_offline();
         assert_eq!(app.mode, ViewMode::Feed);
+    }
+
+    #[test]
+    fn login_browser_timeout_is_honest() {
+        let mut app = App::new(None);
+        app.show_login();
+        app.start_browser_signin();
+        assert_eq!(app.login_status, LoginStatus::BrowserPending);
+        for _ in 0..BROWSER_TIMEOUT_TICKS {
+            app.tick();
+        }
+        assert!(
+            matches!(app.login_status, LoginStatus::Error(_)),
+            "browser pending must time out, got {:?}",
+            app.login_status
+        );
+        let msg = app.login_status_msg.clone().unwrap_or_default();
+        assert!(msg.contains("not available yet"), "msg was: {msg}");
+        assert!(
+            msg.contains("API key") || msg.contains("offline"),
+            "msg was: {msg}"
+        );
     }
 
     #[test]
@@ -882,20 +976,38 @@ mod tests {
         app.login_status = LoginStatus::ApiKeyEditing;
         app.submit_api_key();
         assert!(matches!(app.login_status, LoginStatus::Error(_)));
-        // Valid key -> validating
+        // Valid key -> accepted locally with honest message (no fake spinner)
         app.login_api_input = "ag-valid-key-12345".to_string();
         assert!(app.submit_api_key());
-        assert_eq!(app.login_status, LoginStatus::ApiKeyValidating);
-        // Tick drives success
-        for _ in 0..12 {
-            app.tick();
-        }
         assert_eq!(app.login_status, LoginStatus::Success);
+        assert!(app
+            .login_status_msg
+            .as_deref()
+            .unwrap_or_default()
+            .contains("stored locally, not verified"));
         // Tick drives auto-transition to feed
         for _ in 0..13 {
             app.tick();
         }
         assert_eq!(app.mode, ViewMode::Feed);
+    }
+
+    #[test]
+    fn login_apikey_accept_is_honest_not_fake_validated() {
+        let mut app = App::new(None);
+        app.show_login();
+        app.start_api_key_entry();
+        // Any sufficiently-long key is stored locally — even one containing
+        // "invalid", which the old fake validator rejected theatrically.
+        app.login_api_input = "invalid-key-here".to_string();
+        assert!(app.submit_api_key());
+        assert_eq!(app.login_status, LoginStatus::Success);
+        let msg = app.login_status_msg.clone().unwrap_or_default();
+        assert!(
+            msg.contains("stored locally, not verified"),
+            "msg was: {msg}"
+        );
+        assert!(!msg.to_lowercase().contains("validating"), "msg was: {msg}");
     }
 
     #[test]
@@ -910,12 +1022,10 @@ mod tests {
         assert_eq!(app.masked_api_input(), "•••");
         app.pop_api_key_char();
         assert_eq!(app.login_api_input, "ab");
-        // Invalid simulation
-        app.login_api_input = "invalid-key-here".to_string();
-        app.submit_api_key();
-        for _ in 0..11 {
-            app.tick();
-        }
+        // Too-short key is a local error (not fake network rejection)
+        app.login_api_input = "ab".to_string();
+        app.login_status = LoginStatus::ApiKeyEditing;
+        assert!(!app.submit_api_key());
         assert!(matches!(app.login_status, LoginStatus::Error(_)));
         // Retry should go back to editing
         app.login_confirm();
@@ -943,6 +1053,71 @@ mod tests {
         app.login_focus = LoginFocus::ApiKey;
         app.login_confirm();
         assert_eq!(app.login_status, LoginStatus::ApiKeyEditing);
+    }
+
+    fn entry_with_reason(i: usize) -> AuditEntry {
+        AuditEntry {
+            ts: 1_700_000_000_000 + i as i64,
+            session_id: format!("sess-{i}"),
+            tool_kind: 0,
+            redacted_command: format!("cmd-{i}"),
+            fingerprint: format!("fp-{i:04}"),
+            action: Action::Allow as i32,
+            source: SourceLevel::Rule as i32,
+            reason: format!("entry-{i:02}"),
+            confidence: 0.9,
+            latency_ms: 5,
+            profile: "test".to_string(),
+            shadow: false,
+        }
+    }
+
+    #[test]
+    fn table_state_stays_in_sync_with_selection() {
+        let mut app = App::new(None);
+        for i in 0..5 {
+            app.entries.push(entry_with_reason(i));
+        }
+        app.select_first();
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.table_state.selected(), Some(0));
+        app.select_next();
+        assert_eq!(app.selected, 1);
+        assert_eq!(app.table_state.selected(), Some(1));
+        app.select_last();
+        assert_eq!(app.selected, 4);
+        assert_eq!(app.table_state.selected(), Some(4));
+        app.select_prev();
+        assert_eq!(app.selected, 3);
+        assert_eq!(app.table_state.selected(), Some(3));
+        app.select_first();
+        assert_eq!(app.table_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn click_accounts_for_scroll_offset() {
+        let mut app = App::new(None);
+        for i in 0..10 {
+            app.entries.push(entry_with_reason(i));
+        }
+        app.mode = ViewMode::Feed;
+        app.select_first();
+        // Simulate a scrolled table: first visible row is entry 5.
+        *app.table_state.offset_mut() = 5;
+        app.table_state.select(Some(app.selected));
+        app.table_inner = Some(ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 12,
+        });
+        // Click the 3rd visible data row (y = inner.y + 1 header + 2).
+        app.handle_click(1, 3);
+        assert_eq!(app.selected, 7, "click must add scroll offset");
+        assert_eq!(app.table_state.selected(), Some(7));
+        // Click the first visible row maps to the offset entry.
+        app.handle_click(1, 1);
+        assert_eq!(app.selected, 5);
     }
 
     #[test]
