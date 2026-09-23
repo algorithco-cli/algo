@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 algo-audit = { path = "../crates/audit" }
 algo-types = { path = "../../core/crates/types" }
-ratatui = { version = "0.29", features = ["crossterm"] }
+ratatui = { version = "0.30", features = ["crossterm"] }
 crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1.53", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
