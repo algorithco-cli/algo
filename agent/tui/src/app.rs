@@ -1180,7 +1180,10 @@ mod tests {
         assert!(msg.contains("Codex"), "msg was: {msg}");
         assert!(msg.contains("stored locally"), "msg was: {msg}");
         assert!(!msg.to_lowercase().contains("connecting"), "msg was: {msg}");
-        assert!(!msg.to_lowercase().contains("connected —"), "msg was: {msg}");
+        assert!(
+            !msg.to_lowercase().contains("connected —"),
+            "msg was: {msg}"
+        );
         // Out of range is ignored, never panics.
         app.choose_tool_idx(99);
         assert_eq!(app.connected_tool, Some(CliTool::Codex));

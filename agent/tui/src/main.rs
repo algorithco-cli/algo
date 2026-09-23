@@ -101,11 +101,11 @@ fn run_tui(mut app: App) -> io::Result<()> {
                                 break;
                             }
                         }
-                        MouseEventKind::ScrollUp if app.mode == ViewMode::Feed => {
-                            app.select_prev();
+                        MouseEventKind::ScrollUp if app.mode == ViewMode::Connect => {
+                            app.select_tool_prev();
                         }
-                        MouseEventKind::ScrollDown if app.mode == ViewMode::Feed => {
-                            app.select_next();
+                        MouseEventKind::ScrollDown if app.mode == ViewMode::Connect => {
+                            app.select_tool_next();
                         }
                         _ => {}
                     },
@@ -251,37 +251,39 @@ fn run_tui(mut app: App) -> io::Result<()> {
                                 }
                                 _ => {}
                             }
-                        } else {
+                        } else if app.mode == ViewMode::Connect {
+                            // CLI-integration picker: move with j/k, choose
+                            // with Enter or 1-4, quit with q/Esc.
                             match key.code {
-                                KeyCode::Char('q') => break,
-                                KeyCode::Char('j') | KeyCode::Down => app.select_next(),
-                                KeyCode::Char('k') | KeyCode::Up => app.select_prev(),
-                                KeyCode::Char('g') | KeyCode::Home => app.select_first(),
-                                KeyCode::Char('G') | KeyCode::End => app.select_last(),
-                                KeyCode::Char('r') => {
-                                    app.refresh();
-                                    last_auto = Instant::now();
+                                KeyCode::Char('q') | KeyCode::Esc => break,
+                                KeyCode::Char('j') | KeyCode::Down => {
+                                    app.select_tool_next();
                                 }
-                                KeyCode::Char('p') => {
-                                    if app.mode == ViewMode::Feed {
-                                        app.show_policy();
-                                    } else if app.mode == ViewMode::Policy {
-                                        app.show_feed();
-                                    }
+                                KeyCode::Char('k') | KeyCode::Up => {
+                                    app.select_tool_prev();
+                                }
+                                KeyCode::Enter => {
+                                    app.choose_tool();
                                 }
                                 KeyCode::Char('1') => {
-                                    app.show_feed();
+                                    app.choose_tool_idx(0);
                                 }
                                 KeyCode::Char('2') => {
-                                    app.show_policy();
+                                    app.choose_tool_idx(1);
                                 }
-                                KeyCode::Esc => {
-                                    if app.mode == ViewMode::Policy {
-                                        app.show_feed();
-                                    } else {
-                                        break;
-                                    }
+                                KeyCode::Char('3') => {
+                                    app.choose_tool_idx(2);
                                 }
+                                KeyCode::Char('4') => {
+                                    app.choose_tool_idx(3);
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            // Legacy Feed/Policy views (unreachable in the
+                            // current flow): q/Esc quits.
+                            match key.code {
+                                KeyCode::Char('q') | KeyCode::Esc => break,
                                 _ => {}
                             }
                         }

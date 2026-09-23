@@ -15,7 +15,7 @@
 //!   policy: real config snapshot (read-only, never writes decision path)
 //!   footer: keyboard hints + auto-refresh note
 
-use crate::app::{App, LoginFocus, LoginStatus, ViewMode};
+use crate::app::{App, LoginFocus, LoginStatus, ViewMode, CLI_TOOLS, CLI_TOOL_COUNT};
 use chrono::{DateTime, Utc};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -217,7 +217,20 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.tab_policy = None;
         app.footer_quit = None;
         app.table_inner = None;
+        for r in app.tool_rects.iter_mut() {
+            *r = None;
+        }
         render_login(frame, app, area);
+        return;
+    }
+
+    // CLI-integration picker is the main view.
+    if app.mode == ViewMode::Connect {
+        // Clear stale legacy hit areas (Feed/Policy tabs, table).
+        app.tab_feed = None;
+        app.tab_policy = None;
+        app.table_inner = None;
+        render_connect(frame, app, area);
         return;
     }
 
@@ -998,6 +1011,198 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
 
     // Keep legacy alias in sync for tests that still read login_signin
     app.login_signin = app.login_browser;
+}
+
+/// CLI-integration picker — the main view. Lists the terminal coding tools
+/// `algo` can work with. UI-only for now: picking a tool stores the choice
+/// locally with an honest "not connected yet" note; no connection, no fake
+/// connecting animation.
+fn render_connect(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
+    let card = centered_fixed(70, 27, area);
+    if card.width < 50 || card.height < 24 {
+        let msg = Paragraph::new(vec![
+            Line::from(Span::styled(
+                "CLI integration — pick your tool",
+                Style::default()
+                    .fg(COLOR_BRAND)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "Resize wider for the full picker.",
+                Style::default().fg(COLOR_MUTED),
+            )),
+        ]);
+        frame.render_widget(msg, card);
+        return;
+    }
+
+    // Header (2) + 4 tool boxes (5 each) + status (2) + slack + footer (1).
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(card);
+
+    // ---- Header ----
+    let mut title = vec![
+        Span::styled(
+            " algorithco guard ",
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" v{} ", app.version),
+            Style::default().fg(COLOR_MUTED),
+        ),
+        Span::styled(
+            " CLI integration ",
+            Style::default()
+                .fg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ];
+    title.extend(mode_badges(app));
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(title),
+            Line::from(Span::styled(
+                "Pick the terminal coding tool algo should work with",
+                Style::default().fg(COLOR_MUTED),
+            )),
+        ]),
+        rows[0],
+    );
+
+    // ---- Tool boxes ----
+    let dash_style = Style::default()
+        .fg(COLOR_BRAND)
+        .add_modifier(Modifier::BOLD);
+    for (i, tool) in CLI_TOOLS.iter().enumerate() {
+        let focused = i == app.tool_selected;
+        let chosen = app.connected_tool == Some(*tool);
+        let border = if focused {
+            Style::default()
+                .fg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(COLOR_BORDER)
+        };
+        let title = if focused {
+            Span::styled(
+                format!(" [{}] ● {} ", i + 1, tool.name()),
+                Style::default()
+                    .fg(Color::White)
+                    .bg(COLOR_BRAND)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(
+                format!(" [{}] {} ", i + 1, tool.name()),
+                Style::default()
+                    .fg(COLOR_MUTED)
+                    .add_modifier(Modifier::BOLD),
+            )
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(border)
+            .title(title);
+        let box_rect = rows[1 + i];
+        let inner = block.inner(box_rect);
+        frame.render_widget(block, box_rect);
+        app.tool_rects[i] = Some(box_rect);
+
+        let status = if chosen {
+            Line::from(vec![Span::styled(
+                "● Selected — stored locally (not connected yet)",
+                Style::default()
+                    .fg(COLOR_ALLOW)
+                    .add_modifier(Modifier::BOLD),
+            )])
+        } else {
+            Line::from(vec![
+                Span::styled("○ ", Style::default().fg(COLOR_MUTED)),
+                Span::styled("Not connected", Style::default().fg(COLOR_MUTED)),
+            ])
+        };
+        let hint = if focused {
+            Line::from(Span::styled(
+                "Press Enter to select",
+                Style::default().fg(COLOR_MUTED),
+            ))
+        } else {
+            Line::from("")
+        };
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled(tool.desc(), Style::default().fg(COLOR_MUTED))),
+                status,
+                hint,
+            ]),
+            inner,
+        );
+        if focused {
+            render_marching_dashes(frame, box_rect, app.anim_phase, dash_style);
+        }
+    }
+
+    // ---- Honest status line ----
+    let (status_text, status_style) = match &app.connect_status_msg {
+        Some(msg) => (
+            format!(" {msg} "),
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_ALLOW)
+                .add_modifier(Modifier::BOLD),
+        ),
+        None => (
+            " Selection is stored locally — algo connection wiring is UI-only for now. "
+                .to_string(),
+            Style::default().fg(COLOR_MUTED),
+        ),
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(status_text, status_style)))
+            .alignment(ratatui::layout::Alignment::Center),
+        rows[5],
+    );
+
+    // ---- Footer: hint + quit (own sub-rects, like the feed footer) ----
+    let foot = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(8)])
+        .split(rows[7]);
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "click a tool to select · j/k to move · Enter to choose",
+            Style::default().fg(COLOR_MUTED),
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        foot[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            " ✕ Quit ",
+            Style::default().fg(COLOR_MUTED),
+        )))
+        .alignment(ratatui::layout::Alignment::Center),
+        foot[1],
+    );
+    app.footer_quit = Some(foot[1]);
+
+    // The picker and its click rects must stay in lockstep.
+    debug_assert_eq!(CLI_TOOLS.len(), CLI_TOOL_COUNT);
+    debug_assert_eq!(app.tool_rects.len(), CLI_TOOL_COUNT);
 }
 
 fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
@@ -1979,5 +2184,104 @@ mod tests {
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let third = top_row(terminal.backend().buffer());
         assert_eq!(first, third, "dash cycle must loop cleanly");
+    }
+
+    #[test]
+    fn render_connect_lists_all_tools() {
+        for width in [80u16, 120u16] {
+            let mut app = App::new(None);
+            app.mode = crate::app::ViewMode::Connect;
+            let backend = TestBackend::new(width, 30);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &mut app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            let content: String = buf
+                .content()
+                .iter()
+                .map(|c| c.symbol().to_string())
+                .collect();
+            for name in ["Claude Code", "Codex", "Gemini CLI", "Custom"] {
+                assert!(content.contains(name), "missing tool {name} at {width}");
+            }
+            // Each click rect holds exactly its tool's label.
+            for (i, name) in ["Claude Code", "Codex", "Gemini CLI", "Custom"]
+                .iter()
+                .enumerate()
+            {
+                let r = app.tool_rects[i].expect("tool rect recorded");
+                let text = rect_text(&buf, r);
+                assert!(
+                    text.contains(name),
+                    "tool rect {i} must contain {name}, got {text:?}"
+                );
+                assert!(has_non_whitespace(&buf, r), "tool rect {i} is empty");
+            }
+            // Honest UI-only messaging, no fake connecting theater.
+            assert!(
+                content.contains("stored locally") || content.contains("UI-only"),
+                "honest note missing at {width}"
+            );
+            assert!(
+                !content.contains("Connecting"),
+                "fake connecting theater must not exist at {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn connect_click_selects_tool() {
+        let mut app = App::new(None);
+        app.mode = crate::app::ViewMode::Connect;
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        assert!(app.connected_tool.is_none());
+        // Click the middle of the Codex row (index 1).
+        let r = app.tool_rects[1].expect("codex rect recorded");
+        let cx = r.x + r.width / 2;
+        let cy = r.y + r.height / 2;
+        assert!(!app.handle_click(cx, cy));
+        assert_eq!(app.tool_selected, 1);
+        assert_eq!(
+            app.connected_tool,
+            Some(crate::app::CliTool::Codex),
+            "click must choose the clicked tool"
+        );
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("Codex selected — stored locally"),
+            "chosen tool must be confirmed honestly: {content}"
+        );
+    }
+
+    #[test]
+    fn connect_keyboard_choose_marks_selected() {
+        let mut app = App::new(None);
+        app.mode = crate::app::ViewMode::Connect;
+        app.select_tool_next(); // Claude Code -> Codex
+        app.choose_tool();
+        assert_eq!(app.connected_tool, Some(crate::app::CliTool::Codex));
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            content.contains("● Selected"),
+            "chosen row must show selected"
+        );
+        assert!(content.contains("Not connected"), "others stay unconnected");
     }
 }
