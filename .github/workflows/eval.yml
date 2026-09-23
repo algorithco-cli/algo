@@ -72,7 +72,7 @@ jobs:
           python -m harness.cli --dataset datasets/v0.1/seed.jsonl --provider mock_ask_all --output reports/mock_ask_all
 
       - name: Upload eval reports
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: eval-reports-py${{ matrix.python-version }}-${{ github.sha }}
           path: eval/reports/

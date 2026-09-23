@@ -54,7 +54,7 @@ jobs:
         # A fuzzer-found crash is a fail-safe hole until triaged: the input
         # must be downloadable for minimization + regression tests.
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crashes-${{ github.sha }}
           path: fuzz/artifacts/
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload crash artifacts (never silently drop a find)
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crashes-nightly-${{ github.sha }}
           path: fuzz/artifacts/
