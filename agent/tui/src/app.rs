@@ -373,7 +373,6 @@ impl App {
 
     /// Move selection down (j).
     /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
-    #[cfg(test)]
     pub fn select_next(&mut self) {
         if self.entries.is_empty() {
             return;
@@ -386,7 +385,6 @@ impl App {
 
     /// Move selection up (k).
     /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
-    #[cfg(test)]
     pub fn select_prev(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
@@ -396,7 +394,6 @@ impl App {
 
     /// Jump to first row (g / Home).
     /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
-    #[cfg(test)]
     pub fn select_first(&mut self) {
         self.selected = 0;
         self.sync_table_state();
@@ -404,7 +401,6 @@ impl App {
 
     /// Jump to last row (G / End).
     /// Legacy feed UI helper — retained for tests; the live flow uses tool nav.
-    #[cfg(test)]
     pub fn select_last(&mut self) {
         if !self.entries.is_empty() {
             self.selected = self.entries.len() - 1;
@@ -421,7 +417,6 @@ impl App {
     /// is up (use `show_login` / `continue_offline` for those transitions).
     /// Test-only right now: the live flow switches views via
     /// `show_login` / `continue_offline`.
-    #[cfg(test)]
     pub fn set_mode(&mut self, mode: ViewMode) {
         if self.mode == ViewMode::Login {
             return;
@@ -434,20 +429,17 @@ impl App {
     }
 
     /// Show the live feed (explicit, unambiguous). Test-only (legacy view).
-    #[cfg(test)]
     pub fn show_feed(&mut self) {
         self.set_mode(ViewMode::Feed);
     }
 
     /// Show the policy snapshot (explicit, unambiguous). Test-only (legacy view).
-    #[cfg(test)]
     pub fn show_policy(&mut self) {
         self.set_mode(ViewMode::Policy);
     }
 
     /// Show the CLI-integration picker (explicit, unambiguous). Test-only:
     /// the live flow reaches Connect via `continue_offline`.
-    #[cfg(test)]
     pub fn show_connect(&mut self) {
         self.set_mode(ViewMode::Connect);
     }
