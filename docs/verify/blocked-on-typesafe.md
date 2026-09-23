@@ -1,5 +1,12 @@
 # Blocked on TypeSafe — answered vs remaining (as of 2026-09-20 + MCA Sep 19, 2026)
 
+> **Role note (2026-09-23 docs consolidation):** this file is the **dated research
+> log** (evidence + owner confirmations as of 2026-09-20). The **single live
+> tracker** for every open TypeSafe/Jev blocker (R1–R6 below) is
+> [`docs/DEFERRED.md`](../DEFERRED.md) §4, which maps each item to the milestone
+> it must be done BEFORE. Status changes go to DEFERRED.md; this file keeps its
+> 2026-09-20 answers intact for the audit trail.
+
 > Source: MCA `https://typesafe.ai/legal/mca` (Sep 19, 2026, fetched 2026-09-20),
 > DPA `https://typesafe.ai/data-processing` (Apr 24, 2026, fetched 2026-09-20),
 > Privacy Policy `https://typesafe.ai/legal/privacy-policy` (Nov 19, 2025, fetched 2026-09-20),

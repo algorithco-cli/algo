@@ -61,6 +61,9 @@ path with opt-in consent; `algo log --show-egress` shows what left the machine.
 - Provider trait compiles with BYOK backend; proxy backend is a stub or missing — no
   dead proxy code paths that could fail open; **binary scan shows no embedded `TYPESAFE_API_KEY` / `ALGO_JEV_API_KEY` literal**. All timeout/parse errors prove `ask`.
 - `algo log --show-egress` demonstrates redacted egress on the BYOK path; `local-only` default shows no egress.
+- Evidence dossiers (not duplicated here): ToS verdicts in `docs/verify/jev-tos.md`
+  (Q1–Q7 + sign-off), API/SDK/regions in `docs/verify/jev-api.md`, live blocker
+  status in `docs/DEFERRED.md` §4.
 
 ## Sign-off (leave blank — human act)
 

@@ -1,7 +1,7 @@
 # algorithco guard: Master Project Plan
 
 > **Audience:** AI coding agents (and humans) building this product across multiple repositories.
-> **Status:** Working plan. Product name DECIDED: **algorithco guard**, CLI **`algo`** (`algo init|doctor|status|why|log|enforce|pause|login|policy`). Proto package `algorithco_guard.v0`, Rust crates `algo-*`, home dir `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`. Items marked **[VERIFY]** must be checked against official documentation before implementation. Items marked **[DECISION]** are open and need an ADR (Architecture Decision Record) before work starts.
+> **Status:** Working plan. Product name DECIDED: **algorithco guard**, CLI **`algo`** (`algo init|doctor|status|why|log|enforce|pause|login|policy`). Proto package `algorithco_guard.v0`, Rust crates `algo-*`, home dir `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db` (canonical: [`docs/adr/0002-naming.md`](docs/adr/0002-naming.md)). Items marked **[VERIFY]** must be checked against official documentation before implementation. Items marked **[DECISION]** are open and need an ADR (Architecture Decision Record) before work starts.
 > **Scope of this document:** product, architecture, per-repository specs, contracts, quality gates, and build order. Infrastructure/DevOps (VPS provisioning, IaC, observability stack) is out of scope for now and will get its own plan.
 
 ---
@@ -44,6 +44,11 @@ These override convenience. Every repo must respect them.
 ---
 
 ## 3. Organization and repository layout
+
+> **Canonical pointer (2026-09-23 docs consolidation):** the executable repo layout,
+> dependency DAG, and strict build order live in [`plans/00-index-build-order.md`](plans/00-index-build-order.md).
+> This §3 is the historical source text and is kept intact — if it ever disagrees
+> with the index, the index wins and this section gets a dated correction note, not a silent edit.
 
 The project is a **multi-repo organization**, not a monorepo. Each repo has one clear responsibility, its own CI, its own release cycle, and its own `AGENTS.md`.
 

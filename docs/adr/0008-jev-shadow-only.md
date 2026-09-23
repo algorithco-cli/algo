@@ -29,7 +29,8 @@ adapter **always renders `approve`** and never blocks on Jev. No Phase 1
 enforcement may depend on Jev auto-allow/deny.
 
 The **L3 p50 target stays `< 250 ms`** and the **p99 stays `< 800 ms`**
-(`docs/exit-gate-P0.md:1.3`). No increase to 500 ms in this ADR.
+(`docs/exit-gate-P0.md:1.3` — canonical threshold source; numbers repeated here
+so this Decision block stays self-contained). No increase to 500 ms in this ADR.
 Revisit only after question tuning (EVAL-6) shows real utility
 (before/after: false_ask ceiling, allow_rate, false_allow at fixed ask, AUROC,
 ECE/Brier, p50/p99, cost). Latency improvement must come from design
@@ -76,6 +77,8 @@ budget inflation.
   (b) false_ask ≤ ceiling or allow_rate / AUROC headroom versus always-ask
   baseline (see §3), (c) ECE/Brier monotonic post-calibration, and
   (d) p50/p99 + cost/1k within maintained budgets.
+  (§1.1/§1.3/§1.5 numbers are canonical in `docs/exit-gate-P0.md`; claim ledger
+  in `docs/verify/jev-claims.md`.)
 
 ## Sign-off (leave blank — human act)
 
