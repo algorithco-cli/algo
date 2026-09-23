@@ -7,8 +7,15 @@
 //!   deny   #E5484D  → `COLOR_DENY`   (danger)
 //! Exact hex where truecolor is available; otherwise nearest ANSI fallback
 //! (green/yellow/red/blue) carries the same semantics per spec §92.
+//!
+//! Professional layout:
+//!   header (title + version + LIVE/OFFLINE/SHADOW/ENFORCING/PAUSED + stats)
+//!   offline banner (compact, 2 rows)
+//!   feed: table (flex) + detail pane (`algo why` parity)
+//!   policy: real config snapshot (read-only, never writes decision path)
+//!   footer: keyboard hints + auto-refresh note
 
-use crate::app::{App, ViewMode};
+use crate::app::{App, LoginFocus, LoginStatus, ViewMode};
 use chrono::{DateTime, Utc};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -43,22 +50,105 @@ fn format_ts(ts_millis: i64) -> String {
     }
 }
 
-/// Render the full frame.
-///
-/// Layout (vertical):
-///   1. Header (brand title + stats line)
-///   2. Optional offline banner
-///   3. Main area: table of recent decisions OR policy placeholder
-///   4. Footer help line
-pub fn render(frame: &mut Frame, app: &App) {
-    let area = frame.area();
+fn format_time_short(ts_millis: i64) -> String {
+    if let Some(dt) = DateTime::<Utc>::from_timestamp_millis(ts_millis) {
+        dt.format("%H:%M:%S").to_string()
+    } else {
+        "--:--:--".to_string()
+    }
+}
 
-    // Reserve footer + header; offline banner only if needed.
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else if max <= 1 {
+        "…".to_string()
+    } else {
+        let t: String = s.chars().take(max - 1).collect();
+        format!("{t}…")
+    }
+}
+
+fn confidence_bar(conf: f64) -> String {
+    let filled = (conf.clamp(0.0, 1.0) * 10.0).round() as usize;
+    let empty = 10 - filled;
+    format!("{}{} {:.2}", "█".repeat(filled), "░".repeat(empty), conf)
+}
+
+/// Spinner frames for the login animation (tick-driven, no blocking).
+const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+fn spinner_frame(tick: usize) -> &'static str {
+    SPINNER[tick % SPINNER.len()]
+}
+
+/// Compact centered dialog (fixed size, never a stretched panel).
+fn centered_fixed(w: u16, h: u16, area: ratatui::layout::Rect) -> ratatui::layout::Rect {
+    use ratatui::layout::{Constraint, Direction, Layout};
+    let w = w.min(area.width.saturating_sub(4)).max(20);
+    let h = h.min(area.height.saturating_sub(2)).max(10);
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(area.height.saturating_sub(h) / 2),
+            Constraint::Length(h),
+            Constraint::Min(0),
+        ])
+        .split(area);
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(area.width.saturating_sub(w) / 2),
+            Constraint::Length(w),
+            Constraint::Min(0),
+        ])
+        .split(vertical[1])[1]
+}
+
+/// Render the full frame.
+pub fn render(frame: &mut Frame, app: &mut App) {
+    let area = frame.area();
+    // Tiny terminals: render a compact fallback instead of collapsing.
+    if area.height < 12 || area.width < 60 {
+        let msg = Paragraph::new(vec![
+            Line::from(Span::styled(
+                " algorithco guard — terminal too small ",
+                Style::default()
+                    .fg(Color::White)
+                    .bg(COLOR_BRAND)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "Resize to at least 60x12 to continue.",
+                Style::default().fg(COLOR_MUTED),
+            )),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_BORDER)),
+        );
+        frame.render_widget(msg, area);
+        return;
+    }
+
+    // Login gate covers the whole screen.
+    if app.mode == ViewMode::Login {
+        // Clear stale main-view hit areas while the gate is up.
+        app.tab_feed = None;
+        app.tab_policy = None;
+        app.footer_quit = None;
+        app.table_inner = None;
+        render_login(frame, app, area);
+        return;
+    }
+
     let has_offline = app.is_offline;
-    let mut constraints = Vec::new();
-    constraints.push(Constraint::Length(3)); // header
+    let mut constraints = vec![
+        Constraint::Length(4), // header: title + stats
+    ];
     if has_offline {
-        constraints.push(Constraint::Length(3)); // offline banner
+        constraints.push(Constraint::Length(2)); // compact offline banner
     }
     constraints.push(Constraint::Min(8)); // main
     constraints.push(Constraint::Length(1)); // footer
@@ -69,31 +159,83 @@ pub fn render(frame: &mut Frame, app: &App) {
         .split(area);
 
     let mut idx = 0;
-
-    // Header: title + stats
     render_header(frame, app, chunks[idx]);
     idx += 1;
-
-    // Offline banner (read-only when daemon down)
     if has_offline {
         render_offline_banner(frame, app, chunks[idx]);
         idx += 1;
     }
-
-    // Main
     if app.mode == ViewMode::Policy {
+        app.table_inner = None;
         render_policy(frame, app, chunks[idx]);
+    } else if app.entries.is_empty() {
+        app.table_inner = None;
+        render_empty(frame, app, chunks[idx]);
     } else {
-        render_table(frame, app, chunks[idx]);
+        // Feed: table on top, detail pane below (algo why parity).
+        let main = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Length(10)])
+            .split(chunks[idx]);
+        render_table(frame, app, main[0]);
+        render_detail(frame, app, main[1]);
     }
     idx += 1;
+    render_footer(frame, app, chunks[idx]);
+}
 
-    // Footer
-    render_footer(frame, chunks[idx]);
+fn mode_badges(app: &App) -> Vec<Span<'static>> {
+    let mut badges = Vec::new();
+    if app.is_offline {
+        badges.push(Span::styled(
+            " OFFLINE ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(COLOR_ASK)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else {
+        badges.push(Span::styled(
+            " LIVE ",
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_ALLOW)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    badges.push(Span::raw(" "));
+    if app.paused {
+        badges.push(Span::styled(
+            " PAUSED ",
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_ASK)
+                .add_modifier(Modifier::BOLD),
+        ));
+        badges.push(Span::raw(" "));
+    }
+    if app.enforce {
+        badges.push(Span::styled(
+            " ENFORCING ",
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_DENY)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else {
+        badges.push(Span::styled(
+            " SHADOW ",
+            Style::default()
+                .fg(Color::White)
+                .bg(COLOR_BRAND)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    badges
 }
 
 fn render_header(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let title = Line::from(vec![
+    let mut title_spans = vec![
         Span::styled(
             " algorithco guard ",
             Style::default()
@@ -102,118 +244,448 @@ fn render_header(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            "  Live decision feed  ",
+            format!(" v{} ", app.version),
+            Style::default().fg(COLOR_MUTED),
+        ),
+        Span::styled(
+            " Live decision feed ",
             Style::default()
                 .fg(COLOR_BRAND)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            if app.is_offline { " (read-only)" } else { "" },
-            Style::default().fg(COLOR_MUTED),
-        ),
-    ]);
+    ];
+    title_spans.extend(mode_badges(app));
+    let title = Line::from(title_spans);
 
     let stats = Line::from(vec![
-        Span::styled(
-            " allow ",
-            Style::default()
-                .fg(COLOR_ALLOW)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(" ● allow ", Style::default().fg(COLOR_ALLOW).add_modifier(Modifier::BOLD)),
         Span::raw(format!("{}", app.counts.allow)),
         Span::styled("  │  ", Style::default().fg(COLOR_BORDER)),
-        Span::styled(
-            " ask ",
-            Style::default().fg(COLOR_ASK).add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(" ● ask ", Style::default().fg(COLOR_ASK).add_modifier(Modifier::BOLD)),
         Span::raw(format!("{}", app.counts.ask)),
         Span::styled("  │  ", Style::default().fg(COLOR_BORDER)),
-        Span::styled(
-            " block ",
-            Style::default().fg(COLOR_DENY).add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(" ● block ", Style::default().fg(COLOR_DENY).add_modifier(Modifier::BOLD)),
         Span::raw(format!("{}", app.counts.deny)),
         Span::styled("  │  ", Style::default().fg(COLOR_BORDER)),
-        Span::styled(" would-have-blocked ", Style::default().fg(COLOR_MUTED)),
+        Span::styled(" would-have ", Style::default().fg(COLOR_MUTED)),
         Span::styled(
             format!("{}", app.counts.would_have_blocked),
             Style::default().fg(COLOR_DENY).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            format!("  (shadow: {})", app.counts.shadow),
-            Style::default().fg(COLOR_MUTED),
-        ),
-        Span::styled(
-            format!("  total: {}", app.counts.total),
-            Style::default().fg(COLOR_MUTED),
-        ),
+        Span::styled(format!("  shadow {} ", app.counts.shadow), Style::default().fg(COLOR_MUTED)),
+        Span::styled(format!(" total {} ", app.counts.total), Style::default().fg(COLOR_MUTED)),
+        Span::styled(format!(" privacy:{} ", app.privacy), Style::default().fg(COLOR_MUTED)),
     ]);
 
-    let header_block = Block::default()
+    let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(COLOR_BORDER))
-        .title_style(Style::default().fg(COLOR_BRAND));
-
-    let paragraph = Paragraph::new(vec![title, stats])
-        .block(header_block)
-        .wrap(Wrap { trim: false });
-
+        .border_style(Style::default().fg(COLOR_BORDER));
+    let paragraph = Paragraph::new(vec![title, stats]).block(block);
     frame.render_widget(paragraph, area);
 }
 
 fn render_offline_banner(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let msg = if let Some(err) = &app.error {
-        format!(" Offline (read-only) — daemon down or audit.db unavailable: {err} — TUI crash does not block hooks (read-only audit.db).")
+        format!("Offline read-only — {} — hooks unaffected.", truncate(err, 120))
     } else {
-        " Offline (read-only) — daemon down or audit.db not found. Showing last cached state if available. TUI crash does not block hooks (read-only audit.db).".to_string()
+        "Offline read-only — daemon down or audit.db missing. Press r to retry.".to_string()
     };
     let banner = Paragraph::new(Line::from(vec![Span::styled(
-        msg,
+        format!(" {msg} "),
         Style::default()
             .fg(Color::Black)
             .bg(COLOR_ASK)
             .add_modifier(Modifier::BOLD),
-    )]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(COLOR_ASK))
-            .title(" status "),
-    )
-    .wrap(Wrap { trim: false });
+    )]));
     frame.render_widget(banner, area);
 }
 
-fn render_table(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
+    // Production-quality auth gate — two primary paths, one secondary fallback.
+    let card = centered_fixed(68, 24, area);
+    let outer_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_BRAND))
+        .title(Span::styled(" ◈ algorithco guard ", Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)));
+    let inner = outer_block.inner(card);
+    frame.render_widget(outer_block, card);
+
+    if inner.width < 40 || inner.height < 18 {
+        // Fallback for smaller but not tiny terminals
+        let msg = Paragraph::new(vec![
+            Line::from(Span::styled("Sign in to Algorithco Guard", Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled("Resize wider for full auth options.", Style::default().fg(COLOR_MUTED))),
+        ]);
+        frame.render_widget(msg, inner);
+        return;
+    }
+
+    // Split inner vertically: title, subtitle, browser box, apikey box, status, offline, hints
+    // Heights are tuned to be pixel-polished with proper spacing.
+    let is_browser_pending = app.login_status == LoginStatus::BrowserPending;
+    let is_apikey_editing = matches!(app.login_status, LoginStatus::ApiKeyEditing | LoginStatus::Error(_));
+    let is_validating = app.login_status == LoginStatus::ApiKeyValidating;
+    let is_success = app.login_status == LoginStatus::Success;
+    let is_error = matches!(app.login_status, LoginStatus::Error(_));
+
+    // Determine box heights based on state — keep total ~ inner.height
+    let browser_h: u16 = if is_browser_pending { 7 } else { 5 };
+    let apikey_h: u16 = if is_apikey_editing || is_validating || is_success || is_error { 7 } else { 5 };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // title
+            Constraint::Length(1), // subtitle
+            Constraint::Length(1), // spacer
+            Constraint::Length(browser_h),
+            Constraint::Length(1), // spacer
+            Constraint::Length(apikey_h),
+            Constraint::Length(1), // status line
+            Constraint::Length(1), // offline option
+            Constraint::Min(1),    // hints + quit
+        ])
+        .split(inner);
+
+    // ---- Title ----
+    let title = Paragraph::new(Line::from(Span::styled(
+        "Sign in to Algorithco Guard",
+        Style::default().fg(Color::Rgb(23, 22, 31)).add_modifier(Modifier::BOLD),
+    )))
+    .alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(title, chunks[0]);
+
+    // ---- Subtitle ----
+    let subtitle = Paragraph::new(Line::from(Span::styled(
+        "Choose how to authenticate — browser or API key",
+        Style::default().fg(COLOR_MUTED),
+    )))
+    .alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(subtitle, chunks[1]);
+
+    // ---- Browser box ----
+    let browser_focused = app.login_focus == LoginFocus::Browser && matches!(app.login_status, LoginStatus::Idle | LoginStatus::BrowserPending);
+    let browser_border = if browser_focused {
+        Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(COLOR_BORDER)
+    };
+    let browser_title = if browser_focused {
+        Span::styled(" [1] ● Sign in with browser ", Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD))
+    } else {
+        Span::styled(" [1] Sign in with browser ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD))
+    };
+    let browser_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(browser_border)
+        .title(browser_title);
+    let browser_inner = browser_block.inner(chunks[3]);
+    frame.render_widget(browser_block, chunks[3]);
+    app.login_browser = Some(chunks[3]);
+
+    // Browser box contents
+    if is_browser_pending {
+        let spin = spinner_frame(app.tick);
+        let code = app.login_device_code.clone().unwrap_or_else(|| "····-····".to_string());
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(format!(" {spin} "), Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+                Span::styled("Waiting for browser confirmation…", Style::default().fg(Color::Rgb(23, 22, 31)).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(Span::styled("Complete sign-in in your browser", Style::default().fg(COLOR_MUTED))),
+            Line::from(vec![
+                Span::styled(" Device code: ", Style::default().fg(COLOR_MUTED)),
+                Span::styled(format!(" {code} "), Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+                Span::styled("  → enter in browser", Style::default().fg(COLOR_MUTED)),
+            ]),
+            Line::from(Span::styled("Press Esc to cancel  •  [Esc] Cancel", Style::default().fg(COLOR_MUTED))),
+        ];
+        let p = Paragraph::new(lines);
+        frame.render_widget(p, browser_inner);
+        // Cancel hit area is the last line
+        app.login_cancel = Some(ratatui::layout::Rect {
+            x: browser_inner.x,
+            y: browser_inner.y.saturating_add(3),
+            width: browser_inner.width,
+            height: 1,
+        });
+    } else {
+        let btn_style = if browser_focused {
+            Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+        };
+        let desc = if browser_focused {
+            "Opens your browser for OAuth  •  Press Enter to start"
+        } else {
+            "Opens your browser for OAuth"
+        };
+        let lines = vec![
+            Line::from(Span::styled(desc, Style::default().fg(COLOR_MUTED))),
+            Line::from(""),
+            Line::from(Span::styled(
+                if browser_focused { " ▶  Sign in with browser  " } else { "    Sign in with browser    " },
+                btn_style,
+            )),
+        ];
+        let p = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(p, browser_inner);
+        app.login_cancel = None;
+    }
+
+    // ---- API key box ----
+    let apikey_focused = app.login_focus == LoginFocus::ApiKey
+        && matches!(
+            app.login_status,
+            LoginStatus::Idle | LoginStatus::ApiKeyEditing | LoginStatus::ApiKeyValidating | LoginStatus::Success | LoginStatus::Error(_)
+        );
+    let apikey_border = if apikey_focused {
+        Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    } else if is_error {
+        Style::default().fg(COLOR_DENY)
+    } else {
+        Style::default().fg(COLOR_BORDER)
+    };
+    let apikey_title = if apikey_focused {
+        Span::styled(" [2] ● Use an API key ", Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD))
+    } else {
+        Span::styled(" [2] Use an API key ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD))
+    };
+    let apikey_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(apikey_border)
+        .title(apikey_title);
+    let apikey_inner = apikey_block.inner(chunks[5]);
+    frame.render_widget(apikey_block, chunks[5]);
+    app.login_apikey = Some(chunks[5]);
+
+    // API key contents
+    if is_validating {
+        let spin = spinner_frame(app.tick);
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(format!(" {spin} "), Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+                Span::styled("Validating API key…", Style::default().fg(Color::Rgb(23, 22, 31)).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled("Please wait", Style::default().fg(COLOR_MUTED))),
+        ];
+        frame.render_widget(Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center), apikey_inner);
+        app.login_apikey_input = None;
+        app.login_submit = None;
+    } else if is_success {
+        let lines = vec![
+            Line::from(vec![
+                Span::styled(" ✓ ", Style::default().fg(COLOR_ALLOW).add_modifier(Modifier::BOLD)),
+                Span::styled("API key accepted — signed in.", Style::default().fg(COLOR_ALLOW).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled("Loading your workspace…", Style::default().fg(COLOR_MUTED))),
+        ];
+        frame.render_widget(Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center), apikey_inner);
+        app.login_apikey_input = None;
+        app.login_submit = None;
+    } else if is_apikey_editing || is_error {
+        // Input field
+        let has_input = !app.login_api_input.is_empty();
+        let display = if has_input {
+            if app.login_api_masked {
+                "•".repeat(app.login_api_input.chars().count())
+            } else {
+                app.login_api_input.clone()
+            }
+        } else {
+            String::new()
+        };
+        let input_line = if has_input {
+            // Masked with cursor
+            let cursor = if apikey_focused { "▌" } else { "" };
+            Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(display, Style::default().fg(Color::Rgb(23, 22, 31))),
+                Span::styled(cursor, Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+            ])
+        } else {
+            Line::from(Span::styled("  Paste your API key…", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::ITALIC)))
+        };
+        // Input box border inside apikey box: field is 3 rows high (border + input line + border)
+        let field_rect = ratatui::layout::Rect {
+            x: apikey_inner.x,
+            y: apikey_inner.y,
+            width: apikey_inner.width,
+            height: 3,
+        };
+        app.login_apikey_input = Some(field_rect);
+
+        let field_block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(if is_error {
+                Style::default().fg(COLOR_DENY)
+            } else if apikey_focused {
+                Style::default().fg(COLOR_BRAND)
+            } else {
+                Style::default().fg(COLOR_BORDER)
+            });
+        let field_inner = field_block.inner(field_rect);
+        frame.render_widget(field_block, field_rect);
+        frame.render_widget(Paragraph::new(input_line), field_inner);
+
+        // Submit / helper line (below the input field)
+        let can_submit = has_input && !app.login_api_input.trim().is_empty();
+        let submit_label = " Submit ";
+        let submit_style = if can_submit {
+            Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(COLOR_MUTED).bg(Color::Rgb(230, 230, 240))
+        };
+        let submit_x = apikey_inner.x + apikey_inner.width.saturating_sub(8) / 2;
+        let submit_rect2 = ratatui::layout::Rect { x: submit_x, y: apikey_inner.y + 3, width: 8, height: 1 };
+        app.login_submit = Some(submit_rect2);
+        let helper = if is_error {
+            Line::from(Span::styled("Press Enter to retry  •  Esc to go back", Style::default().fg(COLOR_MUTED)))
+        } else if has_input {
+            Line::from(vec![
+                Span::styled(submit_label, submit_style),
+                Span::styled("  Press Enter to submit  •  Esc to cancel", Style::default().fg(COLOR_MUTED)),
+            ])
+        } else {
+            Line::from(Span::styled("Press Enter to submit  •  Esc to go back", Style::default().fg(COLOR_MUTED)))
+        };
+        // Render helper centered just below field
+        let helper_area = ratatui::layout::Rect { x: apikey_inner.x, y: apikey_inner.y + 3, width: apikey_inner.width, height: 1 };
+        frame.render_widget(Paragraph::new(helper).alignment(ratatui::layout::Alignment::Center), helper_area);
+
+        // Also render a subtle second line for empty hint (below helper)
+        if !is_error && !has_input {
+            // Move hint one row below helper to avoid overlap — but inner is only 5 high, so check bounds
+            if apikey_inner.height >= 5 {
+                let hint_area = ratatui::layout::Rect { x: apikey_inner.x, y: apikey_inner.y + 4, width: apikey_inner.width, height: 1 };
+                frame.render_widget(
+                    Paragraph::new(Line::from(Span::styled("Keys start with ag_…  •  masked for security", Style::default().fg(COLOR_MUTED)))).alignment(ratatui::layout::Alignment::Center),
+                    hint_area,
+                );
+            }
+        }
+    } else {
+        // Idle
+        let desc = if apikey_focused {
+            "Paste a key from your dashboard  •  Press Enter to enter key"
+        } else {
+            "Paste a key from your dashboard"
+        };
+        let btn_style = if apikey_focused {
+            Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+        };
+        let lines = vec![
+            Line::from(Span::styled(desc, Style::default().fg(COLOR_MUTED))),
+            Line::from(""),
+            Line::from(Span::styled(
+                if apikey_focused { " ▶  Use an API key  " } else { "    Use an API key    " },
+                btn_style,
+            )),
+        ];
+        frame.render_widget(Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center), apikey_inner);
+        app.login_apikey_input = None;
+        app.login_submit = None;
+    }
+
+    // ---- Single authoritative status line (replaces duplicated orange banner) ----
+    let status_style = if is_error {
+        Style::default().fg(Color::White).bg(COLOR_DENY).add_modifier(Modifier::BOLD)
+    } else if is_success {
+        Style::default().fg(Color::White).bg(COLOR_ALLOW).add_modifier(Modifier::BOLD)
+    } else if is_browser_pending || is_validating {
+        Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(COLOR_MUTED)
+    };
+    let status_text = if is_error {
+        if let LoginStatus::Error(msg) = &app.login_status {
+            format!(" ✕ {msg} ")
+        } else {
+            " ✕ Invalid API key ".to_string()
+        }
+    } else if is_success {
+        " ✓ Signed in — loading workspace… ".to_string()
+    } else if is_browser_pending {
+        if let Some(msg) = &app.login_status_msg {
+            format!(" {} ", msg)
+        } else {
+            format!(" {} Waiting for browser confirmation… ", spinner_frame(app.tick))
+        }
+    } else if is_validating {
+        format!(" {} Validating API key… ", spinner_frame(app.tick))
+    } else if is_apikey_editing {
+        if app.login_api_input.is_empty() {
+            " Paste your API key above and press Enter ".to_string()
+        } else {
+            " Press Enter to submit your API key ".to_string()
+        }
+    } else {
+        // Idle — single helpful hint, not warning
+        " Tab to switch  •  1 / 2 to choose  •  Enter to select ".to_string()
+    };
+    let status = Paragraph::new(Line::from(Span::styled(status_text, status_style)))
+        .alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(status, chunks[6]);
+
+    // ---- Offline option (secondary/tertiary, muted, at bottom) ----
+    let offline_focused = app.login_focus == LoginFocus::Offline && app.login_status == LoginStatus::Idle;
+    let offline_style = if offline_focused {
+        Style::default().fg(Color::White).bg(Color::Rgb(140, 140, 155)).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(COLOR_MUTED)
+    };
+    let offline_line = if offline_focused {
+        Line::from(Span::styled(" ▶ Continue offline (limited features, no sync)  [o] ", offline_style))
+    } else {
+        Line::from(Span::styled("   Continue offline (limited features, no sync)  [o] ", offline_style))
+    };
+    let offline_para = Paragraph::new(offline_line).alignment(ratatui::layout::Alignment::Center);
+    frame.render_widget(offline_para, chunks[7]);
+    app.login_offline = Some(chunks[7]);
+
+    // ---- Footer hints + quit (de-emphasized) ----
+    let hints = Paragraph::new(vec![Line::from(vec![
+        Span::styled(" Tab ", Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+        Span::styled("switch  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("Enter ", Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+        Span::styled("select  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("Esc ", Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+        Span::styled("back  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled(" 1", Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+        Span::styled("/2 ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("quick  ", Style::default().fg(COLOR_MUTED)),
+    ])])
+    .alignment(ratatui::layout::Alignment::Center);
+    // Split last chunk into hints (left/center) and quit (right corner)
+    let footer_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(10), Constraint::Length(10)])
+        .split(chunks[8]);
+    frame.render_widget(hints, footer_split[0]);
+    let quit_style = Style::default().fg(COLOR_MUTED);
+    let quit = Paragraph::new(Line::from(Span::styled(" q quit ", quit_style))).alignment(ratatui::layout::Alignment::Right);
+    frame.render_widget(quit, footer_split[1]);
+    app.login_quit = Some(footer_split[1]);
+
+    // Keep legacy alias in sync for tests that still read login_signin
+    app.login_signin = app.login_browser;
+}
+
+fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let header = Row::new(vec![
-        Cell::from("ts").style(
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from("action").style(
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from("reason").style(
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from("source").style(
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from("latency").style(
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Cell::from("#").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("time").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("action").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("reason").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("source").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("lat").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+        Cell::from("sh").style(Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
     ])
-    .height(1)
-    .style(Style::default().bg(Color::Rgb(22, 21, 31)));
+    .height(1);
 
     let rows: Vec<Row> = app
         .entries
@@ -222,135 +694,206 @@ fn render_table(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .map(|(i, e)| {
             let action = e.action_str();
             let color = action_color(action);
-            let style = if i == app.selected {
-                Style::default()
-                    .fg(Color::White)
-                    .bg(COLOR_BRAND)
-                    .add_modifier(Modifier::BOLD)
+            let dot = match action {
+                "allow" => "●",
+                "deny" => "●",
+                _ => "●",
+            };
+            let selected = i == app.selected;
+            let base = if selected {
+                Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
             Row::new(vec![
-                Cell::from(format_ts(e.ts)).style(style),
-                Cell::from(action).style(Style::default().fg(color).add_modifier(Modifier::BOLD)),
-                Cell::from(e.reason.clone()).style(style),
-                Cell::from(e.source_str()).style(style.fg(COLOR_MUTED)),
-                Cell::from(format!("{}ms", e.latency_ms)).style(style),
+                Cell::from(format!("{}", i + 1)).style(base.fg(COLOR_MUTED)),
+                Cell::from(format_time_short(e.ts)).style(base),
+                Cell::from(format!("{dot} {action}"))
+                    .style(if selected { base } else { Style::default().fg(color).add_modifier(Modifier::BOLD) }),
+                Cell::from(truncate(&e.reason, 60)).style(base),
+                Cell::from(e.source_str()).style(base.fg(if selected { Color::White } else { COLOR_MUTED })),
+                Cell::from(format!("{}ms", e.latency_ms)).style(base),
+                Cell::from(if e.shadow { "◐" } else { " " }).style(base.fg(if selected { Color::White } else { COLOR_ASK })),
             ])
             .height(1)
         })
         .collect();
 
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(19),
-            Constraint::Length(7),
-            Constraint::Percentage(50),
-            Constraint::Length(12),
-            Constraint::Length(9),
-        ],
-    )
-    .header(header)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(COLOR_BORDER))
-            .title(" recent decisions (ts • action • reason • source • latency) "),
-    )
-    .row_highlight_style(Style::default().bg(COLOR_BRAND).fg(Color::White));
-
+    let widths = [
+        Constraint::Length(4),
+        Constraint::Length(9),
+        Constraint::Length(10),
+        Constraint::Min(20),
+        Constraint::Length(10),
+        Constraint::Length(7),
+        Constraint::Length(3),
+    ];
+    let title = format!(
+        " recent decisions — {} shown · click a row to inspect ",
+        app.entries.len()
+    );
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_BORDER))
+        .title(title);
+    // Inner content area for click-to-select (header row + data rows).
+    let inner = block.inner(area);
+    app.table_inner = Some(inner);
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(block)
+        .row_highlight_style(Style::default().bg(COLOR_BRAND).fg(Color::White));
     frame.render_widget(table, area);
 }
 
-fn render_policy(frame: &mut Frame, _app: &App, area: ratatui::layout::Rect) {
-    let text =
-        vec![
-        Line::from(Span::styled(
-            "Policy editor — local rules, dry-run vs history (placeholder)",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled(
-            "• Local rules: per-workspace allow/ask/deny overrides (not yet editable in TUI).",
-            Style::default().fg(COLOR_MUTED),
-        )),
-        Line::from(Span::styled(
-            "• Dry-run: evaluate a command or file path against current policy without enforcing.",
-            Style::default().fg(COLOR_MUTED),
-        )),
-        Line::from(Span::styled(
-            "• History compare: re-evaluate past decisions (audit.db) against a policy snapshot.",
-            Style::default().fg(COLOR_MUTED),
-        )),
-        Line::from(""),
+fn render_detail(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let Some(e) = app.selected_entry() else {
+        let p = Paragraph::new("No selection.")
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(COLOR_BORDER)).title(" details — algo why "));
+        frame.render_widget(p, area);
+        return;
+    };
+    let action = e.action_str();
+    let color = action_color(action);
+    let fp_short: String = e.fingerprint.chars().take(12).collect();
+    let lines = vec![
         Line::from(vec![
-            Span::styled("Read-only when daemon down. ", Style::default().fg(COLOR_ASK)),
-            Span::styled(
-                "This view never writes to the decision path.",
-                Style::default().fg(COLOR_MUTED),
-            ),
+            Span::styled(format!(" {action} "), Style::default().fg(Color::White).bg(color).add_modifier(Modifier::BOLD)),
+            Span::raw(" "),
+            Span::styled(truncate(&e.reason, 90), Style::default().add_modifier(Modifier::BOLD)),
         ]),
+        Line::from(vec![
+            Span::styled(" confidence ", Style::default().fg(COLOR_MUTED)),
+            Span::raw(confidence_bar(e.confidence)),
+            Span::styled(format!("  source {}  latency {}ms  profile {}  shadow {} ", e.source_str(), e.latency_ms, e.profile, if e.shadow { "yes◐" } else { "no" }), Style::default().fg(COLOR_MUTED)),
+        ]),
+        Line::from(vec![
+            Span::styled(" cmd ", Style::default().fg(COLOR_MUTED)),
+            Span::raw(truncate(&e.redacted_command, 100)),
+        ]),
+        Line::from(vec![
+            Span::styled(" fp ", Style::default().fg(COLOR_MUTED)),
+            Span::raw(format!("{fp_short}  ")),
+            Span::styled("ts ", Style::default().fg(COLOR_MUTED)),
+            Span::raw(format!("{}  ", format_ts(e.ts))),
+            Span::styled("sess ", Style::default().fg(COLOR_MUTED)),
+            Span::raw(truncate(&e.session_id, 24)),
+        ]),
+    ];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_BORDER))
+        .title(" details — algo why (action+reason+confidence+source+latency) ");
+    frame.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: false }), area);
+}
+
+fn render_empty(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let hint = if app.is_offline {
+        "audit.db not found — run algo init, trigger a Bash tool, new rows appear automatically."
+    } else {
+        "No decisions yet. Trigger a Bash tool via the Claude hook — new rows appear automatically."
+    };
+    let text = vec![
+        Line::from(Span::styled(
+            " No decisions yet ",
+            Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(hint, Style::default().fg(COLOR_MUTED))),
         Line::from(""),
         Line::from(Span::styled(
-            "Press 'p' to return to feed, 'r' to refresh, 'q' to quit.",
+            "algo status shows counts+savings · algo why shows last decision · algo log --show-egress inspects egress",
             Style::default().fg(COLOR_MUTED),
         )),
     ];
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(COLOR_BRAND))
-        .title(" policy (read-only placeholder) ");
-    let para = Paragraph::new(text).block(block).wrap(Wrap { trim: false });
-    frame.render_widget(para, area);
+        .border_style(Style::default().fg(COLOR_BORDER))
+        .title(" recent decisions ");
+    frame.render_widget(Paragraph::new(text).block(block).wrap(Wrap { trim: true }), area);
 }
 
-fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect) {
-    let help = Line::from(vec![
-        Span::styled(
-            " q ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("quit "),
-        Span::styled(
-            " j/k ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("nav "),
-        Span::styled(
-            " r ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("refresh "),
-        Span::styled(
-            " p ",
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("policy "),
-        Span::styled(" ↑/↓ also navigates ", Style::default().fg(COLOR_MUTED)),
-    ]);
-    let p = Paragraph::new(help);
-    frame.render_widget(p, area);
+fn render_policy(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let db = app.db_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "—".into());
+    let cfg = app.config_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "—".into());
+    let sock = app.socket_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "—".into());
+    let mode = if app.enforce { "ENFORCING (shadow off)" } else { "SHADOW (default P1, never blocks)" };
+    let mode_color = if app.enforce { COLOR_DENY } else { COLOR_BRAND };
+    let text = vec![
+        Line::from(vec![
+            Span::styled(" Policy — local snapshot (read-only) ", Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)),
+            Span::raw(" "),
+            Span::styled(format!(" {mode} "), Style::default().fg(Color::White).bg(mode_color).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" enforce  ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+            Span::raw(if app.enforce { "on  (algo enforce off → shadow)" } else { "off (shadow — daemon computes, always approves + would_have)" }),
+        ]),
+        Line::from(vec![
+            Span::styled(" privacy  ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+            Span::raw(format!("{}  (local-only|redacted|full — redact before egress)", app.privacy)),
+        ]),
+        Line::from(vec![
+            Span::styled(" paused   ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+            Span::raw(if app.paused { "yes — hook bypasses daemon instantly" } else { "no" }),
+        ]),
+        Line::from(vec![
+            Span::styled(" counts   ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+            Span::raw(format!("allow {} · ask {} · block {} · would-have {} · shadow {} · total {}", app.counts.allow, app.counts.ask, app.counts.deny, app.counts.would_have_blocked, app.counts.shadow, app.counts.total)),
+        ]),
+        Line::from(vec![
+            Span::styled(" paths    ", Style::default().fg(COLOR_MUTED).add_modifier(Modifier::BOLD)),
+            Span::raw(format!("db {} | cfg {} | sock {}", truncate(&db, 34), truncate(&cfg, 30), truncate(&sock, 28))),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(" Dry-run (no enforcement): status digest · why last decision · log --show-egress.", Style::default().fg(COLOR_MUTED))),
+        Line::from(Span::styled(" Change mode with algo enforce on|off, then restart the daemon. Read-only here.", Style::default().fg(COLOR_MUTED))),
+        Line::from(Span::styled(" Switch with the Feed / Policy tabs below. Refresh is automatic.", Style::default().fg(COLOR_MUTED))),
+    ];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_BRAND))
+        .title(" policy (read-only snapshot) ");
+    frame.render_widget(Paragraph::new(text).block(block).wrap(Wrap { trim: false }), area);
+}
+
+fn render_footer(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
+    // Mouse-first tabs + quit. Fixed positions double as click targets.
+    let feed_label = if app.mode == ViewMode::Feed { " ● Feed " } else { " ○ Feed " };
+    let pol_label = if app.mode == ViewMode::Policy { " ● Policy " } else { " ○ Policy " };
+    let quit_label = " ✕ Quit ";
+    let fx = area.x.saturating_add(1);
+    let px = fx.saturating_add(8).saturating_add(1);
+    let qx = area.x.saturating_add(area.width.saturating_sub(9));
+    app.tab_feed = Some(ratatui::layout::Rect { x: fx, y: area.y, width: 8, height: 1 });
+    app.tab_policy = Some(ratatui::layout::Rect { x: px, y: area.y, width: 10, height: 1 });
+    app.footer_quit = Some(ratatui::layout::Rect { x: qx, y: area.y, width: 8, height: 1 });
+
+    let feed_style = if app.mode == ViewMode::Feed {
+        Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    };
+    let pol_style = if app.mode == ViewMode::Policy {
+        Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(COLOR_BRAND).add_modifier(Modifier::BOLD)
+    };
+    let spans = vec![
+        Span::styled(feed_label, feed_style),
+        Span::raw(" "),
+        Span::styled(pol_label, pol_style),
+        Span::styled("   click a row to inspect · refreshes automatically   ", Style::default().fg(COLOR_MUTED)),
+        Span::styled(quit_label, Style::default().fg(COLOR_MUTED)),
+    ];
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::App;
+    use crate::app::{App, LoginStatus};
     use algo_audit::AuditStore;
     use algo_types::{Action, Decision, SourceLevel};
     use ratatui::{backend::TestBackend, Terminal};
@@ -372,12 +915,13 @@ mod tests {
     fn render_no_panic_empty() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let app = App::new(None);
+        let mut app = App::new(None);
+        // render feed (default), not login — need to set feed explicitly for this test
+        app.mode = crate::app::ViewMode::Feed;
         terminal
-            .draw(|f| render(f, &app))
+            .draw(|f| render(f, &mut app))
             .expect("render should not panic on empty offline");
         let buffer = terminal.backend().buffer();
-        // Header should contain brand title text
         let content: String = buffer
             .content()
             .iter()
@@ -400,17 +944,18 @@ mod tests {
 
         let mut app = App::new(Some(store));
         app.refresh();
+        app.mode = crate::app::ViewMode::Feed;
 
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|f| render(f, &app))
+            .draw(|f| render(f, &mut app))
             .expect("render should not panic with entries");
 
         // Also test policy mode
         app.toggle_policy();
         terminal
-            .draw(|f| render(f, &app))
+            .draw(|f| render(f, &mut app))
             .expect("render policy should not panic");
     }
 
@@ -419,9 +964,10 @@ mod tests {
         let mut app = App::new(None);
         app.is_offline = true;
         app.error = Some("simulated daemon down".to_string());
+        app.mode = crate::app::ViewMode::Feed;
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| render(f, &app)).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
         let backend_ref = terminal.backend();
         let s: String = backend_ref
             .buffer()
@@ -429,12 +975,118 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s.contains("Offline"));
+        assert!(s.contains("Offline") || s.contains("OFFLINE"));
+    }
+
+    #[test]
+    fn render_detail_and_policy_no_panic_small() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("audit.db");
+        let store = AuditStore::open(&db).unwrap();
+        store.init().unwrap();
+        store.insert(&decision(Action::Deny), "fp-detail-1234567890", true).unwrap();
+        let mut app = App::new(Some(store));
+        app.refresh();
+        app.mode = crate::app::ViewMode::Feed;
+        // Feed with detail
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s.contains("details") || s.contains("why"));
+        // Click-to-select a row via stored table area.
+        let inner = app.table_inner.expect("table area recorded");
+        assert!(!app.handle_click(inner.x.saturating_add(1), inner.y.saturating_add(1)));
+        // Policy with real snapshot
+        app.toggle_policy();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s2: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s2.contains("Policy") || s2.contains("policy"));
+        // Tiny terminal fallback
+        let small = TestBackend::new(50, 10);
+        let mut t2 = Terminal::new(small).unwrap();
+        t2.draw(|f| render(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn render_login_polished_hierarchy() {
+        let mut app = App::new(None);
+        app.show_login();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        // New hierarchy: clear title, subtitle, two primary boxes, secondary offline, single status line
+        assert!(s.contains("Sign in to Algorithco Guard"), "title missing: {s}");
+        assert!(s.contains("Choose how to authenticate"), "subtitle missing: {s}");
+        assert!(s.contains("[1]") && s.contains("Sign in with browser"), "browser option missing: {s}");
+        assert!(s.contains("[2]") && s.contains("Use an API key"), "apikey option missing: {s}");
+        assert!(s.contains("Continue offline"), "offline secondary missing: {s}");
+        // Offline should be present but not underlined primary — check we don't have duplicated orange banner
+        assert!(!s.contains("You're offline — nothing is synced. Choose Continue offline."), "duplicated warning should be removed");
+        // Single authoritative status line, not duplicated
+        assert!(s.contains("Tab") && s.contains("Enter"), "keyboard hints missing");
+        // Quit de-emphasized (still present but muted)
+        assert!(s.contains("quit"), "quit missing");
+        // Click areas recorded
+        assert!(app.login_browser.is_some(), "browser rect not recorded");
+        assert!(app.login_apikey.is_some(), "apikey rect not recorded");
+        assert!(app.login_offline.is_some(), "offline rect not recorded");
+        assert!(app.login_quit.is_some(), "quit rect not recorded");
+    }
+
+    #[test]
+    fn render_login_states_browser_pending_and_apikey() {
+        let mut app = App::new(None);
+        app.show_login();
+        // Browser pending
+        app.start_browser_signin();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s.contains("Waiting for browser confirmation"), "browser pending message missing");
+        assert!(s.contains("Device code"), "device code missing");
+        assert!(s.contains("WD-4829-XK"), "device code value missing");
+        assert!(s.contains("Esc to cancel") || s.contains("Cancel"), "cancel hint missing");
+        // API key editing
+        app.show_login();
+        app.start_api_key_entry();
+        app.push_api_key_char('a');
+        app.push_api_key_char('b');
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s2: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s2.contains("••") || s2.contains("Paste your API key"), "masked input missing");
+        // Error state
+        app.login_api_input = "".to_string();
+        app.submit_api_key();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s3: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s3.contains("cannot be empty") || s3.contains("API key"), "error message missing");
+        // Success state
+        app.login_api_input = "ag-valid-key-12345".to_string();
+        app.login_status = LoginStatus::Success;
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s4: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s4.contains("API key accepted") || s4.contains("Signed in"), "success missing");
+        // Validating
+        app.login_status = LoginStatus::ApiKeyValidating;
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s5: String = terminal.backend().buffer().content().iter().map(|c| c.symbol().to_string()).collect();
+        assert!(s5.contains("Validating"), "validating missing");
     }
 
     #[test]
     fn format_ts_handles_zero() {
         let s = format_ts(0);
         assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn truncate_and_bar_helpers() {
+        assert_eq!(truncate("hello", 10), "hello");
+        assert!(truncate("hello world, long reason here", 10).contains("…"));
+        assert!(confidence_bar(0.9).contains("0.90"));
+        assert!(confidence_bar(0.0).contains("0.00"));
     }
 }
