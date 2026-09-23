@@ -50,6 +50,16 @@ jobs:
             cargo fuzz run --fuzz-dir fuzz "$t" -- -max_total_time=60
           done
 
+      - name: Upload crash artifacts (never silently drop a find)
+        # A fuzzer-found crash is a fail-safe hole until triaged: the input
+        # must be downloadable for minimization + regression tests.
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-crashes-${{ github.sha }}
+          path: fuzz/artifacts/
+          if-no-files-found: warn
+
   nightly:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
@@ -78,3 +88,11 @@ jobs:
             echo "=== $t (3600s) ==="
             cargo fuzz run --fuzz-dir fuzz "$t" -- -max_total_time=3600
           done
+
+      - name: Upload crash artifacts (never silently drop a find)
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-crashes-nightly-${{ github.sha }}
+          path: fuzz/artifacts/
+          if-no-files-found: warn

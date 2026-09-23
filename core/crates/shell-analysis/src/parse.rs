@@ -29,9 +29,9 @@ impl std::error::Error for ParseError {}
 
 pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
     let mut parser = Parser::new();
-    let lang = tree_sitter_bash::language();
+    let lang: tree_sitter::Language = tree_sitter_bash::LANGUAGE.into();
     parser
-        .set_language(lang)
+        .set_language(&lang)
         .map_err(|e| ParseError(format!("lang: {:?}", e)))?;
     let tree = parser
         .parse(input, None)
