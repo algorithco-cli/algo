@@ -17,8 +17,17 @@
 [extend]
 useDefault = true
 
+# NOTE (gitleaks v8.30): an [[allowlists]] entry with ONLY fingerprints is
+# rejected ("must contain at least one check for: commits, paths, regexes,
+# or stopwords"). The `commits` scoping below carries the exemption (3
+# historical commits); fingerprints pin the exact findings. Both must match.
 [[allowlists]]
 description = "synthetic redact-bench + rejection-test + login-validation fixtures (verified 2026-09-23, no real secrets)"
+commits = [
+  "a366332eaa05214ae8714e2f7e22dae46a8f08e0",
+  "147abc481aa5d2427282eeba467edf2b355387be",
+  "5ae30e7006e874b9c71413c2b55e854f8a11f7be",
+]
 fingerprints = [
   "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:aws-access-token:18",
   "a366332eaa05214ae8714e2f7e22dae46a8f08e0:core/crates/redact/benches/redact_10k.rs:gcp-api-key:25",
