@@ -21,6 +21,12 @@ auto-approve value (see §3 gating note — always-ask must not pass).
 Latency `p50` is over the `250ms` budget on both vantages (p99 passes).
 Calibration is poor: ECE 0.56 / Brier 0.52 (both vantages) on provisional questions.
 
+> **Precondition note 2026-09-23:** R2 (retention SLA) is resolved per owner decision
+> (`docs/DEFERRED.md:4.2`, `docs/verify/blocked-on-typesafe.md:R2` — vendor link TBD).
+> This changes nothing below: real (non-shadow) Jev traffic stays gated on the redact
+> crate + `--show-egress` + `local-only` default + consent flow
+> (`docs/redact-consent-readiness.md`) **and** on R1/R3/R4, all still open.
+
 ## Decision
 
 Phase 1 Jev stays **advisory / shadow-only**: daemon computes the Jev decision,

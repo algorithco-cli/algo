@@ -1,8 +1,8 @@
-﻿# ADR-0004: Jev BYOK vs proxy (ship BYOK first)
+﻿# ADR-0004: Jev BYOK-only (no proxy mode)
 
 ## Status
 
-draft — 2026-09-20 (D-A / D-01; owner @algorithcoguard/backend)
+accepted — 2026-09-23 (D-A / D-01; owner @algorithcoguard/backend; team decision: BYOK only, proxy will not be built. Human sign-off block below stays blank pending signature.)
 
 ## Context
 
@@ -14,20 +14,20 @@ without this ADR merged.
 
 ## Decision
 
-**Bring your own Jev API key (BYOK) is the default Jev mode** — this ADR's decision.
-**No embedded key in distributed binaries** (see MCA §2.4 Q2 — keys confidential,
-no sharing; §2.3(b)/(g) uncapped risk). The provider layer supports both modes
-behind a trait, but **proxy mode through our servers stays blocked until legal
-review** (DPA/retention/ZDR/proxy auth design cleared). Phase 0–P3 builds, docs,
-and UX assume the user supplies their own Jev key. Redact-before-network applies
-in both modes; `local-only` (default) sends nothing except via the explicit Jev
-path with opt-in consent; `algo log --show-egress` shows what left the machine.
+**Bring your own Jev API key (BYOK) is the ONLY supported Jev mode** — this ADR's decision,
+confirmed 2026-09-23. algorithco guard never proxies or shares its own API key: each end
+user — or their org, via an Algorithco subscription — supplies and connects their own
+TypeSafe API key. **No embedded key in distributed binaries** (see MCA §2.4 Q2 — keys
+confidential, no sharing; §2.3(b)/(g) uncapped risk). **Proxy mode through our servers is
+explicitly out of scope and will not be built** (not deferred — decided). Builds, docs,
+and UX assume the user supplies their own Jev key. Redact-before-network applies;
+`local-only` (default) sends nothing except via the explicit Jev path with opt-in consent;
+`algo log --show-egress` shows what left the machine.
 
 ## Alternatives
 
- - **Proxy-first (backend holds a shared key, clients call backend)**: **blocked until legal review** — not just deferred. It pulls auth, billing, rate-limiting, abuse handling, and **key custody** (MCA §2.4 confidential) into P3 scope and concentrates disclosure + uncapped indemnity risk (§§12.3, 13.2). Revisit only after legal review of proxy auth, per-org quota, abuse limits, audit, and DPA §3 subprocessor implications.
-- **BYOK-only forever (no proxy trait)**: rejected. It forecloses team/enterprise flows where
-  a proxy with org policy is valuable. Keep the trait so a proxy can land without rework.
+ - **Proxy-first (backend holds a shared key, clients call backend)**: **rejected 2026-09-23 — proxy mode will not be built** (was "blocked until legal review"). It would pull auth, billing, rate-limiting, abuse handling, and **key custody** (MCA §2.4 confidential) into scope and concentrate disclosure + uncapped indemnity risk (§§12.3, 13.2). Prior "revisit after legal review" note is superseded by this decision.
+- **BYOK-only forever (no proxy trait)**: **chosen 2026-09-23** (was "rejected" — reversed by this decision). Team/org flows are served by org-supplied keys via Algorithco subscription, not by a proxy. The provider trait remains for test/mock/local-model backends, not as a proxy landing path.
 - **Embedded key in distributed binaries / shared default key**: **prohibited** (MCA §2.4). No secrets in code, logs, defaults, or shipped artifacts; key comes from explicit user config / OS keychain only. Binaries must not contain a fallback key.
 
 ## Consequences
@@ -36,14 +36,14 @@ path with opt-in consent; `algo log --show-egress` shows what left the machine.
 
 - Smallest P3 scope: no billing/auth service required to get L3 working.
 - Privacy-local default: user key, user quota, user audit trail; no third-party hop.
-- Trait preserves optionality: proxy can be added as a second provider backend.
+- No Jev-proxy path in the backend at all: no proxy auth/billing/quota/abuse-limit design, build, or audit surface — backend scope is smaller than the draft assumed.
 
 ### Negative
 
 - Each user must obtain and configure a Jev key (onboarding friction; `algo doctor` must
   diagnose missing/invalid keys as `ask`, never `allow`).
 - Key storage and rotation burden falls on the client (keychain integration per OS).
-- Team-wide policy/quota management is deferred with the proxy.
+- Team-wide policy/quota management goes through org-supplied keys (Algorithco subscription), not through a proxy we operate.
 
 ## Open questions (honest, unresolved)
 
@@ -51,8 +51,8 @@ path with opt-in consent; `algo log --show-egress` shows what left the machine.
   keychain/credential-manager docs (links on verification; no API assumed).
 - Jev API/SDK shape and ToS for key use from a local guard `[VERIFY]` — 2026-09-20 —
   official TypeSafe AI Jev docs (link on verification; P0-JEV-1 dossier decides).
-- Proxy design (if later): auth, per-org quota, abuse limits, audit — no proposal here.
-- Cost/latency budget impact of BYOK vs proxy (P0-JEV-2 measures BYOK path only for now).
+- Proxy design: none — proxy mode will not be built (decided 2026-09-23); no proposal here or later.
+- Cost/latency budget impact of BYOK (P0-JEV-2 measures BYOK path only; there is no proxy path to compare).
 
 ## Verification
 
