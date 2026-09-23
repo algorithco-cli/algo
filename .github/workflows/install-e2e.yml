@@ -38,6 +38,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent -> target
+          # ISOLATE per OS: without this, ubuntu-24.04 build artifacts
+          # (e.g. zmij's build-script binary, glibc 2.39) poison the
+          # ubuntu-22.04 job (glibc 2.35) → "GLIBC_2.39 not found"
+          # (CI failure 2026-09-23, PR #1).
+          shared-key: install-e2e-${{ matrix.os }}
 
       - name: Build agent release
         run: cargo build --release --manifest-path agent/Cargo.toml
@@ -92,6 +97,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent -> target
+          shared-key: install-e2e-macos-14
 
       - name: Build agent release
         run: cargo build --release --manifest-path agent/Cargo.toml
