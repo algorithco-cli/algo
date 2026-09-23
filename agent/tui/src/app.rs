@@ -22,12 +22,55 @@ pub const SUCCESS_TICKS: usize = 12;
 pub enum ViewMode {
     /// Login gate — shown first on launch (browser sign-in or API key).
     Login,
-    /// Live feed of decisions.
+    /// CLI integration — pick the terminal coding tool algo works with.
     #[default]
+    Connect,
+    /// Live feed of decisions (legacy, unreachable in the current flow).
     Feed,
-    /// Policy snapshot (local rules, dry-run vs history).
+    /// Policy snapshot (legacy, unreachable in the current flow).
     Policy,
 }
+
+/// A terminal coding tool the user can pick for `algo` CLI integration.
+/// UI-only for now: picking stores the choice locally, no connection yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliTool {
+    ClaudeCode,
+    Codex,
+    Gemini,
+    Custom,
+}
+
+impl CliTool {
+    pub fn name(self) -> &'static str {
+        match self {
+            CliTool::ClaudeCode => "Claude Code",
+            CliTool::Codex => "Codex",
+            CliTool::Gemini => "Gemini CLI",
+            CliTool::Custom => "Custom / other",
+        }
+    }
+
+    pub fn desc(self) -> &'static str {
+        match self {
+            CliTool::ClaudeCode => "Anthropic's terminal coding assistant",
+            CliTool::Codex => "OpenAI's terminal coding assistant",
+            CliTool::Gemini => "Google's terminal coding assistant",
+            CliTool::Custom => "Another tool — configured manually later",
+        }
+    }
+}
+
+/// Tools listed in the Connect picker, in display order.
+pub const CLI_TOOLS: [CliTool; 4] = [
+    CliTool::ClaudeCode,
+    CliTool::Codex,
+    CliTool::Gemini,
+    CliTool::Custom,
+];
+
+/// Number of rows in the Connect picker.
+pub const CLI_TOOL_COUNT: usize = CLI_TOOLS.len();
 
 /// Which element has keyboard focus on the login screen.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -50,7 +93,7 @@ pub enum LoginStatus {
     ApiKeyEditing,
     /// Validating the API key (spinner).
     ApiKeyValidating,
-    /// Success — brief confirmation before auto-transition to Feed.
+    /// Success — brief confirmation before auto-transition to Connect.
     Success,
     /// Error with human-readable message and retry.
     Error(String),
@@ -141,6 +184,16 @@ pub struct App {
     pub footer_quit: Option<ratatui::layout::Rect>,
     /// Inner table content area (inside borders) for click-to-select math.
     pub table_inner: Option<ratatui::layout::Rect>,
+
+    // ---- Connect (CLI integration picker) state — UI-only for now. ----
+    /// Cursor into `CLI_TOOLS`.
+    pub tool_selected: usize,
+    /// Tool picked via click/keyboard. Stored locally; no connection yet.
+    pub connected_tool: Option<CliTool>,
+    /// Honest status line for the Connect view (stored-locally messaging).
+    pub connect_status_msg: Option<String>,
+    /// Clickable box per tool row, populated each render (mouse-first UI).
+    pub tool_rects: [Option<ratatui::layout::Rect>; CLI_TOOL_COUNT],
 }
 
 impl App {
@@ -176,7 +229,11 @@ impl App {
             entries: Vec::new(),
             selected: 0,
             table_state: TableState::default(),
-            mode: ViewMode::Feed,
+            mode: ViewMode::Connect,
+            tool_selected: 0,
+            connected_tool: None,
+            connect_status_msg: None,
+            tool_rects: [None; CLI_TOOL_COUNT],
             is_offline,
             error: None,
             login_focus: LoginFocus::Browser,
@@ -374,6 +431,42 @@ impl App {
         self.set_mode(ViewMode::Policy);
     }
 
+    /// Show the CLI-integration picker (explicit, unambiguous).
+    pub fn show_connect(&mut self) {
+        self.set_mode(ViewMode::Connect);
+    }
+
+    /// Move the Connect picker cursor down (wraps around).
+    pub fn select_tool_next(&mut self) {
+        self.tool_selected = (self.tool_selected + 1) % CLI_TOOL_COUNT;
+    }
+
+    /// Move the Connect picker cursor up (wraps around).
+    pub fn select_tool_prev(&mut self) {
+        self.tool_selected = (self.tool_selected + CLI_TOOL_COUNT - 1) % CLI_TOOL_COUNT;
+    }
+
+    /// Pick the tool under the cursor. UI-only: stored locally with an honest
+    /// "not connected yet" message — no fake connection theater.
+    pub fn choose_tool(&mut self) {
+        self.choose_tool_idx(self.tool_selected);
+    }
+
+    /// Pick tool `i` directly (1–4 shortcuts, mouse clicks). Out of range is
+    /// ignored.
+    pub fn choose_tool_idx(&mut self, i: usize) {
+        if i >= CLI_TOOL_COUNT {
+            return;
+        }
+        self.tool_selected = i;
+        let tool = CLI_TOOLS[i];
+        self.connected_tool = Some(tool);
+        self.connect_status_msg = Some(format!(
+            "✓ {} selected — stored locally (connection wiring not built yet).",
+            tool.name()
+        ));
+    }
+
     /// Show the login gate (called once on launch). Resets to clean Idle state.
     pub fn show_login(&mut self) {
         self.mode = ViewMode::Login;
@@ -386,6 +479,9 @@ impl App {
         self.login_status_msg = None;
         self.login_pending = false;
         self.login_note = None;
+        self.tool_selected = 0;
+        self.connected_tool = None;
+        self.connect_status_msg = None;
     }
 
     /// Enter the app offline (local-only, no cloud). Never fails.
@@ -398,7 +494,7 @@ impl App {
         self.login_status_msg = None;
         // Clear secret from memory on exit — do not retain raw key after leaving login
         self.login_api_input.clear();
-        self.mode = ViewMode::Feed;
+        self.mode = ViewMode::Connect;
     }
 
     /// Start a browser sign-in attempt.
