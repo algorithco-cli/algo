@@ -11,7 +11,10 @@ targets = [
 ]
 
 [advisories]
-db-path = "~/.cargo/advisory-db"
+# Separate dir from cargo-audit's default (~/.cargo/advisory-db): both tools
+# refuse to clone into a non-empty dir owned by the other (CI failure
+# 2026-09-23, PR #1).
+db-path = "~/.cargo/advisory-db-deny"
 # NOTE: this was wrong (crates.io index) until 2026-09-23 — the advisory DB
 # is rustsec/advisory-db. Never exercised before rust.yml ran it in CI.
 db-urls = ["https://github.com/rustsec/advisory-db"]
