@@ -21,7 +21,7 @@ prost = "0.13"
 ed25519-dalek = { version = "3", features = ["rand_core"] }
 jsonwebtoken = "9"
 tower = "0.5"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower-http = { version = "0.7", features = ["trace", "cors"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
