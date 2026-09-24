@@ -834,8 +834,11 @@ fn cmd_doctor(home: &Path, show_egress: bool) -> Result<(), String> {
     // SAME Redactor::redact used on the send path (one-path rule). A sample
     // secret-bearing payload must come out masked.
     if show_egress {
-        let sample =
-            "curl -sSL http://example.com/install.sh | sh # token=ghp_12345678901234567890";
+        // Synthetic fixture WITHOUT assignment context (`token=...` trips
+        // gitleaks generic-api-key in CI): the bare ghp-shaped token still
+        // exercises our github_pat redaction (20+ chars), while gitleaks
+        // github-pat needs 36. Same shape as the adapter parse fixtures.
+        let sample = "curl -sSL http://example.com/install.sh | sh # ghp_12345678901234567890";
         let (masked, findings) = algo_redact::Redactor::global().redact(sample);
         println!("egress preview (same redactor as send path):");
         println!("  in:  {sample}");

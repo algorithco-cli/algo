@@ -30,13 +30,29 @@ concurrency:
 jobs:
   dry-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      # Pins mirror buf.yml codegen-smoke (triple-pin: plugin + runtime + protoplugin
+      # must match; see https://github.com/bufbuild/protobuf-es/issues/1175).
+      PROTOC_GEN_PROST_VERSION: 0.4.0
+      PROTOC_GEN_ES_VERSION: 2.2.0
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc plugins (pinned)
+        run: |
+          cargo install protoc-gen-prost --version "${PROTOC_GEN_PROST_VERSION}" --locked
+          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protobuf@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protoplugin@${PROTOC_GEN_ES_VERSION}"
 
       - name: Assert dashboard + web stay private
         run: |
@@ -48,6 +64,10 @@ jobs:
           print("dashboard + web private OK (never published)")
           EOF
 
+      - name: Install contracts deps
+        working-directory: packages/contracts
+        run: npm ci --no-audit --no-fund
+
       - name: npm pack --dry-run (contracts)
         working-directory: packages/contracts
         run: npm pack --dry-run
@@ -56,11 +76,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/release/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'publish')
     needs: [dry-run]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment: release
     permissions:
       contents: read
       id-token: write # npm provenance
+    env:
+      # Same triple-pin as dry-run (npm publish runs prepack → build → generate).
+      PROTOC_GEN_PROST_VERSION: 0.4.0
+      PROTOC_GEN_ES_VERSION: 2.2.0
     steps:
       - uses: actions/checkout@v7
 
@@ -68,6 +92,21 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc plugins (pinned)
+        run: |
+          cargo install protoc-gen-prost --version "${PROTOC_GEN_PROST_VERSION}" --locked
+          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protobuf@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protoplugin@${PROTOC_GEN_ES_VERSION}"
+
+      - name: Install contracts deps
+        working-directory: packages/contracts
+        run: npm ci --no-audit --no-fund
 
       - name: License gate (fail-safe)
         env:
