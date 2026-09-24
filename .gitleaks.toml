@@ -43,3 +43,18 @@ fingerprints = [
   "5ae30e7006e874b9c71413c2b55e854f8a11f7be:agent/tui/src/app.rs:generic-api-key:874",
   "5ae30e7006e874b9c71413c2b55e854f8a11f7be:agent/tui/src/ui.rs:generic-api-key:1067",
 ]
+
+# NOTE (2026-09-24): gitleaks `detect` scans history, so a fixture removed from
+# HEAD still fires on the commit that introduced it. The entry below covers one
+# such synthetic fixture (sequential-digit token, verified non-credential —
+# same class as the audit.rs generic-api-key fixtures above). The line was
+# rewritten in 1534e6f to a bare-token shape the scan passes. Pending human
+# review with PR #39 (CODEOWNERS /.github) per the rule above.
+[[allowlists]]
+description = "synthetic doctor --show-egress fixture (token=ghp_ sequential digits, verified 2026-09-24; superseded in 1534e6f)"
+commits = [
+  "00fb9728626ef463519d0ec2c8ad5b37ae743a58",
+]
+fingerprints = [
+  "00fb9728626ef463519d0ec2c8ad5b37ae743a58:agent/crates/cli/src/main.rs:generic-api-key:838",
+]
