@@ -7,10 +7,12 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Claude adapter shell-only (P1-07) – parse PreToolUse Bash → CanonicalEvent, render Decision → hook JSON. [VERIFY] payload shapes vs Claude docs – refresh each release."
 readme = "README.md"
+keywords = ["ai", "adapter", "claude"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../../../core/crates/types" }
-algo-redact = { path = "../../../core/crates/redact" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
+algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

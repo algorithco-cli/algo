@@ -29,6 +29,8 @@ ADR required before code for every open item. Branch `adr/D0X-*`.
 | D-E | Payments MoR defer | D-08 | external MoR, decide early; no build in P0 | @algorithcoguard/backend | 2026-09-20 | deferred (see [ADR 0006](./adr/0006-payments-mor.md)) |
 | D-F | Windows scope | D-09 | macOS+Linux first | @algorithcoguard/agent | 2026-09-20 | draft (see [ADR 0007](./adr/0007-windows-scope.md)) |
 | D-G | Jev Phase 1 shadow-only | — (P0 Jev measurement) | advisory/shadow-only; L3 250/800 stays; revisit after question tuning | @algorithcoguard/eval+core | 2026-09-20 | draft (see [ADR 0008](./adr/0008-jev-shadow-only.md)) |
+| D-H | P0 gate waiver (ADR-0009) | P0 exit gate | waiver retired, gate enforced as written | @algorithcoguard/maintainers | 2026-09-24 | **retired** (see [ADR 0009](./adr/0009-p0-gate-waiver.md)) |
+| D-I | §3b remediation (quarantine vs scoped exception) | P0 exit gate §3b FAIL | scoped exception proposed, quarantine fallback | @algorithcoguard/maintainers | 2026-09-24 | draft (see [ADR 0015](./adr/0015-s3b-remediation.md)) |
 
 ## Deferred explicitly
 

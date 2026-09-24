@@ -34,17 +34,17 @@
 10. **Flag uncertainty.** PR description has an `Assumptions:` section. Ambiguous → ask,
     not silent choice.
 
-## 1. Phase discipline (Phase 0 = now, with waiver for private MVP)
+## 1. Phase discipline (Phase 0 = now, gate enforced — waiver ADR-0009 retired 2026-09-24)
 
 - **No product code.** `core/`, `agent/`, `backend/`, `dashboard/`, `web/` scaffold dirs are
   stubs. Only throwaway redacted probe client in `eval/jev_client/` (Phase 0).
-- **Waiver 2026-09-21 (owner-instructed, ADR-0009):** product code **may be written now,
-  in the existing monorepo, for an unreleased, PRIVATE MVP** — `docs/adr/0009-p0-gate-waiver.md`
-  (countersignature blank). This **does not** mark `docs/exit-gate-P0.md` as passed
-  and **does not** fill any `__________` sign-off field. The gate is **deferred, not
-  cancelled** — every skipped item lives in `docs/DEFERRED.md` with the milestone it
-  must be done **BEFORE** (public release / real user data / Jev enabled / proxy mode).
-  Security-critical files are tracked in `docs/SECURITY-REVIEW-QUEUE.md`.
+- **Waiver retired 2026-09-24 (owner direction):** `docs/adr/0009-p0-gate-waiver.md` is
+  **RETIRED** and covers nothing. The P0 exit gate (`docs/exit-gate-P0.md`) is enforced
+  as written: no Phase 1 product code until the gate is fully checked + human gate
+  sign-off. Product code written under the waiver (2026-09-21–24) is recorded as a
+  §3b gate violation until remediated — see the gate file. `docs/DEFERRED.md` is now
+  the P0 exit-gate backlog (not a waiver companion). Security-critical files are
+  tracked in `docs/SECURITY-REVIEW-QUEUE.md`.
 - **Repo and naming (owner decision, final):** we use **ONE repository** (the existing
   monorepo `algorithcoguard/algorithco-guard`), which **stays PRIVATE until release**.
   Top-level packages (`proto`, `core`, `agent`, `backend`, `dashboard`, `web`, `eval`,
@@ -52,14 +52,12 @@
   naming already **accepted in ADR-0002 unchanged**: CLI `algo` (`algo init`,
   `algo doctor`, `algo status`, `algo why`, `algo log`, `algo pause`), crates `algo-*`,
   home `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`. Do **not** amend
-  ADR-0002 (see ADR-0010 naming amendment — **superseded** by this waiver).
+  ADR-0002 (see ADR-0010 naming amendment — **superseded**, keep ADR-0002).
 - Task IDs: `P0-DOCS-*`, `P0-PROTO-*`, `P0-EVAL-*`, `P0-JEV-*`, `P0-GATE-*`.
 - Build order (Waves 0–4): see `plans/phase-0-00-overview.md`. Critical path:
   labeling quality → harness → Jev measurement → gate.
-- **Without the waiver:** Do not start Phase 1 until `docs/exit-gate-P0.md` is fully checked + human gate sign-off.
-  **With the waiver:** Phase 1 product code for the private MVP may proceed per `plans/00-index-build-order.md`
-  (critical path `core` → `agent` next), but **rules that stay on** (see `docs/DEFERRED.md:3` + §2 below)
-  are still merge-blockers and Jev stays OFF.
+- Do not start Phase 1 until `docs/exit-gate-P0.md` is fully checked + human gate sign-off.
+  **Rules that stay on** (see `docs/DEFERRED.md:3` + §2 below) are merge-blockers and Jev stays OFF.
 
 ## 2. Quality gates (CI merge-blockers)
 

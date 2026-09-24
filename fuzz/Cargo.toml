@@ -23,6 +23,9 @@ path = "../core/crates/policy"
 [dependencies.algo-adapter-claude]
 path = "../agent/crates/adapter-claude"
 
+[dependencies.algo-redact]
+path = "../core/crates/redact"
+
 [dependencies.algo-types]
 path = "../core/crates/types"
 
@@ -44,5 +47,11 @@ doc = false
 [[bin]]
 name = "fuzz_adapter_parse"
 path = "fuzz_targets/fuzz_adapter_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_redact"
+path = "fuzz_targets/fuzz_redact.rs"
 test = false
 doc = false

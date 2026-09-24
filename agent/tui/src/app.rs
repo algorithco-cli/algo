@@ -9,13 +9,18 @@
 use algo_audit::{AuditEntry, AuditStore, Counts};
 use ratatui::widgets::TableState;
 
+use crate::dog::{ColorMode, GuardDog};
+use crate::theme::Theme;
+
 /// Ticks (at ~100ms UI poll) before a pending browser sign-in times out
 /// with an honest "not available yet" error instead of spinning forever.
 pub const BROWSER_TIMEOUT_TICKS: usize = 300;
 /// Milliseconds per marching-ants dash step (5 cells/sec).
 pub const ANIM_STEP_MS: u64 = 200;
-/// Milliseconds per spinner frame (10 fps).
-pub const SPIN_STEP_MS: u64 = 100;
+/// Milliseconds per spinner frame (~12 fps, braille spinner on login).
+pub const SPIN_STEP_MS: u64 = 80;
+/// Grace period before the browser spinner appears (avoids flicker on fast flows).
+pub const SPINNER_GRACE_MS: u64 = 200;
 /// Ticks before a successful login auto-transitions to the feed.
 pub const SUCCESS_TICKS: usize = 12;
 
@@ -196,6 +201,23 @@ pub struct App {
     pub connect_status_msg: Option<String>,
     /// Clickable box per tool row, populated each render (mouse-first UI).
     pub tool_rects: [Option<ratatui::layout::Rect>; CLI_TOOL_COUNT],
+    /// Contextual `?` help overlay (all views). Mouse-first; keyboard toggles.
+    pub help_visible: bool,
+    /// Pixel guard-dog mascot (login right panel). Ticked every `tick()`.
+    pub dog: GuardDog,
+    /// Clickable dog panel (barks on click). Set each login render.
+    pub login_dog: Option<ratatui::layout::Rect>,
+    /// Login visual theme (truecolor → ANSI-16 → mono). No hex in widgets.
+    pub theme: Theme,
+    /// OAuth entry URL shown on the browser card (`ALGO_OAUTH_URL`).
+    /// `None` means browser sign-in is not configured in this build.
+    pub oauth_url: Option<String>,
+    /// Signed-in identity label, e.g. `key ••••abcd`. Set on success.
+    pub login_user: Option<String>,
+    /// Wall-clock start of the current browser wait (spinner grace + status).
+    pub browser_since: Option<std::time::Instant>,
+    /// `--debug`: extra diagnostics on the login screen (off by default).
+    pub debug: bool,
 }
 
 impl App {
@@ -218,6 +240,27 @@ impl App {
         let is_offline = store.is_none();
         let home = Self::resolve_home();
         let algo_dir = home.join(".algo");
+        // Guard-dog mascot: theme accent collar, reduced-motion aware.
+        // `ColorMode::detect` already respects NO_COLOR; `--color` overrides
+        // later via `set_color_layer`.
+        let layer = ColorMode::detect();
+        let theme = Theme::new(layer);
+        let mut dog = GuardDog::new();
+        dog.set_color_mode(layer);
+        dog.set_accent(167, 139, 250);
+        if std::env::var("NO_ANIMATIONS")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+            || std::env::var("ALGO_NO_ANIM")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+        {
+            dog.set_animated(false);
+        }
+        let oauth_url = std::env::var("ALGO_OAUTH_URL")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
         Self {
             store,
             counts: Counts {
@@ -236,6 +279,14 @@ impl App {
             connected_tool: None,
             connect_status_msg: None,
             tool_rects: [None; CLI_TOOL_COUNT],
+            help_visible: false,
+            dog,
+            login_dog: None,
+            theme,
+            oauth_url,
+            login_user: None,
+            browser_since: None,
+            debug: false,
             is_offline,
             error: None,
             login_focus: LoginFocus::Browser,
@@ -268,7 +319,7 @@ impl App {
             config_path: Some(algo_dir.join("config.json")),
             socket_path: Some(algo_dir.join("algo.sock")),
             enforce: false,
-            privacy: "redacted".to_string(),
+            privacy: "local-only".to_string(),
             paused: std::fs::metadata(algo_dir.join("paused"))
                 .map(|m| m.is_file())
                 .unwrap_or(false),
@@ -408,6 +459,40 @@ impl App {
         self.sync_table_state();
     }
 
+    /// Page down (Ctrl-d / PgDn): move by visible window or 10 rows.
+    pub fn select_page_down(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+        let step = 10usize;
+        self.selected = (self.selected + step).min(self.entries.len().saturating_sub(1));
+        self.sync_table_state();
+    }
+
+    /// Page up (Ctrl-u / PgUp).
+    pub fn select_page_up(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+        self.selected = self.selected.saturating_sub(10);
+        self.sync_table_state();
+    }
+
+    /// Toggle the `?` help overlay. `Esc` closes when open.
+    pub fn toggle_help(&mut self) {
+        self.help_visible = !self.help_visible;
+    }
+
+    /// Close help overlay; returns true if it was open.
+    pub fn close_help(&mut self) -> bool {
+        if self.help_visible {
+            self.help_visible = false;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Currently selected entry, if any.
     pub fn selected_entry(&self) -> Option<&AuditEntry> {
         self.entries.get(self.selected)
@@ -490,6 +575,48 @@ impl App {
         self.tool_selected = 0;
         self.connected_tool = None;
         self.connect_status_msg = None;
+        self.login_dog = None;
+        self.login_user = None;
+        self.browser_since = None;
+        self.dog.set_alert(false);
+    }
+
+    /// Bark the guard dog (login delight; also on auth errors).
+    pub fn bark_dog(&mut self) {
+        self.dog.bark();
+    }
+
+    /// Cycle dog color layers: truecolor -> ansi-16 -> mono.
+    pub fn cycle_dog_color(&mut self) {
+        let next = self.dog.color_mode().next();
+        self.set_color_layer(next);
+    }
+
+    /// Pin the color tier for theme + dog (`--color` flag, `m` key).
+    /// Explicit choice wins over `NO_COLOR` detection.
+    pub fn set_color_layer(&mut self, layer: ColorMode) {
+        self.theme = Theme::new(layer);
+        self.dog.set_color_mode(layer);
+    }
+
+    /// Milliseconds spent in the current browser wait (0 when not waiting).
+    pub fn browser_wait_ms(&self) -> u64 {
+        self.browser_since
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    /// Short identity label for a locally stored key (`key ••••abcd`).
+    fn key_label(trimmed: &str) -> String {
+        let suffix: String = trimmed
+            .chars()
+            .rev()
+            .take(4)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        format!("key ••••{suffix}")
     }
 
     /// Enter the app offline (local-only, no cloud). Never fails.
@@ -500,6 +627,7 @@ impl App {
         self.login_device_code = None;
         self.login_ticks = 0;
         self.login_status_msg = None;
+        self.browser_since = None;
         // Clear secret from memory on exit — do not retain raw key after leaving login
         self.login_api_input.clear();
         self.mode = ViewMode::Connect;
@@ -507,21 +635,31 @@ impl App {
 
     /// Start a browser sign-in attempt.
     ///
-    /// No OAuth backend exists in this MVP, so this is honest: it enters a
-    /// pending state with NO fabricated device code and `tick()` surfaces a
-    /// clear "not available yet" timeout instead of spinning forever.
+    /// Honest gate: without a configured [`Self::oauth_url`] there is no
+    /// backend to wait on, so this fails immediately with a specific error
+    /// (what failed + how to fix) instead of fake pending theater.
     pub fn start_browser_signin(&mut self) {
+        if self.oauth_url.is_none() {
+            let msg = "Browser sign-in is not configured. Set ALGO_OAUTH_URL or use an API key."
+                .to_string();
+            self.login_status = LoginStatus::Error(msg.clone());
+            self.login_status_msg = Some(msg.clone());
+            self.login_note = Some(msg);
+            self.login_ticks = 0;
+            self.login_pending = false;
+            self.browser_since = None;
+            self.login_focus = LoginFocus::Browser;
+            self.dog.set_alert(true);
+            self.dog.bark();
+            return;
+        }
         self.login_status = LoginStatus::BrowserPending;
         self.login_device_code = None;
         self.login_ticks = 0;
         self.login_pending = true;
-        self.login_note = Some(
-            "Browser sign-in is not available yet — use an API key or Continue offline."
-                .to_string(),
-        );
-        self.login_status_msg = Some(
-            "Browser sign-in is not available yet — use an API key or Continue offline.  Press Esc to cancel.".to_string(),
-        );
+        self.browser_since = Some(std::time::Instant::now());
+        self.login_note = Some("Waiting for browser approval.".to_string());
+        self.login_status_msg = Some("Waiting for browser approval.".to_string());
         self.login_focus = LoginFocus::Browser;
     }
 
@@ -552,6 +690,7 @@ impl App {
                 self.login_pending = false;
                 self.login_note = None;
                 self.login_status_msg = None;
+                self.browser_since = None;
                 // Do not clear login_api_input on plain cancel — keep typed key for retry
                 // Secret is cleared on continue_offline / Success auto-transition
             }
@@ -594,36 +733,43 @@ impl App {
 
     /// Submit the current API key.
     ///
-    /// No validation backend exists in this MVP, so there is no fake network
-    /// validation theater: basic local sanity (non-empty, >=8 chars) is
-    /// checked, then the key is accepted locally with a clear "stored
-    /// locally, not verified" message. Returns true on accept, false on
-    /// immediate local error.
+    /// Local sanity only (no network theater): errors are specific
+    /// (what failed + how to fix), success stores the key locally and labels
+    /// the identity as the key suffix. Returns true on accept.
     pub fn submit_api_key(&mut self) -> bool {
         let trimmed = self.login_api_input.trim().to_string();
         if trimmed.is_empty() {
-            self.login_status = LoginStatus::Error("API key cannot be empty.".to_string());
-            self.login_status_msg = Some("API key cannot be empty.".to_string());
+            let msg = "API key is empty. Paste a key starting with ag_.".to_string();
+            self.login_status = LoginStatus::Error(msg.clone());
+            self.login_status_msg = Some(msg.clone());
+            self.login_note = Some(msg);
             self.login_ticks = 0;
             self.login_pending = false;
+            self.dog.set_alert(true);
+            self.dog.bark();
             return false;
         }
-        if trimmed.chars().count() < 8 {
-            self.login_status = LoginStatus::Error(
-                "API key too short — must be at least 8 characters.".to_string(),
-            );
-            self.login_status_msg =
-                Some("API key too short — must be at least 8 characters.".to_string());
+        let len = trimmed.chars().count();
+        if len < 8 {
+            let msg = format!("API key too short ({len}/8 characters). Paste the full key.");
+            self.login_status = LoginStatus::Error(msg.clone());
+            self.login_status_msg = Some(msg.clone());
+            self.login_note = Some(msg);
             self.login_ticks = 0;
             self.login_pending = false;
+            self.dog.set_alert(true);
+            self.dog.bark();
             return false;
         }
         // Accepted locally — honestly labelled, no fake spinner.
+        self.login_user = Some(Self::key_label(&trimmed));
         self.login_status = LoginStatus::Success;
         self.login_ticks = 0;
         self.login_pending = false;
-        self.login_status_msg =
-            Some("API key stored locally, not verified (offline MVP).".to_string());
+        self.login_status_msg = Some(format!(
+            "Signed in as {}.",
+            self.login_user.clone().unwrap_or_default()
+        ));
         self.login_note = self.login_status_msg.clone();
         true
     }
@@ -740,18 +886,24 @@ impl App {
         // Sync legacy for render that still reads old fields
         self.sync_legacy();
 
+        // Guard-dog animation clock. `dog.tick()` is wall-clock driven so
+        // mouse-event floods can't speed it up; input is never blocked.
+        self.dog.tick();
+
         match self.login_status.clone() {
             LoginStatus::BrowserPending => {
                 self.login_ticks += 1;
                 if self.login_ticks >= BROWSER_TIMEOUT_TICKS {
-                    // Honest timeout — no backend, no infinite spinner.
-                    let msg = "Browser sign-in is not available yet — use an API key or Continue offline."
-                        .to_string();
+                    // Honest timeout: specific failure + fix, then bark.
+                    let msg = "Browser sign-in timed out. Finish approval in the browser, or use an API key.".to_string();
                     self.login_status = LoginStatus::Error(msg.clone());
                     self.login_status_msg = Some(msg.clone());
                     self.login_note = Some(msg);
                     self.login_pending = false;
                     self.login_ticks = 0;
+                    self.browser_since = None;
+                    self.dog.set_alert(true);
+                    self.dog.bark();
                 }
             }
             LoginStatus::ApiKeyValidating => {
@@ -759,9 +911,10 @@ impl App {
                 // to a local (unverified) accept so old callers can't spin forever.
                 self.login_ticks += 1;
                 if self.login_ticks >= 2 {
+                    let label = Self::key_label(self.login_api_input.trim());
+                    self.login_user = Some(label.clone());
                     self.login_status = LoginStatus::Success;
-                    self.login_status_msg =
-                        Some("API key stored locally, not verified (offline MVP).".to_string());
+                    self.login_status_msg = Some(format!("Signed in as {label}."));
                     self.login_note = self.login_status_msg.clone();
                     self.login_pending = false;
                     self.login_ticks = 0;
@@ -781,6 +934,14 @@ impl App {
                 // No timer needed
             }
         }
+
+        // Dog mirrors auth state after transitions: alert on pending/error,
+        // fast wag on success, calm otherwise. Bark only fires on error entry.
+        let alert = matches!(
+            self.login_status,
+            LoginStatus::BrowserPending | LoginStatus::Error(_) | LoginStatus::Success
+        );
+        self.dog.set_alert(alert);
     }
 
     fn hit(rect: &Option<ratatui::layout::Rect>, x: u16, y: u16) -> bool {
@@ -797,7 +958,21 @@ impl App {
     /// Mouse click handler (mouse-first UI; keyboard still works but is hidden).
     /// Returns `true` when the app should quit.
     pub fn handle_click(&mut self, x: u16, y: u16) -> bool {
+        // Help overlay eats the first click (close on any click).
+        if self.help_visible {
+            self.help_visible = false;
+            // Still allow quit via footer rect even while help is open.
+            if Self::hit(&self.footer_quit, x, y) {
+                return true;
+            }
+            return false;
+        }
         if self.mode == ViewMode::Login {
+            // Clicking the guard dog barks (delight + affordance hint).
+            if Self::hit(&self.login_dog, x, y) {
+                self.dog.bark();
+                return false;
+            }
             if Self::hit(&self.login_quit, x, y) {
                 return true;
             }
@@ -850,8 +1025,10 @@ impl App {
                         self.start_api_key_entry();
                     }
                     LoginStatus::ApiKeyEditing | LoginStatus::Error(_) => {
+                        // The card itself is the button: a click activates
+                        // exactly like Enter (submits the typed key).
                         self.login_focus = LoginFocus::ApiKey;
-                        // keep editing, focus input
+                        self.submit_api_key();
                     }
                     LoginStatus::BrowserPending => {
                         // switch from browser pending to api key — cancel browser first
@@ -1057,7 +1234,9 @@ mod tests {
     fn login_browser_flow_with_cancel() {
         let mut app = App::new(None);
         app.show_login();
-        // Idle + Browser focused -> Enter starts browser (honest: no fake code)
+        // OAuth entry must be configured for a real wait.
+        app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
+        // Idle + Browser focused -> Enter starts browser wait (shows the URL).
         app.login_confirm();
         assert_eq!(app.login_status, LoginStatus::BrowserPending);
         assert!(app.login_device_code.is_none());
@@ -1065,7 +1244,7 @@ mod tests {
             .login_status_msg
             .as_deref()
             .unwrap_or_default()
-            .contains("not available yet"));
+            .contains("Waiting for browser"));
         // Short wait does not auto-finish
         for _ in 0..20 {
             app.tick();
@@ -1075,15 +1254,36 @@ mod tests {
         app.cancel_login();
         assert_eq!(app.login_status, LoginStatus::Idle);
         assert!(app.login_device_code.is_none());
+        assert!(app.browser_since.is_none());
         // Offline shortcut lands on the Connect picker
         app.continue_offline();
         assert_eq!(app.mode, ViewMode::Connect);
     }
 
     #[test]
+    fn login_browser_needs_url() {
+        // Without ALGO_OAUTH_URL there is no backend to wait on: fail fast
+        // with a specific error (what + fix), never fake pending theater.
+        let mut app = App::new(None);
+        app.show_login();
+        assert!(app.oauth_url.is_none());
+        app.login_confirm();
+        let msg = match &app.login_status {
+            LoginStatus::Error(m) => m.clone(),
+            other => panic!("expected Error, got {other:?}"),
+        };
+        assert!(msg.contains("not configured"), "msg was: {msg}");
+        assert!(msg.contains("ALGO_OAUTH_URL"), "msg was: {msg}");
+        assert!(msg.contains("API key"), "msg was: {msg}");
+        assert!(!msg.to_lowercase().contains("sorry"), "no apologies: {msg}");
+        assert!(app.dog.barking() || app.dog.is_alert());
+    }
+
+    #[test]
     fn login_browser_timeout_is_honest() {
         let mut app = App::new(None);
         app.show_login();
+        app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
         app.start_browser_signin();
         assert_eq!(app.login_status, LoginStatus::BrowserPending);
         for _ in 0..BROWSER_TIMEOUT_TICKS {
@@ -1095,11 +1295,9 @@ mod tests {
             app.login_status
         );
         let msg = app.login_status_msg.clone().unwrap_or_default();
-        assert!(msg.contains("not available yet"), "msg was: {msg}");
-        assert!(
-            msg.contains("API key") || msg.contains("offline"),
-            "msg was: {msg}"
-        );
+        assert!(msg.contains("timed out"), "msg was: {msg}");
+        assert!(msg.contains("API key"), "msg must name the fix, was: {msg}");
+        assert!(!msg.to_lowercase().contains("sorry"), "no apologies: {msg}");
     }
 
     #[test]
@@ -1119,15 +1317,16 @@ mod tests {
         app.login_status = LoginStatus::ApiKeyEditing;
         app.submit_api_key();
         assert!(matches!(app.login_status, LoginStatus::Error(_)));
-        // Valid key -> accepted locally with honest message (no fake spinner)
+        // Valid key -> success names the key suffix (honest, local).
         app.login_api_input = "ag-valid-key-12345".to_string();
         assert!(app.submit_api_key());
         assert_eq!(app.login_status, LoginStatus::Success);
+        assert_eq!(app.login_user.as_deref(), Some("key ••••2345"));
         assert!(app
             .login_status_msg
             .as_deref()
             .unwrap_or_default()
-            .contains("stored locally, not verified"));
+            .contains("Signed in as key ••••2345"));
         // Tick drives auto-transition to the Connect picker
         for _ in 0..13 {
             app.tick();
@@ -1191,12 +1390,40 @@ mod tests {
         app.login_api_input = "invalid-key-here".to_string();
         assert!(app.submit_api_key());
         assert_eq!(app.login_status, LoginStatus::Success);
+        assert_eq!(app.login_user.as_deref(), Some("key ••••here"));
         let msg = app.login_status_msg.clone().unwrap_or_default();
-        assert!(
-            msg.contains("stored locally, not verified"),
-            "msg was: {msg}"
-        );
+        assert!(msg.contains("Signed in as key ••••here"), "msg was: {msg}");
         assert!(!msg.to_lowercase().contains("validating"), "msg was: {msg}");
+    }
+
+    #[test]
+    fn login_apikey_errors_are_specific() {
+        let mut app = App::new(None);
+        app.show_login();
+        app.start_api_key_entry();
+        app.login_api_input = String::new();
+        assert!(!app.submit_api_key());
+        let msg = app.login_status_msg.clone().unwrap_or_default();
+        assert!(msg.contains("empty"), "msg was: {msg}");
+        assert!(msg.contains("ag_"), "msg must name the fix, was: {msg}");
+        app.login_api_input = "abc".to_string();
+        app.login_status = LoginStatus::ApiKeyEditing;
+        assert!(!app.submit_api_key());
+        let msg = app.login_status_msg.clone().unwrap_or_default();
+        assert!(msg.contains("3/8"), "msg must count, was: {msg}");
+        assert!(!msg.to_lowercase().contains("sorry"), "no apologies: {msg}");
+    }
+
+    #[test]
+    fn color_layer_override_syncs_theme_and_dog() {
+        use crate::dog::ColorMode;
+        let mut app = App::new(None);
+        app.set_color_layer(ColorMode::Mono);
+        assert_eq!(app.theme.layer, ColorMode::Mono);
+        assert_eq!(app.dog.color_mode(), ColorMode::Mono);
+        app.set_color_layer(ColorMode::TrueColor);
+        assert_eq!(app.theme.layer, ColorMode::TrueColor);
+        assert_eq!(app.dog.color_mode(), ColorMode::TrueColor);
     }
 
     #[test]
@@ -1225,6 +1452,7 @@ mod tests {
     fn login_focus_cycling() {
         let mut app = App::new(None);
         app.show_login();
+        app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
         assert_eq!(app.login_focus, LoginFocus::Browser);
         app.cycle_focus_next();
         assert_eq!(app.login_focus, LoginFocus::ApiKey);
@@ -1335,5 +1563,41 @@ mod tests {
         // from_path should produce offline app without panicking
         let app = App::from_path(missing);
         assert!(app.is_offline || app.entries.is_empty());
+    }
+
+    #[test]
+    fn help_overlay_toggles_and_click_closes() {
+        let mut app = App::new(None);
+        assert!(!app.help_visible);
+        app.toggle_help();
+        assert!(app.help_visible);
+        // Any click closes help instead of acting (except footer quit).
+        assert!(!app.handle_click(5, 5));
+        assert!(!app.help_visible);
+        // Esc-path helper.
+        app.toggle_help();
+        assert!(app.close_help());
+        assert!(!app.help_visible);
+        assert!(!app.close_help());
+    }
+
+    #[test]
+    fn page_nav_clamps_at_bounds() {
+        let mut app = App::new(None);
+        for i in 0..25 {
+            app.entries.push(entry_with_reason(i));
+        }
+        app.select_first();
+        app.select_page_down();
+        assert_eq!(app.selected, 10);
+        app.select_page_down();
+        assert_eq!(app.selected, 20);
+        app.select_page_down();
+        assert_eq!(app.selected, 24, "must clamp to len-1, never OOB");
+        app.select_page_up();
+        assert_eq!(app.selected, 14);
+        app.select_first();
+        app.select_page_up();
+        assert_eq!(app.selected, 0);
     }
 }

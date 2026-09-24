@@ -39,8 +39,16 @@ impl std::fmt::Display for AuditError {
 }
 impl std::error::Error for AuditError {}
 
+/// Ingest size caps (fail-closed; prevents OOM via unbounded stores).
+pub const MAX_EVENT_LEN: usize = 16 * 1024;
+pub const MAX_ID_LEN: usize = 128;
+pub const MAX_LATENCY_MS: i64 = 3_600_000;
+pub const MAX_ORG_LEN: usize = 128;
+
 static AUDIT_STORE: OnceLock<Mutex<Vec<AuditRecord>>> = OnceLock::new();
 static WAL_QUEUE: OnceLock<Mutex<VecDeque<AuditRecord>>> = OnceLock::new();
+static SECRET_SET: OnceLock<regex::RegexSet> = OnceLock::new();
+static SECRET_LONG: OnceLock<Regex> = OnceLock::new();
 
 fn audit_store() -> &'static Mutex<Vec<AuditRecord>> {
     AUDIT_STORE.get_or_init(|| Mutex::new(Vec::new()))
@@ -50,37 +58,71 @@ fn wal_queue() -> &'static Mutex<VecDeque<AuditRecord>> {
     WAL_QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
 }
 
+fn lock_audit_store() -> std::sync::MutexGuard<'static, Vec<AuditRecord>> {
+    match audit_store().lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!("audit store mutex poisoned; recovering inner");
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn lock_wal_queue() -> std::sync::MutexGuard<'static, VecDeque<AuditRecord>> {
+    match wal_queue().lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!("wal queue mutex poisoned; recovering inner");
+            poisoned.into_inner()
+        }
+    }
+}
+
+const SECRET_PATTERNS: &[&str] = &[
+    r"\bAKIA[0-9A-Z]{16}\b",
+    r"\bghp_[A-Za-z0-9]{20,}\b",
+    r"\bgho_[A-Za-z0-9]{20,}\b",
+    r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b",
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+    r"\bsk-(live|test)-[A-Za-z0-9]{16,}\b",
+    r"\bAIza[A-Za-z0-9_-]{35}\b",
+    r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
+    r#"(?i)\b(password|passwd|pwd|token|secret)\b\s*[:=]\s*['"]?[^'"\s,}]{4,}"#,
+];
+
+const SECRET_KINDS: &[&str] = &[
+    "aws_key",
+    "github_pat",
+    "github_oauth",
+    "slack_token",
+    "private_key",
+    "vendor_sk",
+    "google_api",
+    "jwt",
+    "credential_assignment",
+];
+
+fn secret_set() -> &'static regex::RegexSet {
+    SECRET_SET
+        .get_or_init(|| regex::RegexSet::new(SECRET_PATTERNS).expect("valid secret regex set"))
+}
+
+fn secret_long_re() -> &'static Regex {
+    SECRET_LONG.get_or_init(|| Regex::new(r"[A-Za-z0-9+/=_-]{24,}").expect("valid regex"))
+}
+
 /// Very small secret scanner — mirrors `algo-redact` literals+regex for MVP.
 /// If any pattern matches, payload is considered NOT redacted.
+/// Regexes are compiled once (static) to meet L2 latency budgets.
 fn contains_secret(s: &str) -> Option<String> {
-    // Fast literal pre-filter via regex set below; keep simple for MVP.
-    let patterns: &[(&str, &str)] = &[
-        (r"\bAKIA[0-9A-Z]{16}\b", "aws_key"),
-        (r"\bghp_[A-Za-z0-9]{20,}\b", "github_pat"),
-        (r"\bgho_[A-Za-z0-9]{20,}\b", "github_oauth"),
-        (r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b", "slack_token"),
-        (r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", "private_key"),
-        (r"\bsk-(live|test)-[A-Za-z0-9]{16,}\b", "vendor_sk"),
-        (r"\bAIza[A-Za-z0-9_-]{35}\b", "google_api"),
-        (
-            r"\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b",
-            "jwt",
-        ),
-        (
-            r#"(?i)\b(password|passwd|pwd|token|secret)\b\s*[:=]\s*['"]?[^'"\s,}]{4,}"#,
-            "credential_assignment",
-        ),
-    ];
-    for (pat, kind) in patterns {
-        let re = Regex::new(pat).expect("valid regex");
-        if re.is_match(s) {
-            return Some((*kind).to_string());
-        }
+    let set = secret_set();
+    if let Some(idx) = set.matches(s).into_iter().next() {
+        return Some(SECRET_KINDS[idx].to_string());
     }
     // High-entropy dense token heuristic (len>=24, 3+ char classes, entropy>4.5) — simplified check.
     // We look for long alphanumeric-ish tokens not containing <REDACTED.
     // For MVP, scan for 24+ char base64-like substrings without spaces.
-    let re_long = Regex::new(r"[A-Za-z0-9+/=_-]{24,}").expect("valid regex");
+    let re_long = secret_long_re();
     for m in re_long.find_iter(s) {
         let tok = m.as_str();
         if tok.contains("<REDACTED") || tok.contains("example") || tok.contains("test") {
@@ -108,6 +150,7 @@ fn contains_secret(s: &str) -> Option<String> {
 }
 
 /// Public helper: true if payload would be considered redacted (i.e., no secret).
+#[allow(dead_code)]
 pub fn is_redacted_payload(s: &str) -> bool {
     contains_secret(s).is_none()
 }
@@ -142,21 +185,33 @@ pub fn ingest_audit(mut raw: serde_json::Value) -> Result<AuditRecord, AuditErro
         .and_then(|v| v.as_str())
         .ok_or_else(|| AuditError::MissingField("redacted_event".to_string()))?
         .to_string();
+    if redacted_event.len() > MAX_EVENT_LEN {
+        return Err(AuditError::InvalidLatency(format!(
+            "redacted_event too large ({} > {MAX_EVENT_LEN})",
+            redacted_event.len()
+        )));
+    }
 
     let decision = obj
         .get("decision")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AuditError::MissingField("decision".to_string()))?
         .to_string();
+    if decision.len() > MAX_ID_LEN {
+        return Err(AuditError::InvalidDecision("decision too long".to_string()));
+    }
 
-    let latency_ms = obj
+    // Strict latency typing: floats/strings/u64-overflow fail closed.
+    let latency_val = obj
         .get("latency_ms")
-        .and_then(|v| v.as_i64())
         .ok_or_else(|| AuditError::MissingField("latency_ms".to_string()))?;
+    let latency_ms = latency_val.as_i64().ok_or_else(|| {
+        AuditError::InvalidLatency("latency_ms must be integer milliseconds".to_string())
+    })?;
 
-    if latency_ms < 0 {
+    if !(0..=MAX_LATENCY_MS).contains(&latency_ms) {
         return Err(AuditError::InvalidLatency(format!(
-            "negative latency {latency_ms}"
+            "latency out of range 0..={MAX_LATENCY_MS}"
         )));
     }
 
@@ -175,15 +230,30 @@ pub fn ingest_audit(mut raw: serde_json::Value) -> Result<AuditRecord, AuditErro
     }
 
     // Trace/org ids optional but we generate/keep if present.
-    let trace_id = obj
-        .get("trace_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let org_id = obj
-        .get("org_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    // Client trace_ids are length-capped; oversized values fail closed to
+    // prevent store/queue amplification.
+    let trace_id = match obj.get("trace_id").and_then(|v| v.as_str()) {
+        Some(s) => {
+            if s.len() > MAX_ID_LEN {
+                return Err(AuditError::MissingField("trace_id too long".to_string()));
+            }
+            // Control characters / newlines are rejected (log/header injection).
+            if s.chars().any(|c| c.is_control()) {
+                return Err(AuditError::MissingField("trace_id invalid".to_string()));
+            }
+            s.to_string()
+        }
+        None => uuid::Uuid::new_v4().to_string(),
+    };
+    let org_id = match obj.get("org_id").and_then(|v| v.as_str()) {
+        Some(s) => {
+            if s.len() > MAX_ORG_LEN || s.trim().is_empty() {
+                return Err(AuditError::MissingField("org_id invalid".to_string()));
+            }
+            Some(s.to_string())
+        }
+        None => None,
+    };
 
     let record = AuditRecord {
         redacted_event,
@@ -194,33 +264,36 @@ pub fn ingest_audit(mut raw: serde_json::Value) -> Result<AuditRecord, AuditErro
     };
 
     // Append to store + WAL queue (in-memory scaffold for MVP).
-    audit_store()
-        .lock()
-        .expect("audit store poisoned")
-        .push(record.clone());
-    wal_queue()
-        .lock()
-        .expect("wal poisoned")
-        .push_back(record.clone());
+    // Bounded: drop oldest WAL entries beyond cap to avoid unbounded memory
+    // growth (fail-safe: audit store keeps full history for MVP, WAL is bounded).
+    const WAL_CAP: usize = 10_000;
+    lock_audit_store().push(record.clone());
+    {
+        let mut q = lock_wal_queue();
+        if q.len() >= WAL_CAP {
+            q.pop_front();
+        }
+        q.push_back(record.clone());
+    }
 
     Ok(record)
 }
 
 /// Get all audit records (for stats).
 pub fn all_records() -> Vec<AuditRecord> {
-    audit_store().lock().expect("audit store poisoned").clone()
+    lock_audit_store().clone()
 }
 
 /// Drain WAL queue (simulates apalis/Postgres queue consumer).
 pub fn drain_wal() -> Vec<AuditRecord> {
-    let mut q = wal_queue().lock().expect("wal poisoned");
-    q.drain(..).collect()
+    lock_wal_queue().drain(..).collect()
 }
 
 /// Clear stores (tests).
+#[allow(dead_code)]
 pub fn clear_audit_store() {
-    audit_store().lock().expect("audit store poisoned").clear();
-    wal_queue().lock().expect("wal poisoned").clear();
+    lock_audit_store().clear();
+    lock_wal_queue().clear();
 }
 
 #[cfg(test)]
@@ -374,5 +447,29 @@ mod tests {
         assert!(is_redacted_payload("clean payload"));
         assert!(!is_redacted_payload("ghp_12345678901234567890"));
         assert!(is_redacted_payload("<REDACTED:GITHUB_PAT>"));
+    }
+
+    #[test]
+    fn proves_ask_on_oversize_event() {
+        let _guard = test_sync::lock();
+        clear_audit_store();
+        let big = "x".repeat(MAX_EVENT_LEN + 1);
+        let raw = json!({"redacted_event": big, "decision":"allow","latency_ms":1});
+        assert!(ingest_audit(raw).is_err());
+        assert!(all_records().is_empty());
+    }
+
+    #[test]
+    fn proves_ask_on_bad_latency_type() {
+        let _guard = test_sync::lock();
+        clear_audit_store();
+        for raw in [
+            json!({"redacted_event":"clean","decision":"allow","latency_ms":12.5}),
+            json!({"redacted_event":"clean","decision":"allow","latency_ms":"fast"}),
+            json!({"redacted_event":"clean","decision":"allow","latency_ms":i64::MAX}),
+        ] {
+            assert!(ingest_audit(raw).is_err());
+        }
+        assert!(all_records().is_empty());
     }
 }

@@ -28,6 +28,14 @@ pub struct Redactor {
 }
 
 static GLOBAL: OnceLock<Redactor> = OnceLock::new();
+static RE_B64_SUBSTR: OnceLock<Regex> = OnceLock::new();
+
+/// AWS documentation example key — not a credential, never masked.
+const AWS_DOCS_EXAMPLE_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
+
+fn re_b64_substr() -> &'static Regex {
+    RE_B64_SUBSTR.get_or_init(|| Regex::new(r"[A-Za-z0-9+/=_.-]{24,}").unwrap())
+}
 
 fn build_ac() -> AhoCorasick {
     // Literals for fast pre-filter — if none match, we can skip regex entirely (common case).
@@ -152,8 +160,21 @@ impl Redactor {
         for (kind, re, masked_as) in &self.regexes {
             if re.is_match(&masked) {
                 let mut found = false;
-                // Replace all occurrences
-                let new_masked = re.replace_all(&masked, *masked_as).to_string();
+                // Replace all occurrences. The AWS documentation example key is
+                // never a real credential — it is preserved verbatim per
+                // redact-crate-design.md:20 (regex crate has no look-around).
+                let new_masked = if *kind == "aws_key" {
+                    re.replace_all(&masked, |caps: &regex::Captures| {
+                        if &caps[0] == AWS_DOCS_EXAMPLE_KEY {
+                            caps[0].to_string()
+                        } else {
+                            masked_as.to_string()
+                        }
+                    })
+                    .to_string()
+                } else {
+                    re.replace_all(&masked, *masked_as).to_string()
+                };
                 if new_masked != masked {
                     found = true;
                     masked = new_masked;
@@ -253,10 +274,8 @@ fn high_entropy_tokens(s: &str) -> Vec<String> {
         }
     }
     // Also check for long base64-like substrings inside the string
-    for caps in regex::Regex::new(r"[A-Za-z0-9+/=_.-]{24,}")
-        .unwrap()
-        .find_iter(s)
-    {
+    // (hoisted OnceLock — never `Regex::new` per call; <500µs/10KB budget).
+    for caps in re_b64_substr().find_iter(s) {
         let tok = caps
             .as_str()
             .trim_matches(|c| matches!(c, '=' | '-' | '.' | '_'));
@@ -284,9 +303,19 @@ mod tests {
 
     #[test]
     fn redacts_aws_key() {
-        let (masked, findings) = Redactor::new().redact("key=AKIAIOSFODNN7EXAMPLE more");
+        let (masked, findings) = Redactor::new().redact("key=AKIAZZZZZZZZZZZZZZZZ more");
         assert!(masked.contains("<REDACTED:AWS_KEY>"));
         assert!(findings.iter().any(|f| f.kind == "aws_key"));
+    }
+
+    #[test]
+    fn docs_example_key_not_masked() {
+        // redact-crate-design.md:20 — the AWS documentation example is not a
+        // credential and must survive redaction (docs/tests carry it).
+        let (masked, findings) = Redactor::new().redact("key=AKIAIOSFODNN7EXAMPLE more");
+        assert!(!masked.contains("<REDACTED:AWS_KEY>"));
+        assert!(masked.contains("AKIAIOSFODNN7EXAMPLE"));
+        assert!(!findings.iter().any(|f| f.kind == "aws_key"));
     }
 
     #[test]
@@ -312,21 +341,18 @@ mod tests {
             "AKIAIOSFODNN7EXAMPLE",
         ] {
             let (masked, findings) = r.redact(s);
-            // The docs example key should NOT be flagged as real (it's in the allowlist via the 'fake' check in high-entropy)
-            // But AKIAIOSFODNN7EXAMPLE is actually a real-pattern match for AKIA — we intentionally do NOT suppress it here,
-            // because the product must be conservative. The eval harness's `test` fixture uses a different example.
-            // For this crate, "test"/"example"/"fake" as standalone words should not trigger high-entropy.
-            if s == "test" || s == "example" || s == "fake" || s == "placeholder" {
-                assert_eq!(masked, s);
-                assert!(findings.is_empty());
-            }
+            // None of these are credentials: standalone filler words must not
+            // trigger high-entropy, and the AWS docs example key is excluded
+            // from the aws_key pattern by design (see docs_example_key_not_masked).
+            assert_eq!(masked, s, "false positive on {s:?}");
+            assert!(findings.is_empty(), "findings on {s:?}");
         }
     }
 
     #[test]
     fn idempotent() {
         let r = Redactor::new();
-        let input = "ghp_12345678901234567890 and AKIAIOSFODNN7EXAMPLE";
+        let input = "ghp_12345678901234567890 and AKIAZZZZZZZZZZZZZZZZ";
         let (masked1, _) = r.redact(input);
         let (masked2, _) = r.redact(&masked1);
         assert_eq!(masked1, masked2);
@@ -335,7 +361,7 @@ mod tests {
     #[test]
     fn no_pattern_survives() {
         let r = Redactor::new();
-        let input = "AKIAIOSFODNN7EXAMPLE ghp_12345678901234567890";
+        let input = "AKIAZZZZZZZZZZZZZZZZ ghp_12345678901234567890";
         let (masked, _) = r.redact(input);
         assert!(!r.is_redacted(&masked));
         let (_masked2, findings2) = r.redact(&masked);

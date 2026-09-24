@@ -57,9 +57,17 @@ export const ROUTES: readonly RouteMeta[] = [
   },
   {
     path: "/login",
-    title: "Log in — link terminal via device code | Algorithco Guard",
+    title: "Log in — email or provider sign-in | Algorithco Guard",
     description:
-      "algo login device flow demo. Team cloud with org policy and dashboard is Phase 3 planned; local MVP runs today.",
+      "Create an account with email or sign in with GitHub/Google. Team cloud with org policy and dashboard is Phase 3 planned; local MVP runs today.",
+    layout: "marketing",
+    indexable: false,
+  },
+  {
+    path: "/billing",
+    title: "Billing — manage subscription and seats | Algorithco Guard",
+    description:
+      "Manage your org subscription: pick Pro, Max, or Team per seat, monthly or annual, update seats, or cancel at period end.",
     layout: "marketing",
     indexable: false,
   },

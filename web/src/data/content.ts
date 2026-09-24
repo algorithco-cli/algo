@@ -134,6 +134,6 @@ export const CLI_ROWS: Array<[string, string]> = [
   ["algo log", "Local audit log; --show-egress inspects egress"],
   ["algo enforce [on|off]", "Shadow → enforce switch (explicit opt-in)"],
   ["algo pause / resume", "One-step stop; works daemon-dead"],
-  ["algo login", "OAuth device flow for team/cloud (P3)"],
+  ["algo login", "Sign in with email or provider OAuth for team/cloud (P3)"],
   ["algo policy", "View / dry-run policy bundles"],
 ];

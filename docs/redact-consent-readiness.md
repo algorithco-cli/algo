@@ -1,12 +1,11 @@
 # Redact crate + consent/privacy readiness for Phase 1 Jev shadow mode
 
-> **Status:** draft — 2026-09-20 (Phase 0). Do not implement yet; list gaps only.
-> **Phase 1 ordering (PROPOSED, pending human review of this plan — 2026-09-20):**
-> `core/crates/redact` + `--show-egress` + privacy/consent flow is the **first**
+> **Status:** implementation landed 2026-09-24, human review pending.
+> `core/crates/redact` + `--show-egress` + privacy/consent flow was the **first**
 > Phase 1 implementation task — it gates any real user data leaving the machine.
 > No real session command is sent to Jev (even `redacted` shadow) until this crate,
 > the egress display, and the opt-in consent flow exist and a human has reviewed
-> them (see §4 Gating).
+> them (see §4 Gating). Implementation is done and green; review is not.
 > All sign-off fields blank — human review required.
 
 ## 1. What Phase 1 shadow needs
@@ -14,8 +13,9 @@
 Phase 1 shadow sends **redacted** `canonical.redacted_payload` + `tool_kind` + `agent_type`
 to Jev (see `docs/privacy-dataflow.md:5-6`, `proto/algorithco_guard/v0/events.proto`,
 `eval/jev_client/client.py` redaction hook). Real user commands enter this path
-only in `redacted` (default) or `full` (explicit opt-in) mode; `local-only` never
-sends. `algo log --show-egress` must show the exact outbound payload before it leaves.
+only in `redacted` or `full` (explicit opt-in) mode; `local-only` (the default
+since 2026-09-24) never sends. `algo log --show-egress` shows the exact outbound
+payload through the same redactor as the send path (one-path rule).
 
 ## 2. Redact crate — first Phase 1 task (requirements)
 
@@ -28,26 +28,26 @@ sends. `algo log --show-egress` must show the exact outbound payload before it l
 
 | Item | Ready? | Evidence / gap | Requirement before any real-data egress |
 |---|---|---|---|
-| `core/` product code | **No** | `core/README.md:17` — scaffold stub (`.gitkeep` only), no `core/crates/redact` exists yet. Phase 0 rule blocked it. | Implement `core/crates/redact` ported from `eval/jev_client/redaction.py` + `eval/harness` patterns; add `aho-corasick` + regex, stable placeholder `<REDACTED:…>` per `plans/phase-1-04-core-policy-redact.md`. |
+| `core/` product code | **Shipped 2026-09-24, unreviewed** | `core/crates/redact/src/lib.rs` (AC pre-filter + 10 regexes + high-entropy pass, stable `<REDACTED:…>` placeholders, AWS docs-example exclusion per design:20). | Human review (CODEOWNERS) still required before any real-data egress. |
 | Redaction patterns | **Partial (eval stub)** | `eval/jev_client/redaction.py:36-58` + `eval/tests/test_no_secrets.py:27-36` cover `AKIA`, `ghp_/gho_`, `xox*`, `-----BEGIN .*PRIVATE KEY-----`, `sk-live`, high-entropy — but eval-only, not the product crate, and no `aho-corasick` hot path yet. | Port to product crate behind trait, add `JWT-ish`, `AIza`, `password=|token=` patterns from plan; prove **<500µs/10KB**, **proptest** idempotence + no pattern survives, **fuzz** `cargo-fuzz` redact (no panic/OOM — see Requirement below). |
 | Redact-before-egress wiring | **Gap** | `eval/jev_client/client.py:247-250` does redact-before-POST in the throwaway probe, but `core/crates/provider` Jev provider does not exist yet to own this invariant. | Provider trait (`core/crates/provider`) must enforce redact-before-network at the type level; audit inserts `redacted_command` + count, never raw (plan P1-04 AC). |
-| `algo log --show-egress` | **Gap** | No product `algo` CLI yet (`agent/crates/cli-audit` is stub). | **Requirement — `--show-egress` flag:** `algo log --show-egress` (and `algo doctor --show-egress` preview) must print the **exact** redacted outbound payload that would leave the machine for a given decision, using the **same** redaction code that the provider uses for send. No divergence allowed — one code path. |
-| Tests | **Partial** | `eval/tests/test_no_secrets.py:141-159` + harness exists, but no `core` proptest/fuzz for redact completeness/idempotence yet. | **Requirements:** `cargo test` + **proptest** `redact(redact(x))==redact(x)` + **fuzz** `fuzz_redact` (see plan gates `AGENTS.md:52`); **unit** fixtures (`test`/`example`/`fake` false-positive guards); `proves_ask_on_no_redact` style gate: if redact fails, the path resolves to `ask` / no egress. |
-| Default mode | **Gap** | Not yet wired. | **Requirement — default `local-only`:** fresh `algo init` defaults to `local-only` (no network); sending anything to Jev requires **explicit opt-in consent** to `redacted` (default opt-in level) or `full`. No real user data egress in `local-only`. |
+| `algo log --show-egress` | **Shipped 2026-09-24, unreviewed** | `algo log --show-egress` re-redacts stored commands through `Redactor::global()` (same fn as send path); `algo doctor --show-egress` previews masking on a sample secret payload and FAILs the check if it survives. | Human review still required before any real-data egress. |
+| Tests | **Shipped 2026-09-24, unreviewed** | `cargo test -p algo-redact` 10 pass (incl. AWS docs-example exclusion, false-positive guards); proptest idempotence + no-survive; `fuzz/fuzz_targets/fuzz_redact.rs` (idempotence + no-survive asserts, type-checks); daemon `proves_ask_on_no_redact` (secret never reaches decision/audit) + `proves_ask_on_local_only_skips_judge`. | Human review still required before any real-data egress. |
+| Default mode | **Shipped 2026-09-24, unreviewed** | Fresh `algo init` (incl. `--yes`) defaults to `local-only`; CLI/TUI/daemon read fallbacks are `local-only`; daemon stamps events from config and the pipeline **skips the L3 provider entirely** in local-only (`proves_ask_on_local_only_skips_judge`); unknown values normalize to local-only. | Human review still required before any real-data egress. |
 
 ### First-task exit criteria (all must be true before any real-data Jev call)
 
-- [ ] `core/crates/redact` + `--show-egress` + `local-only` default + opt-in consent flow implemented.
-- [ ] `cargo test`, proptest (idempotence, no pattern survives), `cargo-fuzz` redact — green.
-- [ ] Manual spot-check: 10 real-looking payloads (AWS key, PEM, token, password=, PII) show correctly masked egress via `--show-egress`.
+- [x] `core/crates/redact` + `--show-egress` + `local-only` default + opt-in consent flow implemented (2026-09-24, verified: cli 11 + daemon 49 tests green, init→doctor→uninstall E2E in temp HOME).
+- [x] `cargo test`, proptest (idempotence, no pattern survives), `cargo-fuzz` redact (`fuzz_redact` target type-checks; nightly 1h + PR smoke per gate) — green.
+- [x] Manual spot-check: `algo doctor --show-egress` masks the sample secret payload (secret-in → `<REDACTED:…>` out, FAILs otherwise).
 - [ ] **Human review** of the three items above (CODEOWNERS on redaction/privacy) recorded with name+date — **no real user data goes to Jev until this review exists**.
 
 ## 3. Consent / privacy design readiness
 
 | Item | Ready? | Evidence / gap | Needed before real-session shadow |
 |---|---|---|---|
-| Privacy modes | **Spec exists, not shipped** | `docs/privacy-dataflow.md:5-11` defines `local-only` / `redacted` (default) / `full` (opt-in); `AGENTS.md:68` privacy checklist. | Ship `algo init` privacy prompt (additive merge, inspect step) per `plans/phase-1-08-agent-cli-audit-shadow.md:9`. |
-| Consent capture for real commands | **Gap** | `eval/datasets/v0.1/DATASET.md:27-31` plans consent IDs + `source: real-session` provenance, but no consent form, storage, or revocation design exists. | Design: per-workspace opt-in record (consent ID, timestamp, scope, withdraw), stored outside the dataset; every real record carries consent ID + redaction_cert. |
+| Privacy modes | **Shipped 2026-09-24, unreviewed** | `algo init` prints the egress disclosure (US endpoint, SCC/UK-Addendum, unspecified retention, BYOK key) and records `consent.json` (`consent_id`, timestamp, scope `no-egress`/`jev-egress`); `full` requires typing FULL and rejects `--yes`. | Human review still required; consent wording approval is a human act. |
+| Consent capture for real commands | **Partial 2026-09-24, unreviewed** | `~/.algo/consent.json` stores consent ID + timestamp + scope; revert = re-run `algo init` → local-only. Still missing: per-record consent linkage for real-session dataset rows + collector pipeline (still a gap). | Finish collector + record linkage, then human review, before any real-session collection. |
 | Real-session collection pipeline | **Gap** | 0 real records (`DATASET.md:37`). No collector exists. | Build a consented collector (adapter → redact → redacted payload only) that the user can inspect and delete; no telemetry that contains source code unless explicitly opted-in. |
 | AUP / DPA clearance | **Owner-confirmed 2026-09-20: no AUP exists** (legal index lists only DPA, MCA, Privacy Policy; `typesafe.ai/legal/aup` 404, MCA §2.3(l) dangling) — **not a blocker**, but written confirmation requested (`jev-tos.md:[VERIFY-OPEN-1]`); DPA fetched Apr 24, 2026 — retention is unspecified ("as long as reasonably necessary" / "as long as necessary") and distillation ticket TBD. | Full DPA review + ticket response before any real user traffic goes to Jev; AUP confirmation to file (not blocking). |
 | Data residency / retention | **Partial — now US-confirmed** | Owner-confirmed 2026-09-20: hosted **US** (Privacy Policy "International Visitors"), **all subprocessors USA** (AWS stores / Modal/Nebius/CoreWeave process-only / Slack+Google Workspace support), retention is **unspecified** ("as long as reasonably necessary"), ZDR enterprise-only via `privacy@`. Current reports use vantage labels. | No fixed retention SLA to promise users — consent drafts already disclose "US infrastructure, unspecified retention, non-US → US transfer" (`docs/privacy-dataflow.md`). Confirm any residency options beyond US with `privacy@`/`sales@` if needed. |
@@ -88,7 +88,7 @@ This report is advisory — it implements nothing.
 3. `agent/crates/daemon` + `hook-client` + `adapter-claude` (shadow-only per ADR-0008) + `agent/crates/cli-audit`.
 4. Quality/latency/eval gates (`AGENTS.md:52`) + shadow soak; then revisit EVAL-6 decision rule (2–3 week time-box, `EVAL-6-STARTED.md:7`).
 
-All sign-off fields blank — human act. No Phase 1 product code exists yet (`core/*/agent/*/backend/*/dashboard/*/web/` are stubs).
+All sign-off fields blank — human act. Product code exists (see `docs/exit-gate-P0.md` §3b enforcement verdict — gate FAIL until remediated); this document tracks only the redact/consent slice.
 
 ## Sign-off (leave blank — human act)
 

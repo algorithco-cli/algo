@@ -1,0 +1,8 @@
+# cargo-audit config for backend.
+# RUSTSEC-2023-0071 (rsa Marvin timing sidechannel, no patch available):
+# rsa is a DEV-ONLY dep (ephemeral test keygen + mock ID-token signing).
+# Never in the shipped binary, never decrypts attacker input — the
+# advisory's own workaround (local-only use) applies. Revisit if rsa
+# ever becomes a runtime dependency.
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]

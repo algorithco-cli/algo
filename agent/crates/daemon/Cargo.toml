@@ -6,17 +6,19 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Daemon for algorithco guard (algo.sock, pipeline L0-L4, single SQLite writer)"
+keywords = ["daemon", "security", "guardrails"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "algo-daemon"
 path = "src/main.rs"
 
 [dependencies]
-algo-types = { path = "../../../core/crates/types" }
-algo-policy = { path = "../../../core/crates/policy" }
-algo-fingerprint = { path = "../../../core/crates/fingerprint" }
-algo-redact = { path = "../../../core/crates/redact" }
-algo-provider = { path = "../../../core/crates/provider" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
+algo-policy = { version = "0.1.0", path = "../../../core/crates/policy" }
+algo-fingerprint = { version = "0.1.0", path = "../../../core/crates/fingerprint" }
+algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
+algo-provider = { version = "0.1.0", path = "../../../core/crates/provider" }
 tokio = { version = "1.53", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -1,10 +1,11 @@
-# ADR-0009: P0 gate waiver for a private MVP (owner-instructed)
+# ADR-0009: P0 gate waiver for a private MVP (owner-instructed) — RETIRED
 
 ## Status
 
-draft — 2026-09-21 (owner-instructed per `docs/STATUS-2026-09-20.md` owner feedback)
-**Countersignature: __________ Date: __________ (leave blank — human act)**
-This is a **waiver, not a pass** — it defers P0 exit-gate sign-offs and documentation debt to allow a private, unreleased MVP. It does **not** mark any gate as passed.
+**RETIRED 2026-09-24 (owner direction: "delete private mvp rule, continue without it, do what was wrote in plan").**
+Was: draft 2026-09-21 (owner-instructed per `docs/STATUS-2026-09-20.md` owner feedback, countersignature blank — never countersigned).
+Effect of retirement: the waiver no longer covers any work. The P0 exit gate (`docs/exit-gate-P0.md`) is **enforced as written** — Phase 1 product code is blocked until the gate passes, and product code already written under the waiver is recorded as a §3b violation in the gate file until remediated. `docs/DEFERRED.md` is now the P0 exit-gate backlog, not a waiver companion.
+This was a **waiver, never a pass** — it deferred P0 exit-gate sign-offs and documentation debt to allow a private, unreleased MVP. It did **not** mark any gate as passed.
 
 ## Context
 

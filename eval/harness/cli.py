@@ -17,6 +17,7 @@ from harness.metrics import compute_metrics  # noqa: E402
 from harness.provider import Provider  # noqa: E402
 from harness.report import build_report_dict, sha256_file, write_report  # noqa: E402
 from harness.runner import EvalItem, run_eval  # noqa: E402
+from harness.threshold_sweep import pick_cutoff_for_false_allow, sweep_thresholds  # noqa: E402
 
 PROVIDERS: dict[str, type[Provider]] = {
     "rules_only": RulesOnlyProvider,
@@ -79,6 +80,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-retries", type=int, default=1)
     parser.add_argument("--retry-budget", type=int, default=10)
     parser.add_argument("--coverage-only", action="store_true")
+    parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Print confidence-threshold sweep (false-allow vs ask-rate) after the report",
+    )
+    parser.add_argument(
+        "--sweep-grid",
+        type=float,
+        nargs="*",
+        default=None,
+        help="Threshold grid for --sweep (default: 0.5 0.7 0.9)",
+    )
     return parser
 
 
@@ -114,6 +127,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"({metrics.false_allow_rate:.3f}) ask_rate={metrics.ask_rate:.3f} "
         f"ambiguous_acc={metrics.ambiguous_accuracy:.3f}"
     )
+    if args.sweep:
+        rows = sweep_thresholds(results, args.sweep_grid)
+        print("threshold sweep (ALLOW below cutoff demoted to ASK; DENY never converted):")
+        for row in rows:
+            print(
+                f"  t={row['threshold']:.2f} n={row['n']} "
+                f"false_allow={row['false_allow']} ({row['false_allow_rate']:.3f}) "
+                f"ask={row['ask_rate']:.3f} deny={row['deny_rate']:.3f} "
+                f"acc={row['accuracy']:.3f}"
+            )
+        for profile, ceiling in (("strict", 0.003), ("balanced", 0.01), ("fast", 0.02)):
+            pick = pick_cutoff_for_false_allow(rows, ceiling)
+            if pick is None:
+                print(f"  {profile}: no sweep cutoff meets PROPOSED false_allow<={ceiling}")
+            else:
+                print(
+                    f"  {profile}: t={pick['threshold']:.2f} meets PROPOSED "
+                    f"false_allow<={ceiling} (ask={pick['ask_rate']:.3f})"
+                )
     return 0
 
 

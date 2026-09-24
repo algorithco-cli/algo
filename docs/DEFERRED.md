@@ -1,9 +1,12 @@
-# DEFERRED — skipped P0 gate sign-offs and documentation debt (waiver ADR-0009)
+# DEFERRED — P0 exit-gate backlog (waiver ADR-0009 retired 2026-09-24)
 
-> **Waiver:** `docs/adr/0009-p0-gate-waiver.md` (owner-instructed 2026-09-21, countersignature blank).
-> P0 exit gate (`docs/exit-gate-P0.md:5`) is **deferred, not cancelled**. Every item below was **open as of `642b4e6` / `f198e97`** and is **skipped for the private MVP**.
-> No sign-off field is filled by this file; all `__________` stay blank.
+> **Waiver retired:** `docs/adr/0009-p0-gate-waiver.md` was retired 2026-09-24 (owner direction).
+> It covers nothing. This file is now the **P0 exit-gate backlog**: every item below must be
+> done before the P0 gate (`docs/exit-gate-P0.md`) can pass. Items were **open as of
+> `642b4e6` / `f198e97`**; status is updated per row as work lands.
+> No sign-off field is filled by this file; all `__________` stay blank (human act).
 > **Rule:** an item must be done **BEFORE** the milestone in its row. No milestone ships without its block.
+> Product code written under the retired waiver is a §3b gate violation until remediated (see gate file).
 
 ## How to read
 
@@ -21,24 +24,24 @@
 | 1.1 | `docs/exit-gate-P0.md:40-44` — `strict`/`balanced`/`fast` thresholds (3× `ratified by __________ on __________`) | Per-profile false_allow ceilings ≤0.3%/≤1%/≤2% are **PROPOSED, not ratified** | `public release` and `Jev enabled` (gate cannot be enforced without a ratified ceiling) |
 | 1.2 | `docs/exit-gate-P0.md:81-87` — §1.5 utility **G1** `false_ask ≤0.30 PROPOSED` + **G2** `Δ at fixed ask` vs realistic `rules_only` v0.2.0 | Utility gating that prevents always-ask (1.0) from passing on safety alone | `public release` and `Jev enabled` |
 | 1.3 | `docs/exit-gate-P0.md:109-116` — §2 verdicts (4 rows: auto-approve, verifier, loop, scanner → `TBD`) + owners/issues | No capability is `go` / `narrow-scope` / `redesign` yet | `public release` and `Jev enabled` (auto-approve) |
-| 1.4 | `docs/exit-gate-P0.md:186-199` — gate sign-off table: Gate owner / Security reviewer / Eval owner (3× `__________`) + `135-148` §3a/§3b boxes unchecked | P0 exit gate is **unchecked, unsigned** | `public release` (gate must be checked) and **private MVP may proceed only under this waiver** |
-| 1.5 | `eval/datasets/v0.1/DATASET.md:16-26` + `eval/datasets/v0.1/REVIEW-PACKET.md:42-46` — human-vs-agent κ (overall + (a) non-ambiguous + (b) ambiguous) + `HUMAN-REVIEW.md` not yet filed | Second human grader for 101 blinded records, 3-way κ ≥0.70, per-record adjudication | `public release` (dataset is 100% synthetic agent labels until then) |
+| 1.4 | `docs/exit-gate-P0.md:186-199` — gate sign-off table: Gate owner / Security reviewer / Eval owner (3× `__________`) + `135-148` §3a/§3b boxes unchecked | P0 exit gate is **unchecked, unsigned** | `public release` (gate must be checked). Waiver retired 2026-09-24: **no product work proceeds until the gate passes**; existing product code is a §3b violation (see gate file) |
+| 1.5 | `eval/datasets/v0.1/DATASET.md:16-26` + `eval/datasets/v0.1/REVIEW-PACKET.md:42-46` — human-vs-agent κ (overall + (a) non-ambiguous + (b) ambiguous) + `HUMAN-REVIEW.md` not yet filed | Second human grader for 101 blinded records, 3-way κ ≥0.70, per-record adjudication. **Progress 2026-09-24:** HUMAN-REVIEW filed (κ 0.377 FAIL); guide Revision A applied (`labeling-guide.md` §6); `harness/revision_a.py` checksums the transcription (reproduces 64/101 + 0.3768/0.6697/0.0000) and emits `review/relabeled-r1.jsonl` (corrected mix 41/51/9, agree 95/101 κ 0.8984 — consistency only). Still open: fresh blinded human re-review clearing 0.70 | `public release` (dataset is 100% synthetic agent labels until then) |
 | 1.6 | `eval/questions/EVAL-6-STARTED.md:134-160` — 2–3 week time-box + decision rule (if no added value → verifier/scanner) | Question tuning (13 cells + boolean set + threshold sweep) not yet run on dev; held-out not yet scored; `HUMAN-REVIEW.md` gates it | `public release` and `Jev enabled` (tuned `questions-v0.1` must beat `rules_only` at comparable ask before Jev does `allow`) |
 
 ## 2. Dataset expansion (statistics, not yet demonstrated)
 
 | # | File:line | What is skipped | Milestone |
 |---|---|---|---|
-| 2.1 | `docs/exit-gate-P0.md:30-37` + `eval/questions/EVAL-6-STARTED.md:113-120` — Option **A+C PROPOSED**: 300 dangerous for balanced/fast (~2–3 days) + strict deterministic (no Jev claim at strict); **B 1000 not started** | n=72/72 dangerous → 95% upper bound 4.1% (Clopper-Pearson), not ≤0.3%/1% (need ~997/299 at 0 obs) | `public release` (to claim balanced/fast) and `Jev enabled` |
+| 2.1 | `docs/exit-gate-P0.md:30-37` + `eval/questions/EVAL-6-STARTED.md:113-120` — Option **A+C PROPOSED**: 300 dangerous for balanced/fast (~2–3 days) + strict deterministic (no Jev claim at strict); **B 1000 not started** | n=72/72 dangerous → 95% upper bound 4.1% (Clopper-Pearson), not ≤0.3%/1% (need ~997/299 at 0 obs). **Progress 2026-09-24:** expansion batch A1 landed (`eval/datasets/v0.1/expansion-a1.jsonl`, 228 DANGEROUS, validated) → 300 dangerous total, meeting the ~299 balanced minimum at 0 obs. Still open: human second-label + κ re-check, dev/held-out re-split decision, strict ~997 (Option B) | `public release` (to claim balanced/fast) and `Jev enabled` |
 | 2.2 | `eval/datasets/v0.1/DATASET.md:27-37` — real-session held-out (≥24 real consented redacted commands in held-out 71) | 0 real records today (240 synthetic / 0 real) | `real user data` (held-out must include real-session slice before any claim about real usage) |
-| 2.3 | `eval/datasets/v0.1/DATASET.md:71-73` + `eval/questions/EVAL-6-STARTED.md:121-126` — generator diversity (≥2 generators + hand adversarial set, metadata `generator`) | Current dangerous are single-generator (agent) + no hand adversarial set logged | `public release` |
+| 2.3 | `eval/datasets/v0.1/DATASET.md:71-73` + `eval/questions/EVAL-6-STARTED.md:121-126` — generator diversity (≥2 generators + hand adversarial set, metadata `generator`) | Current dangerous are single-generator (agent) + no hand adversarial set logged. **Progress 2026-09-24:** batch A1 ships gen-a/gen-b/hand with per-record generator in `expansion-a1.manifest.json` (sidecar — record schema unchanged). Still open: diversity for the pre-A1 seed slice | `public release` |
 
 ## 3. Redact, privacy, consent — first Phase 1 task (gates real data)
 
 | # | File:line | What is skipped | Milestone |
 |---|---|---|---|
-| 3.1 | `docs/redact-consent-readiness.md:5-28` + `docs/redact-crate-design.md:1-98` — `core/crates/redact` (`aho-corasick` + regex, `<500µs/10KB`, proptest/fuzz, `proves_ask_on_no_redact`, `--show-egress` one path, `local-only` default) | **Written 2026-09-21** — `core/crates/redact/src/lib.rs` (9 tests: 7 unit + 2 proptest, `cargo clippy -D warnings` clean, **149µs/10KB** release <500µs) — **queued for human review**, still needs `--show-egress` wiring in `agent` CLI and `local-only` default before real data | `real user data` and `Jev enabled` — **no real user command may be sent to Jev (even shadow) until this crate + `--show-egress` + `local-only` default + opt-in consent are shipped + human-reviewed** (`redact-consent-readiness.md:38-41`) |
-| 3.2 | `docs/privacy-dataflow.md:5-38` — consent drafts (US infra, unspecified retention "as long as reasonably necessary", non-US → US transfer, inspect step, `consent_id`) + `algo init` privacy prompt | Spec exists, not shipped | `real user data` |
+| 3.1 | `docs/redact-consent-readiness.md:5-28` + `docs/redact-crate-design.md:1-98` — `core/crates/redact` (`aho-corasick` + regex, `<500µs/10KB`, proptest/fuzz, `proves_ask_on_no_redact`, `--show-egress` one path, `local-only` default) | **Shipped 2026-09-24, unreviewed** — crate (10 tests incl. AWS-example exclusion) + `fuzz_redact` + `algo log/doctor --show-egress` one-path + `local-only` default everywhere + daemon L3-skip + consent record (`redact-consent-readiness.md` exit criteria 3/4 checked) — **queued for human review** | `real user data` and `Jev enabled` — **no real user command may be sent to Jev (even shadow) until human review exists** (`redact-consent-readiness.md:38-41`) |
+| 3.2 | `docs/privacy-dataflow.md:5-38` — consent drafts (US infra, unspecified retention "as long as reasonably necessary", non-US → US transfer, inspect step, `consent_id`) + `algo init` privacy prompt | **Shipped 2026-09-24, unreviewed** — init prints disclosure, writes `consent.json`, `full` needs typed FULL (rejects `--yes`) | `real user data` |
 | 3.3 | `docs/redact-consent-readiness.md:89-93` + `docs/redact-crate-design.md:10` + `docs/privacy-dataflow.md` sign-offs (4 lines) | Human review of redact+egress+consent design — blank | `real user data` |
 | 3.4 | `docs/redact-crate-design.md:10` — `core/crates/redact` can start after human review of this plan | Design is draft, not yet reviewed | `real user data` |
 
@@ -73,6 +76,7 @@
 | 6.4 | `docs/STATUS-2026-09-20.md` — read-only audit, not a gate pass (gate stays `DRAFT` per `exit-gate-P0.md:4`) | `public release` |
 | 6.5 | `docs/split-plan-draft.md` — **Draft split plan** (monorepo → `guard-*` repos via `git filter-repo`) is **superseded** by this waiver's "ONE repository (monorepo) stays PRIVATE until release" (owner decision 2026-09-21) — do not execute | `public release` (split only if later decided) |
 | 6.6 | `docs/adr/0010-naming-amendment.md` — `algo guard` dispatcher / `guard-*` repos / `algorithco` org — **Draft superseded** by waiver "keep ADR-0002 unchanged: CLI `algo`, crates `algo-*`, `~/.algo/`" | `public release` |
+| 6.7 | Self-managed subscriptions built for the private MVP (`proto/.../backend.proto` Plan/Subscription/Entitlement + `backend/src/plans.rs|subscriptions.rs`, owner-ordered 2026-09-24) while `docs/adr/0006-payments-mor.md` stays **Draft/unsigned**: no MoR vendor, no card data, no charge calls, provider always `"manual"`, `POST /v1/billing/webhook` honest 501 | `public release` (MoR vendor decision + ADR-0006 sign-off required before any real charge, any `provider != "manual"`, or any public billing surface) |
 
 ## 7. How to update this file
 

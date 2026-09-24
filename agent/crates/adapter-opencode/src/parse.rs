@@ -1,4 +1,7 @@
-//! Parse Claude PreToolUse hook JSON → `CanonicalEvent` (P2: shell + edit/write/read).
+//! Parse OpenCode plugin event JSON → `CanonicalEvent` (P4-03: shell + edit/write/read).
+//!
+//! [VERIFY-OPEN] Payload shape is Claude-derived until the P4-03 spike verifies it
+//! against current OpenCode docs; unrecognized shapes map to `SkippedUnsupportedTool` → ask.
 //!
 //! Pure function, no policy logic. Redacts via `algo_redact` before any logging
 //! (just calls `redact`, does not log secrets). Fuzz-friendly: no `unwrap`/`expect`,

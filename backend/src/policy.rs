@@ -8,14 +8,50 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use serde_json::json;
 
 use crate::verify::{
-    advance_version_if_newer, parse_version, verify_bundle, PolicyBundle, VerifyError,
+    advance_version_for, parse_version, verify_bundle_scoped, PolicyBundle, VerifyError,
 };
 
-/// Deterministic test keypair for MVP (NOT production; pinned key in verify).
-fn test_signing_key() -> SigningKey {
+/// Signing key loader.
+///
+/// Production must set `ALGO_POLICY_SIGNING_SEED_HEX` (64 hex chars = 32 bytes,
+/// provisioned via OpenBao / SOPS+age per Phase 3 stack). If unset, we fall back
+/// to the deterministic test seed so local MVP/tests keep working, but emit a
+/// loud warning — this fallback must never be used in production.
+/// See P3-02: key management is human-review-gated (docs/SECURITY-REVIEW-QUEUE.md).
+fn load_signing_key() -> SigningKey {
+    if let Ok(hex) = std::env::var("ALGO_POLICY_SIGNING_SEED_HEX") {
+        let hex = hex.trim();
+        if hex.len() == 64 {
+            let mut seed = [0u8; 32];
+            let mut ok = true;
+            for i in 0..32 {
+                match u8::from_str_radix(&hex[2 * i..2 * i + 2], 16) {
+                    Ok(b) => seed[i] = b,
+                    Err(_) => {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if ok {
+                return SigningKey::from_bytes(&seed);
+            }
+            tracing::warn!(
+                "ALGO_POLICY_SIGNING_SEED_HEX malformed; failing closed is preferred in prod"
+            );
+        } else {
+            tracing::warn!("ALGO_POLICY_SIGNING_SEED_HEX wrong length; expected 64 hex chars");
+        }
+    }
+    tracing::warn!("using deterministic test signing key (NOT for production)");
     // 32-byte deterministic seed — stable across runs for tests.
     let seed = [0x42u8; 32];
     SigningKey::from_bytes(&seed)
+}
+
+/// Deterministic test keypair for MVP (NOT production; pinned key in verify).
+fn test_signing_key() -> SigningKey {
+    load_signing_key()
 }
 
 fn test_verifying_key() -> VerifyingKey {
@@ -53,10 +89,20 @@ impl PolicyStore {
         GLOBAL.get_or_init(PolicyStore::new)
     }
 
+    fn lock_inner(&self) -> std::sync::MutexGuard<'_, HashMap<String, StoredPolicy>> {
+        match self.inner.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                tracing::warn!("policy store mutex poisoned; recovering inner");
+                poisoned.into_inner()
+            }
+        }
+    }
+
     /// Publish: create new bundle, sign with test key, store, return bundle.
     /// `payload_content` is user-supplied policy DSL (opaque here); we wrap with metadata.
     pub fn publish(&self, org_id: &str, payload_content: &str) -> PolicyBundle {
-        let mut guard = self.inner.lock().expect("policy store poisoned");
+        let mut guard = self.lock_inner();
         let current = guard.get(org_id).map(|s| s.version).unwrap_or(0);
         let next = current + 1;
         let version_str = next.to_string();
@@ -83,13 +129,22 @@ impl PolicyStore {
                 bundle: bundle.clone(),
             },
         );
-        // Advance global verify store for rollback protection too.
-        advance_version_if_newer(next);
+        // Advance per-org verify store for rollback protection.
+        // (Global store no longer advanced here to avoid cross-tenant interference.)
+        advance_version_for(org_id, next);
         bundle
     }
 
     /// Direct publish with raw bytes (for tests that craft expiry).
-    pub fn publish_raw(&self, org_id: &str, version: &str, signed_bytes: Vec<u8>) -> PolicyBundle {
+    /// Fail-closed on bad version instead of storing version 0.
+    #[allow(dead_code)]
+    pub fn publish_raw(
+        &self,
+        org_id: &str,
+        version: &str,
+        signed_bytes: Vec<u8>,
+    ) -> Result<PolicyBundle, VerifyError> {
+        let parsed = parse_version(version)?;
         let sk = test_signing_key();
         let sig = sk.sign(&signed_bytes).to_bytes().to_vec();
         let bundle = PolicyBundle {
@@ -97,8 +152,7 @@ impl PolicyStore {
             signed_bytes,
             sig,
         };
-        let parsed = parse_version(version).unwrap_or(0);
-        let mut guard = self.inner.lock().expect("policy store poisoned");
+        let mut guard = self.lock_inner();
         guard.insert(
             org_id.to_string(),
             StoredPolicy {
@@ -106,16 +160,18 @@ impl PolicyStore {
                 bundle: bundle.clone(),
             },
         );
-        advance_version_if_newer(parsed);
-        bundle
+        advance_version_for(org_id, parsed);
+        Ok(bundle)
     }
 
     /// Verify bundle (detached sig + expiry + rollback) and apply if newer.
+    /// Rollback state is per-org; crypto verify happens before taking the lock.
     pub fn verify_and_apply(&self, org_id: &str, bundle: &PolicyBundle) -> Result<(), VerifyError> {
         let pubkey = test_pubkey_bytes();
-        verify_bundle(bundle, &pubkey)?;
+        // Scoped crypto+expiry+rollback pre-check (against shared version store).
+        verify_bundle_scoped(bundle, &pubkey, org_id)?;
         let got = parse_version(&bundle.version)?;
-        let mut guard = self.inner.lock().expect("policy store poisoned");
+        let mut guard = self.lock_inner();
         let current = guard.get(org_id).map(|s| s.version).unwrap_or(0);
         if got < current {
             return Err(VerifyError::Rollback { current, got });
@@ -129,13 +185,13 @@ impl PolicyStore {
                     bundle: bundle.clone(),
                 },
             );
-            advance_version_if_newer(got);
+            advance_version_for(org_id, got);
         }
         Ok(())
     }
 
     pub fn get(&self, org_id: &str, version: &str) -> Option<PolicyBundle> {
-        let guard = self.inner.lock().expect("policy store poisoned");
+        let guard = self.lock_inner();
         if version.is_empty() || version == "latest" {
             guard.get(org_id).map(|s| s.bundle.clone())
         } else {
@@ -152,9 +208,7 @@ impl PolicyStore {
 
     #[allow(dead_code)]
     pub fn latest_version(&self, org_id: &str) -> Option<String> {
-        self.inner
-            .lock()
-            .expect("policy store poisoned")
+        self.lock_inner()
             .get(org_id)
             .map(|s| s.bundle.version.clone())
     }
@@ -162,7 +216,7 @@ impl PolicyStore {
     /// Clear store (tests).
     #[allow(dead_code)]
     pub fn clear(&self) {
-        self.inner.lock().expect("policy store poisoned").clear();
+        self.lock_inner().clear();
     }
 }
 
@@ -287,8 +341,22 @@ mod tests {
         let payload = json!({"content":"raw","expires_at": Utc::now().timestamp()+3600})
             .to_string()
             .into_bytes();
-        let bundle = store.publish_raw("org-raw", "5", payload);
+        let bundle = store
+            .publish_raw("org-raw", "5", payload)
+            .expect("publish_raw ok");
         assert_eq!(bundle.version, "5");
         assert!(store.verify_and_apply("org-raw", &bundle).is_ok());
+    }
+
+    #[test]
+    fn publish_raw_rejects_bad_version_fail_closed() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let store = PolicyStore::new();
+        let payload = json!({"content":"raw","expires_at": Utc::now().timestamp()+3600})
+            .to_string()
+            .into_bytes();
+        let err = store.publish_raw("org-raw", "1evil", payload).unwrap_err();
+        assert!(matches!(err, crate::verify::VerifyError::BadVersion(_)));
     }
 }

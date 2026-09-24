@@ -7,9 +7,11 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Audit store for algorithco guard (SQLite WAL, never raw secrets)"
 readme = "README.md"
+keywords = ["audit", "sqlite", "security"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../../../core/crates/types" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
 rusqlite = { version = "0.31", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -18,7 +20,7 @@ thiserror = "2.0"
 
 [dev-dependencies]
 tempfile = "3.10"
-algo-types = { path = "../../../core/crates/types" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

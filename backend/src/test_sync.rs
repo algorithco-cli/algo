@@ -3,11 +3,14 @@
 
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+#[allow(dead_code)]
 static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+#[allow(dead_code)]
 pub fn lock() -> MutexGuard<'static, ()> {
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("test lock poisoned")
+    // Poison-tolerant so one failing test does not cascade into all others.
+    match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }

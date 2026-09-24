@@ -2,13 +2,30 @@
 name = "algorithco-guard-eval"
 version = "0.1.0"
 description = "Phase-0 eval dataset + harness skeleton for algorithco guard (CLI algo). No product code."
-readme = "AGENTS.md"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "LicenseRef-TBD-legal-signoff"
+authors = [{ name = "algorithco guard" }]
+keywords = ["security", "evaluation", "guardrails", "ai-safety"]
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Security",
+  "Private :: Do Not Upload",
+]
 dependencies = [
   "pandas>=2.0",
   "scikit-learn>=1.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/algorithcoguard/algorithco-guard"
+Repository = "https://github.com/algorithcoguard/algorithco-guard"
+Issues = "https://github.com/algorithcoguard/algorithco-guard/issues"
+
+[project.scripts]
+eval-harness = "harness.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -16,9 +33,15 @@ dev = [
   "ruff>=0.4",
   "mypy>=1.10",
 ]
+# Single-source for throwaway Jev probe (eval/jev_client/requirements.txt is a shim).
+jev = [
+  "httpx[http2]>=0.28.1",
+]
 
 [tool.setuptools.packages.find]
-include = ["harness*", "baselines*", "tests*"]
+include = ["harness*", "baselines*"]
+# NOTE: tests* intentionally excluded from wheel; jev_client/ is throwaway
+# probe-only (no __init__.py) and never distributed.
 
 [build-system]
 requires = ["setuptools>=68"]

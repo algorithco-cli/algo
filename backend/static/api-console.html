@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>algo-backend — API Console</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2330;
+    --border: #2d3644;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --get: #3fb950;
+    --post: #58a6ff;
+    --radius: 10px;
+    --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 14px 22px;
+  }
+  header.top h1 { margin: 0; font-size: 17px; letter-spacing: .2px; }
+  header.top h1 span { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 20px 22px 60px; }
+  .conn {
+    display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+  }
+  .conn label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .conn input {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 14px; overflow: hidden;
+  }
+  .card > .head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .method {
+    font: 700 11px var(--mono); padding: 3px 9px; border-radius: 20px;
+    letter-spacing: .6px;
+  }
+  .method.get { color: #06130a; background: var(--get); }
+  .method.post { color: #06121f; background: var(--post); }
+  .path { font-family: var(--mono); font-size: 13px; }
+  .auth-tag { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .auth-tag.locked { color: var(--warn); }
+  .card > .body { padding: 14px 16px; }
+  .card p.desc { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  textarea {
+    width: 100%; min-height: 76px; resize: vertical;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px;
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field input[type=text] {
+    width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  button {
+    background: var(--accent); color: #06121f; border: 0; border-radius: 7px;
+    padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.12); }
+  button.ghost {
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  button.danger { background: var(--err); color: #1f0606; }
+  .resp { margin-top: 12px; display: none; }
+  .resp.show { display: block; }
+  .status {
+    display: inline-block; font: 700 12px var(--mono);
+    padding: 2px 10px; border-radius: 20px; margin-bottom: 6px;
+  }
+  .status.ok { background: var(--ok); color: #06130a; }
+  .status.err { background: var(--err); color: #1f0606; }
+  pre {
+    margin: 0; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 10px 12px; overflow: auto; max-height: 320px;
+    font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+  }
+  .flow {
+    background: var(--surface); border: 1px dashed var(--accent);
+    border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px;
+  }
+  .flow h2 { margin: 0 0 6px; font-size: 14px; }
+  .flow p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  #flowLog { margin-top: 10px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; padding: 20px; }
+  @media (max-width: 720px) { .conn { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>algo-backend <span>API Console · dev only · localhost</span></h1>
+</header>
+<div class="wrap">
+
+  <div class="conn">
+    <div>
+      <label for="baseUrl">Base URL</label>
+      <input id="baseUrl" type="text" value="http://127.0.0.1:8080" />
+    </div>
+    <div>
+      <label for="token">Bearer token (auto-filled by login / demo flow)</label>
+      <input id="token" type="text" placeholder="valid-token-…" />
+    </div>
+    <div class="row">
+      <button class="ghost" id="btnHealthTop">ping</button>
+      <button class="ghost" id="btnLogin">email login</button>
+    </div>
+  </div>
+
+  <div class="flow">
+    <h2>One-click demo flow</h2>
+    <p>Runs the full loop against the base URL: email login (or signup) → create org → publish policy → get policy → ingest audit → stats. Token and org are filled into the cards below.</p>
+    <button id="btnFlow">Run demo flow</button>
+    <div class="resp" id="flowLog"><span class="status ok" id="flowStatus">…</span><pre id="flowPre"></pre></div>
+  </div>
+
+  <div id="cards"></div>
+
+  <footer>algo-backend API console · dev only · no data leaves your machine</footer>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const cardsEl = $("cards");
+
+function base() { return $("baseUrl").value.replace(/\/+$/, ""); }
+function authHeaders() {
+  const t = $("token").value.trim();
+  return t ? { "Authorization": "Bearer " + t } : {};
+}
+async function send(path, method, body) {
+  const opts = { method, headers: { ...authHeaders() } };
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = typeof body === "string" ? body : JSON.stringify(body);
+  }
+  const t0 = performance.now();
+  const res = await fetch(base() + path, opts);
+  const ms = Math.round(performance.now() - t0);
+  let data;
+  try { data = await res.json(); }
+  catch { data = await res.text(); }
+  return { status: res.status, ms, data };
+}
+function showResp(card, r) {
+  const box = card.querySelector(".resp");
+  const st = card.querySelector(".status");
+  const pre = card.querySelector("pre");
+  box.classList.add("show");
+  st.textContent = r.status + (r.status < 400 ? " OK" : " ERROR") + " · " + r.ms + "ms";
+  st.className = "status " + (r.status < 400 ? "ok" : "err");
+  pre.textContent = typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2);
+  return r;
+}
+
+const DEFAULTS = {
+  emailSignup: () => JSON.stringify({ email: "ada@example.com", password: "correct-horse-01", name: "Ada" }, null, 2),
+  emailLogin: () => JSON.stringify({ email: "ada@example.com", password: "correct-horse-01" }, null, 2),
+  ghPoll: () => JSON.stringify({ device_code: "paste-github-device-code" }, null, 2),
+  ghValidate: () => JSON.stringify({ access_token: "ghu_paste-here" }, null, 2),
+  googleUrl: () => JSON.stringify({ redirect_uri: "http://127.0.0.1:51004/oauth2redirect" }, null, 2),
+  googleCallback: () => JSON.stringify({ code: "paste-code", state: "paste-state" }, null, 2),
+  googleVerify: () => JSON.stringify({ id_token: "paste-id-token", expected_nonce: "paste-nonce-from-your-auth-request" }, null, 2),
+  subCreate: () => JSON.stringify({ org_id: "org_1", tier: "pro", cycle: "monthly", seats: 1 }, null, 2),
+  subChange: () => JSON.stringify({ tier: "max" }, null, 2),
+  org: () => JSON.stringify({ org_name: "acme" }, null, 2),
+  publish: () => JSON.stringify({ org_id: "org_1", content: "allow echo ls" }, null, 2),
+  publishRaw: () => JSON.stringify({ org_id: "org_1", version: "99", signed_bytes_b64: "…", sig_b64: "…" }, null, 2),
+  ingestAllow: () => JSON.stringify({ redacted_event: "tool ls -la", decision: "allow", latency_ms: 12, org_id: "org_1" }, null, 2),
+  ingestSecret: () => JSON.stringify({ redacted_event: "leaked ghp_12345678901234567890", decision: "allow", latency_ms: 5 }, null, 2),
+  dryRun: () => JSON.stringify({ org_id: "org_1", bundle: { version: "1" }, history_ids: ["h1", "h2"] }, null, 2),
+};
+
+const CARDS = [
+  { id: "health", m: "GET", path: "/health", lock: false, desc: "Liveness probe. No auth.",
+    run: (c) => send("/health", "GET").then((r) => showResp(c, r)) },
+  { id: "emailSignup", m: "POST", path: "/v1/auth/signup", lock: false, desc: "Create an account (email + password 8..128 chars, optional name). Passwords are argon2id-hashed server-side. Returns a session token + fills the token box. Duplicate → 409.", body: DEFAULTS.emailSignup,
+    run: async (c) => { const r = await send("/v1/auth/signup", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 201 && r.data.session_token) $("token").value = r.data.session_token; return r; } },
+  { id: "emailLogin", m: "POST", path: "/v1/auth/login", lock: false, desc: "Log in (unknown email and wrong password share one 401 — no oracle). Returns a session token + fills the token box.", body: DEFAULTS.emailLogin,
+    run: async (c) => { const r = await send("/v1/auth/login", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 200 && r.data.session_token) $("token").value = r.data.session_token; return r; } },
+  { id: "org", m: "POST", path: "/v1/orgs", lock: true, desc: "Create org. Auth required. Owner is derived from your token (payload owner_id ignored).", body: DEFAULTS.org,
+    run: (c) => send("/v1/orgs", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "publish", m: "POST", path: "/v1/policy/publish", lock: true, desc: "Publish policy from content. Server signs (v1, 1h expiry). Auth required.", body: DEFAULTS.publish,
+    run: (c) => send("/v1/policy/publish", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "publishRaw", m: "POST", path: "/v1/policy/publish (raw bundle)", lock: true, desc: "Same route, raw-bundle form: version + signed_bytes_b64 + sig_b64. Tampered/expired/rollback → 400 (ask).", body: DEFAULTS.publishRaw,
+    run: (c) => send("/v1/policy/publish", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "getPolicy", m: "GET", path: "/v1/policy/:version?org_id=", lock: true, desc: "Fetch a policy bundle. Use version from publish, or latest.", fields: [{ k: "version", v: "latest" }, { k: "org_id", v: "org_1" }],
+    run: (c) => { const v = c.querySelector('[data-f="version"]').value.trim() || "latest";
+      const o = c.querySelector('[data-f="org_id"]').value.trim() || "default";
+      return send("/v1/policy/" + encodeURIComponent(v) + "?org_id=" + encodeURIComponent(o), "GET").then((r) => showResp(c, r)); } },
+  { id: "ingestAllow", m: "POST", path: "/v1/audit/ingest", lock: true, desc: "Ingest a redacted audit record. source* fields are dropped; secrets → 400.", body: DEFAULTS.ingestAllow,
+    run: (c) => send("/v1/audit/ingest", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "ingestSecret", m: "POST", path: "/v1/audit/ingest (secret → 400)", lock: true, desc: "Fail-closed demo: secret-bearing payload must be rejected and nothing stored.", body: DEFAULTS.ingestSecret,
+    run: (c) => send("/v1/audit/ingest", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "stats", m: "GET", path: "/v1/stats?org_id=", lock: true, desc: "Aggregates. Empty org_id → 400 (no silent all-org leak).", fields: [{ k: "org_id", v: "org_1" }],
+    run: (c) => { const o = c.querySelector('[data-f="org_id"]').value;
+      return send("/v1/stats?org_id=" + encodeURIComponent(o), "GET").then((r) => showResp(c, r)); } },
+  { id: "dryRun", m: "POST", path: "/v1/policy/dry-run", lock: true, desc: "Dry-run vs history. Full bundles are signature-verified first; tampered → 400. Max 1000 history_ids.", body: DEFAULTS.dryRun,
+    run: (c) => send("/v1/policy/dry-run", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "wal", m: "POST", path: "/v1/wal/drain", lock: true, desc: "Drain the in-memory WAL queue (diagnostic). Destructive — any valid token can call it in this stub.", danger: true,
+    run: (c) => send("/v1/wal/drain", "POST", {}).then((r) => showResp(c, r)) },
+  { id: "ghDevice", m: "POST", path: "/v1/auth/github/device", lock: false, desc: "GitHub login step 1: real device + user codes via github.com (needs ALGO_GITHUB_CLIENT_ID on server). 503 when unconfigured.",
+    run: (c) => send("/v1/auth/github/device", "POST", {}).then((r) => showResp(c, r)) },
+  { id: "ghPoll", m: "POST", path: "/v1/auth/github/poll", lock: false, desc: "GitHub login step 2: one poll. pending:true while waiting; on approval returns a backend session token (fills token box) + provider refresh token for you to keep.", body: DEFAULTS.ghPoll,
+    run: async (c) => { const r = await send("/v1/auth/github/poll", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 200 && r.data.session_token) $("token").value = r.data.session_token; return r; } },
+  { id: "ghValidate", m: "POST", path: "/v1/auth/github/validate", lock: false, desc: "Validate an existing GitHub token (ghu_/gho_/ghp_) via GET /user and mint a backend session token.", body: DEFAULTS.ghValidate,
+    run: async (c) => { const r = await send("/v1/auth/github/validate", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 200 && r.data.session_token) $("token").value = r.data.session_token; return r; } },
+  { id: "googleUrl", m: "POST", path: "/v1/auth/google/url", lock: false, desc: "Google login step 1: builds the consent URL (PKCE S256, offline access). Needs ALGO_GOOGLE_CLIENT_ID. Open auth_url in your browser, approve, copy the code.", body: DEFAULTS.googleUrl,
+    run: async (c) => { const r = await send("/v1/auth/google/url", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 200 && r.data.state) { c.parentElement.querySelector('[data-card="googleCallback"] textarea').value =
+        JSON.stringify({ code: "paste-code-from-browser", state: r.data.state }, null, 2); } return r; } },
+  { id: "googleCallback", m: "POST", path: "/v1/auth/google/callback", lock: false, desc: "Google login step 2: exchanges code (PKCE verifier from step 1), verifies the ID token via JWKS, returns a session token (fills token box).", body: DEFAULTS.googleCallback,
+    run: async (c) => { const r = await send("/v1/auth/google/callback", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 200 && r.data.session_token) $("token").value = r.data.session_token; return r; } },
+  { id: "plans", m: "GET", path: "/v1/plans", lock: false, desc: "Plan catalog (pro/max/team, per-seat cents). Public, no auth.",
+    run: (c) => send("/v1/plans", "GET").then((r) => showResp(c, r)) },
+  { id: "subCreate", m: "POST", path: "/v1/subscriptions", lock: true, desc: "Subscribe an org (starts trialing, 14d, no card). Auth required.", body: DEFAULTS.subCreate,
+    run: (c) => send("/v1/subscriptions", "POST", c.querySelector("textarea").value).then((r) => showResp(c, r)) },
+  { id: "entitlement", m: "GET", path: "/v1/entitlement?org_id=", lock: true, desc: "Effective entitlement for an org (status resolved against the clock).", fields: [{ k: "org_id", v: "org_1" }],
+    run: (c) => { const o = c.querySelector('[data-f="org_id"]').value;
+      return send("/v1/entitlement?org_id=" + encodeURIComponent(o), "GET").then((r) => showResp(c, r)); } },
+  { id: "googleVerify", m: "POST", path: "/v1/auth/google/verify", lock: false, desc: "Verify a Google ID token you already have (RS256 + aud/iss/exp + nonce + fresh auth_time) and mint a session token. expected_nonce is required.", body: DEFAULTS.googleVerify,
+    run: async (c) => { const r = await send("/v1/auth/google/verify", "POST", c.querySelector("textarea").value); showResp(c, r);
+      if (r.status === 200 && r.data.session_token) $("token").value = r.data.session_token; return r; } },
+];
+
+for (const d of CARDS) {
+  const el = document.createElement("div");
+  el.className = "card"; el.setAttribute("data-card", d.id);
+  let inner = `<div class="head"><span class="method ${d.m.toLowerCase()}">${d.m}</span>` +
+    `<span class="path">${d.path}</span><span class="auth-tag${d.lock ? " locked" : ""}">${d.lock ? "🔒 auth" : "open"}</span></div><div class="body">` +
+    `<p class="desc">${d.desc}</p>`;
+  if (d.fields) for (const f of d.fields)
+    inner += `<div class="field"><label>${f.k}</label><input type="text" data-f="${f.k}" value="${f.v}" /></div>`;
+  if (d.body) inner += `<div class="field"><textarea spellcheck="false">${d.body()}</textarea></div>`;
+  inner += `<button class="${d.danger ? "danger" : ""}">Send</button>` +
+    `<div class="resp"><span class="status ok">…</span><pre></pre></div></div>`;
+  el.innerHTML = inner;
+  el.querySelector("button").addEventListener("click", () => d.run(el).catch((e) => showResp(el, { status: 0, ms: 0, data: String(e) })));
+  cardsEl.appendChild(el);
+}
+
+$("btnHealthTop").addEventListener("click", async () => {
+  try { const r = await send("/health", "GET"); alert("backend: HTTP " + r.status + " in " + r.ms + "ms"); }
+  catch (e) { alert("unreachable: " + e); }
+});
+$("btnLogin").addEventListener("click", async () => {
+  try {
+    const login = await send("/v1/auth/login", "POST", { email: "ada@example.com", password: "correct-horse-01" });
+    let r = login;
+    if (login.status === 401) {
+      r = await send("/v1/auth/signup", "POST", { email: "ada@example.com", password: "correct-horse-01", name: "Ada" });
+    }
+    if ((r.status === 200 || r.status === 201) && r.data.session_token) {
+      $("token").value = r.data.session_token;
+      alert("logged in — token filled");
+    } else alert("login failed: HTTP " + r.status);
+  } catch (e) { alert("login failed (backend down?): " + e); }
+});
+
+$("btnFlow").addEventListener("click", async () => {
+  const log = $("flowLog"), pre = $("flowPre"), st = $("flowStatus");
+  log.classList.add("show"); st.textContent = "running…"; st.className = "status ok"; pre.textContent = "";
+  const lines = [];
+  const step = async (name, fn) => {
+    try { const r = await fn(); lines.push((r.status < 400 ? "✓" : "✗") + " " + name + " → HTTP " + r.status); pre.textContent = lines.join("\n"); return r; }
+    catch (e) { lines.push("✗ " + name + " → " + e); pre.textContent = lines.join("\n"); return { status: 0, data: {} }; }
+  };
+  const init = await step("email signup (login)", async () => {
+    const login = await send("/v1/auth/login", "POST", { email: "ada@example.com", password: "correct-horse-01" });
+    if (login.status === 200) {
+      if (login.data.session_token) $("token").value = login.data.session_token;
+      return login;
+    }
+    const signup = await send("/v1/auth/signup", "POST", { email: "ada@example.com", password: "correct-horse-01", name: "Ada" });
+    if ((signup.status === 201) && signup.data.session_token) $("token").value = signup.data.session_token;
+    return signup;
+  });
+  if (init.status !== 200 && init.status !== 201) {
+    st.textContent = "stopped: auth failed";
+    return;
+  }
+  const org = await step("create org", () => send("/v1/orgs", "POST", { org_name: "acme" }));
+  const orgId = (org.status === 200 && org.data.org_id) ? org.data.org_id : "org_1";
+  const pub = await step("publish policy", () => send("/v1/policy/publish", "POST", { org_id: orgId, content: "allow echo ls" }));
+  if (pub.status === 200)
+    await step("get policy", () => send("/v1/policy/" + encodeURIComponent(pub.data.version) + "?org_id=" + encodeURIComponent(orgId), "GET"));
+  await step("ingest audit (clean)", () => send("/v1/audit/ingest", "POST", { redacted_event: "tool ls -la", decision: "allow", latency_ms: 12, org_id: orgId }));
+  await step("ingest audit (secret→400)", () => send("/v1/audit/ingest", "POST", { redacted_event: "leaked ghp_12345678901234567890", decision: "allow", latency_ms: 5 }));
+  await step("stats", () => send("/v1/stats?org_id=" + encodeURIComponent(orgId), "GET"));
+  st.textContent = "done";
+});
+</script>
+</body>
+</html>

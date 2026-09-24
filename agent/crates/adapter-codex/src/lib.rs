@@ -1,14 +1,15 @@
-//! `algo-adapter-claude` – Claude adapter (P2: shell + edit/write/read + stop).
+//! `algo-adapter-codex` – Codex adapter (P4-02: shell + edit/write/read + stop).
 //!
-//! - `parse`: Claude PreToolUse JSON for `Bash`/`Edit`/`Write`/`Read`/`AgentStop`
-//!   → `CanonicalEvent`. Shell uses `tool_input.command`; file tools use `file_path`
-//!   + preview. Unknown tools still map to `SkippedUnsupportedTool` → ask. Pure, redacts.
-//! - `render`: `Decision` → Claude hook JSON strings (`approve`/`block`/`ask`). Version-gated
+//! - `parse`: Codex hook JSON for shell/file tools → `CanonicalEvent`.
+//!   Unknown tools still map to `SkippedUnsupportedTool` → ask. Pure, redacts.
+//! - `render`: `Decision` → Codex approval JSON. Version-gated
 //!   with `adapter_version`. Unknown schema version → `ask` + `unsupported_schema`.
 //!
-//! [VERIFY] Exact decision strings (`approve`/`block`/`ask`) and hook payload shapes must be
-//! verified against current Claude docs on each Claude release – see `render.rs` header.
-//! See `plans/phase-1-07-agent-claude-adapter-shell-only.md` for spec.
+//! [VERIFY-OPEN] Codex approval/sandbox/MCP/notify mapping and exact hook payload
+//! shapes must be verified against current Codex docs (P4-02 spike) – the current
+//! parse/render logic is Claude-shaped and must not be trusted for Codex until
+//! the spike lands. If interception cannot block, degrade to observe/advise via
+//! ADR, never guess-and-allow. See `plans/phase-4-adapters.md`.
 
 pub mod parse;
 pub mod render;

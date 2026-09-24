@@ -156,12 +156,40 @@ Current verdicts (fill at gate review):
 >   us-east `0.000 / 1.000 / 0.000`, ECE 0.561 Brier 0.525, p50 465ms p99 648ms cost $0.0150/1k error→ask 0.0014 (1 timeout→ask in 720 calls).
 >   p50 **over budget**, false_ask **shows zero utility** on current questions — see §1 gating note and ADR-0008 (shadow-only).
 > - Still TBD (need humans): §1 ratification, §2 verdicts, all sign-offs, license/legal, AUP (official URL 404s — see `docs/verify/jev-api.md` recheck note), pinned `questions-v0.1`.
+>
+> Addendum 2026-09-24 (enforcement survey, offline, no Jev calls):
+> - Full 101-record blinded human review **FAILED the κ bar**: overall κ 0.377 (< 0.70),
+>   random non-ambiguous 0.670, ambiguous-only 0.000 (`eval/datasets/v0.1/HUMAN-REVIEW.md:28-32`).
+>   The 19/20 pilot κ 0.9242 above does not carry over. DEFERRED 1.5 stays open; ambiguous-slice
+>   labeling needs guide revision + re-adjudication before `public release`.
+> - Split drift: `dev.jsonl` is 169 lines (planned 168) and `held-out.jsonl` 71 (planned 72) —
+>   AMBIGUOUS 52/20 vs planned 50/22 (`eval/harness/split.py` rounding). Counts, not quality;
+>   recorded so a future re-split is reproducible, not silently assumed.
+> - No per-record Jev confidences exist in checked-in reports (aggregates only;
+>   `eval/jev_client/measure.py` builds per-record rows but drops them on write) — G2
+>   Δ-at-fixed-ask and ECE-monotonicity are blocked on new live runs with record retention.
+> - EVAL-6: 3/39 cells done (2 offline baselines + 1 provisional live Jev); 36 tuning cells need
+>   live Jev (`ALGO_JEV_API_KEY` + ≥2 regions). Nothing in §1/§2 can be ratified off synthetic-only,
+>   n=72 evidence. All verdict rows stay TBD; all sign-off fields stay blank (human act).
 
 ### 3b. Must NOT exist (any present = gate fail)
 
 - [ ] No `core` / `agent` / `backend` product code (only `eval/jev_client/` throwaway probe)
 - [ ] No L2 training (blocked until ToS written clearance — caveat §4.1)
 - [ ] No `backend` or cloud code
+
+> **Enforcement verdict 2026-09-24 (waiver ADR-0009 retired, gate enforced): GATE FAIL.**
+> Product code was written 2026-09-21–24 under the retired waiver and is present in
+> `core/` (`redact`, `types`, `fingerprint`, `shell-analysis`, `policy`, `provider`,
+> `policy-spike`), `agent/` (daemon, hook-client, adapters, audit, CLI, verifier,
+> loop-controller, scanner, TUI), `backend/` (`algo-backend`), `dashboard/`, `web/`,
+> and `packages/contracts/`. **§3b is violated.** Remediation (human decision, one of):
+> (a) remove/quarantine product code until the gate passes, or (b) a new ADR granting a
+> scoped exception with sign-off. No new product code may be written until remediated —
+> agent backlog work is limited to `eval/` (dataset/harness/probe), `proto/` contracts,
+> and docs. Security-critical files written under the waiver are listed in
+> `docs/SECURITY-REVIEW-QUEUE.md` (all unreviewed).
+> L2 note: distillation is permanently out of scope (DEFERRED 4.3); no L2 training exists. FAIL is on product code, not L2.
 
 ### 3c. Acceptance
 

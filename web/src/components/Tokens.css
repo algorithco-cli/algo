@@ -1,8 +1,8 @@
-/* web — Tokens.css (Variant 1, synced to canonical 2026-09-22)
- * Canonical: plans/design-tokens.md §2 + web/design-tokens.css — core
- * allow/ask/deny/brand/bg/surface/border/text/muted values match exactly.
+/* web — Tokens.css (Variant 1, dark-only)
+ * Dark theme is the only theme. The light block was deleted (owner decision);
+ * do not reintroduce per-theme overrides.
  * Extensions (web-only, documented): --ag-brand-strong, --ag-bg-raised,
- * --term-* (terminal always dark), font/radius, shadcn aliases.
+ * --term-* (developer terminals), font/radius, shadcn aliases.
  * Grep check: hex lives ONLY in this file (design tokens by definition).
  */
 
@@ -25,25 +25,21 @@
   --term-green: #3dd68c;
   --term-amber: #f5b82e;
   --term-purple: #8e77ff;
-}
 
-:root,
-[data-theme="light"] {
-  color-scheme: light;
-  --ag-brand: #6d4aff;
-  --ag-brand-strong: #5a36f0;
-  --ag-bg: #fafafb;
-  --ag-bg-raised: #ffffff;
-  --ag-surface: #ffffff;
-  --ag-border: #e6e5ee;
-  --ag-text: #17161f;
-  --ag-text-muted: #6b6a7b;
-  --ag-allow: #1e9e63;
-  --ag-ask: #d99a00;
-  --ag-deny: #e5484d;
-}
+  /* Third-party platform brand colors (external identities, theme-independent). */
+  --social-github-bg: #f5f5f5;
+  --social-github-ink: #181717;
+  --social-x-bg: #000000;
+  --social-x-ring: #3a3a44;
+  --social-linkedin: #0a66c2;
+  --social-discord: #5865f2;
 
-[data-theme="dark"] {
+  /* macOS window chrome (universal, theme-independent). */
+  --mac-close: #ff5f57;
+  --mac-min: #febc2e;
+  --mac-max: #28c840;
+
+  /* Dark-only palette (single theme — no light block). */
   color-scheme: dark;
   --ag-brand: #8e77ff;
   --ag-brand-strong: #a68fff;

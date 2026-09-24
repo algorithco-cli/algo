@@ -223,16 +223,41 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ─── GuardService wrappers ───────────────────────────────────────────────────
 
-// Auth (device flow) — stubs for completeness per backend.proto
-export async function authDevice(req: { client_id: string; scope: string }): Promise<unknown> {
-  return fetchJson("/v1/auth/device", { method: "POST", body: JSON.stringify(req) });
+// Auth (email accounts + provider sessions) — backend mints short-lived
+// session JWTs; callers attach them as `Authorization: Bearer <token>`.
+export interface EmailSession {
+  provider: string;
+  email: string;
+  name: string | null;
+  session_token: string;
+  expires_in: number;
 }
 
-export async function authDevicePoll(req: { device_code: string }): Promise<unknown> {
-  return fetchJson("/v1/auth/device/poll", { method: "POST", body: JSON.stringify(req) });
+export async function authSignup(req: {
+  email: string;
+  password: string;
+  name?: string;
+}): Promise<EmailSession> {
+  return fetchJson("/v1/auth/signup", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
 }
 
-export async function createOrg(req: { org_name: string; owner_id: string }): Promise<{ org: Org }> {
+export async function authLogin(req: {
+  email: string;
+  password: string;
+}): Promise<EmailSession> {
+  return fetchJson("/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function createOrg(req: {
+  org_name: string;
+  owner_id: string;
+}): Promise<{ org: Org }> {
   return fetchJson("/v1/orgs", { method: "POST", body: JSON.stringify(req) });
 }
 
@@ -241,7 +266,9 @@ export async function getOrg(org_id: string): Promise<{ org: Org }> {
 }
 
 // Policy
-export async function getPolicy(req: GetPolicyRequest): Promise<GetPolicyResponse> {
+export async function getPolicy(
+  req: GetPolicyRequest,
+): Promise<GetPolicyResponse> {
   const params = new URLSearchParams();
   if (req.version) params.set("version", req.version);
   if (req.org_id) params.set("org_id", req.org_id);
@@ -249,7 +276,9 @@ export async function getPolicy(req: GetPolicyRequest): Promise<GetPolicyRespons
   return fetchJson<GetPolicyResponse>(`/v1/policy${qs}`);
 }
 
-export async function publishPolicy(req: PublishPolicyRequest): Promise<PublishPolicyResponse> {
+export async function publishPolicy(
+  req: PublishPolicyRequest,
+): Promise<PublishPolicyResponse> {
   // Serialize Uint8Array as base64 for JSON transport in static stub
   const body = {
     ...req,
@@ -258,7 +287,9 @@ export async function publishPolicy(req: PublishPolicyRequest): Promise<PublishP
       signed_bytes:
         typeof req.bundle.signed_bytes === "string"
           ? req.bundle.signed_bytes
-          : btoa(String.fromCharCode(...(req.bundle.signed_bytes as Uint8Array))),
+          : btoa(
+              String.fromCharCode(...(req.bundle.signed_bytes as Uint8Array)),
+            ),
       sig:
         typeof req.bundle.sig === "string"
           ? req.bundle.sig
@@ -279,7 +310,9 @@ export async function dryRun(req: DryRunRequest): Promise<DryRunResponse> {
       signed_bytes:
         typeof req.bundle.signed_bytes === "string"
           ? req.bundle.signed_bytes
-          : btoa(String.fromCharCode(...(req.bundle.signed_bytes as Uint8Array))),
+          : btoa(
+              String.fromCharCode(...(req.bundle.signed_bytes as Uint8Array)),
+            ),
       sig:
         typeof req.bundle.sig === "string"
           ? req.bundle.sig
@@ -293,14 +326,18 @@ export async function dryRun(req: DryRunRequest): Promise<DryRunResponse> {
 }
 
 // Audit
-export async function ingestAudit(req: IngestAuditRequest): Promise<IngestAuditResponse> {
+export async function ingestAudit(
+  req: IngestAuditRequest,
+): Promise<IngestAuditResponse> {
   return fetchJson<IngestAuditResponse>("/v1/audit", {
     method: "POST",
     body: JSON.stringify(req),
   });
 }
 
-export async function queryStats(req: QueryStatsRequest = {}): Promise<QueryStatsResponse> {
+export async function queryStats(
+  req: QueryStatsRequest = {},
+): Promise<QueryStatsResponse> {
   const params = new URLSearchParams();
   if (req.org_id) params.set("org_id", req.org_id);
   if (req.from) params.set("from", req.from);
@@ -309,7 +346,10 @@ export async function queryStats(req: QueryStatsRequest = {}): Promise<QueryStat
   return fetchJson<QueryStatsResponse>(`/v1/stats${qs}`);
 }
 
-export async function fetchAuditHistory(params?: { limit?: number; org_id?: string }): Promise<AuditEntry[]> {
+export async function fetchAuditHistory(params?: {
+  limit?: number;
+  org_id?: string;
+}): Promise<AuditEntry[]> {
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.org_id) qs.set("org_id", params.org_id);
@@ -318,60 +358,5 @@ export async function fetchAuditHistory(params?: { limit?: number; org_id?: stri
 }
 
 // ─── Mock fallback (no backend) ─────────────────────────────────────────────
-
-import { mockAuditEntries, mockStats } from "./mock";
-
-export async function fetchAuditHistoryWithFallback(params?: { limit?: number; org_id?: string }): Promise<AuditEntry[]> {
-  try {
-    const data = await fetchAuditHistory(params);
-    if (Array.isArray(data) && data.length > 0) return data;
-    return mockAuditEntries.slice(0, params?.limit ?? 50);
-  } catch {
-    // No backend — static SPA fallback for demo / a11y / Playwright static build
-    return mockAuditEntries.slice(0, params?.limit ?? 50);
-  }
-}
-
-export async function queryStatsWithFallback(req: QueryStatsRequest = {}): Promise<QueryStatsResponse> {
-  try {
-    return await queryStats(req);
-  } catch {
-    return mockStats;
-  }
-}
-
-export async function getPolicyWithFallback(req: GetPolicyRequest = {}): Promise<GetPolicyResponse> {
-  try {
-    return await getPolicy(req);
-  } catch {
-    // Fallback: return a static YAML bundle as base64
-    const yaml = `# algorithco guard policy — static fallback\nversion: v0.1.0-fallback\nrules:\n  - id: deny-rm-rf\n    when: shell_argv contains "rm -rf"\n    action: deny\n    reason: "destructive rm blocked by local rule"` + "\n";
-    return {
-      bundle: { version: "v0.1.0-fallback", signed_bytes: btoa(yaml), sig: btoa("mock-sig") },
-      not_modified: false,
-    };
-  }
-}
-
-export async function dryRunWithFallback(req: DryRunRequest): Promise<DryRunResponse> {
-  try {
-    return await dryRun(req);
-  } catch {
-    // Local dry-run mock: pretend we evaluated history and changed 2 decisions
-    const evaluated = req.history_ids.length || 12;
-    return {
-      result: `mock dry-run: bundle ${req.bundle.version} vs ${evaluated} records — 10 allow, 1 ask, 1 deny (no backend)`,
-      decisions: Array.from({ length: Math.min(evaluated, 5) }, (_, i) => `record-${i}: ACTION_ALLOW (mock)`),
-      evaluated,
-    };
-  }
-}
-
-export async function publishPolicyWithFallback(req: PublishPolicyRequest): Promise<PublishPolicyResponse> {
-  try {
-    return await publishPolicy(req);
-  } catch {
-    // Mock: daemon would pick up new bundle via polling / /v1/policy
-    return { version: req.bundle.version || `v-mock-${Date.now()}`, ok: true };
-  }
-}
+// Moved to `./fallback.ts` (api.ts must stay cycle-free: mock.ts imports the
+// proto-shaped enums above, and fallback.ts imports both).

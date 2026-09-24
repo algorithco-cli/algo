@@ -1,0 +1,114 @@
+name: Publish crates
+
+# crates.io auto-publish (ADR-0013 prep, ADR-0014 automation).
+# Dry-run on PR/push to main (no secrets). Real publish only on tag
+# `release/*` or manual dispatch with confirm=publish, in environment `release`.
+# Secret: CARGO_REGISTRY_TOKEN (crates.io API token, scope publish).
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["release/*"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'publish' for a REAL publish (default is dry-run)"
+        required: false
+        default: "dry-run"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/release/') }}
+
+env:
+  PUBLISH_ALLOW_TBD: "0" # set to 1 as workflow var only for private test publishes
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core -> target,agent -> target,backend -> target
+
+      - name: Preflight (license + publish order info)
+        run: |
+          echo "== license check (informational on dry-run) =="
+          if grep -r "LicenseRef-TBD" --include=Cargo.toml core agent backend fuzz; then
+            echo "NOTE: LicenseRef-TBD present — real publish will fail until ADR-0001 sign-off (or PUBLISH_ALLOW_TBD=1)."
+          fi
+          echo "== ordered package list =="
+          cat scripts/publish-crates-order.txt
+
+      - name: cargo package --list (all publishable crates)
+        run: |
+          for p in $(cat scripts/publish-crates-order.txt | grep -v "^#" | grep -v "^$"); do
+            case "$p" in
+              algo-backend) (cd backend && cargo package --list --allow-dirty -p "$p") ;;
+              algo-types|algo-redact|algo-fingerprint|algo-shell-analysis|algo-policy|algo-provider) (cd core && cargo package --list --allow-dirty -p "$p") ;;
+              *) (cd agent && cargo package --list --allow-dirty -p "$p") ;;
+            esac
+          done
+
+      - name: cargo publish --dry-run (topological order, informational pre-first-release)
+        # Pre-first-publish this step FAILS for crates with unpublished internal
+        # deps ("no matching package named algo-*") — cargo resolves against the
+        # crates.io index, not the local tree. Informational until the first
+        # ordered release lands; the `cargo package --list` step above is the
+        # binding PR gate. Real publish on tags runs in order so deps resolve.
+        continue-on-error: true
+        run: bash scripts/publish-crates.sh --dry-run
+
+  publish:
+    # Real publish: tag push OR explicit manual confirm. Needs `release` env reviewers.
+    if: startsWith(github.ref, 'refs/tags/release/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'publish')
+    needs: [dry-run]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core -> target,agent -> target,backend -> target
+
+      - name: License gate (fail-safe)
+        env:
+          ALLOW_TBD: ${{ vars.PUBLISH_ALLOW_TBD }}
+        run: |
+          if grep -r "LicenseRef-TBD" --include=Cargo.toml core agent backend fuzz; then
+            if [ "$ALLOW_TBD" = "1" ] || [ "$PUBLISH_ALLOW_TBD" = "1" ]; then
+              echo "WARNING: publishing with TBD license (override set)."
+            else
+              echo "LICENSE GATE FAIL: LicenseRef-TBD still present. Complete ADR-0001 before real publish." >&2
+              exit 1
+            fi
+          fi
+          echo "license gate OK"
+
+      - name: cargo publish (topological order)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "Missing secret CARGO_REGISTRY_TOKEN (see docs/release.md)." >&2
+            exit 1
+          fi
+          bash scripts/publish-crates.sh --publish

@@ -208,12 +208,13 @@ def main() -> int:
         run_results = []
         provider_version = None
         with JevClient(model=a.model) as c:
-            for _ in range(a.runs):
+            for run_i in range(a.runs):
                 r = run_once(rows, c)
-                run_results.append(r)
                 for rec in r["records"]:
+                    rec["run"] = run_i
                     if rec["model"] != "error->ask":
                         provider_version = rec["model"]
+                run_results.append(r)
         summ = summarize(run_results)
         report = {
             "dataset": os.path.basename(a.dataset),
@@ -233,6 +234,10 @@ def main() -> int:
                 "p99_lt_800": summ["lat_p99"]["max"] < 800,
             },
             "note": "payloads redacted; per-record rows carry state_sha256 only",
+            # Per-record rows (id, state_sha256, label, action, confidence,
+            # latency — no payloads) so threshold sweeps (G2 Δ-at-fixed-ask)
+            # and ECE-monotonicity can be computed offline from this artifact.
+            "records": [rec for r in run_results for rec in r["records"]],
         }
         base = f"jev-v0.1-{region}-{today}"
         with open(os.path.join(a.out_dir, base + ".json"), "w", encoding="utf-8") as f:

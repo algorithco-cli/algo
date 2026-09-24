@@ -7,6 +7,8 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Canonical types generated from proto (algorithco_guard.v0), never hand-edit (AGENTS.md:4)"
 readme = "README.md"
+keywords = ["contracts", "protobuf", "types", "security"]
+categories = ["development-tools"]
 
 [dependencies]
 prost = "0.13"

@@ -123,7 +123,9 @@ mod tests {
 
     #[test]
     fn round_trip_event_json() {
-        // Simple JSON round-trip via prost JSON? We just check that ToolBefore can be constructed and debug-printed.
+        use prost::Message;
+        // Proto round-trip: encode → decode preserves fields (contracts-first —
+        // consumers generate from the same tag, so wire compat is load-bearing).
         let ev = ToolBefore {
             event_id: "evt-1".into(),
             timestamp: Some(Timestamp {
@@ -142,7 +144,23 @@ mod tests {
             shell_argv: vec!["ls".into(), "-la".into()],
             file_path: None,
         };
-        assert_eq!(ev.tool_kind, ToolKind::Shell as i32);
-        assert!(ev.shell_argv.contains(&"ls".to_string()));
+        let bytes = ev.encode_to_vec();
+        let back = ToolBefore::decode(bytes.as_slice()).expect("decode");
+        assert_eq!(back, ev);
+        assert_eq!(back.tool_kind, ToolKind::Shell as i32);
+        assert!(back.shell_argv.contains(&"ls".to_string()));
+
+        let d = Decision {
+            action: Action::Deny as i32,
+            reason: "hard deny".into(),
+            confidence_0_1: 0.99,
+            source_level: SourceLevel::Rule as i32,
+            latency_ms: 1,
+            policy_version: "v1".into(),
+            trace_id: "t".into(),
+        };
+        let d_back = Decision::decode(d.encode_to_vec().as_slice()).expect("decode");
+        assert_eq!(d_back, d);
+        assert!(d_back.is_deny());
     }
 }

@@ -41,3 +41,25 @@ python -m harness.cli --dataset datasets/v0.1/seed.jsonl --provider mock_ask_all
 
 (Run outputs under `eval/reports/` are git-ignored scratch; only this file
 is kept.)
+
+## Offline addendum 2026-09-24 (no Jev key; baselines only, combined 468)
+
+- Combined set: seed 240 + expansion-A1 228 = 468 (SAFE 96 / DANGEROUS 300 /
+  AMBIGUOUS 72). Dangerous n now meets the ~299 balanced minimum: with 0
+  observed false_allow, exact Clopper-Pearson 95% upper = 0.0099 (<= 1.0%;
+  Wilson 0.0126) — computed by `harness/bounds.py` (exact-integer cross-checked).
+  Strict (~997) still needs Option B; fast (~149) is covered by count.
+- `rules_only` v0.2.0 on combined: acc 0.404, false_allow 195/300 (0.650),
+  ask 0.064, ambiguous_acc 0.125. Sweep (new `sweep_thresholds`): t=0.70
+  demotes to false_allow 0 at ask 0.812 — i.e. the baseline can clear every
+  PROPOSED section 1.1 ceiling, but only by asking 81% of the time (G1 utility
+  fails there: safe-slice ask would far exceed 0.30). This is the headroom Jev
+  must beat: same-ask delta still requires live Jev confidences (measure.py now
+  retains per-record rows for future runs).
+- G2 status unchanged: opposite extremes (baseline ask 0.064-0.812 vs
+  mock_ask_all 1.000) — no same-ask delta readable without Jev data.
+  36/39 EVAL-6 cells remain blocked on `ALGO_JEV_API_KEY` plus 2 regions.
+
+```powershell
+python -m harness.cli --dataset reports/combined-468.jsonl --provider rules_only --output reports/combined-rules --sweep
+```

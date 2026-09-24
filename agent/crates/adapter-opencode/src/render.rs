@@ -1,17 +1,10 @@
-//! Render `Decision` → Claude hook JSON.
+//! Render `Decision` → OpenCode permission JSON.
 //!
-//! Mapping (exact strings behind `[VERIFY]` vs current Claude docs – refresh each release):
-//! - `Allow` → `{"decision":"approve", "adapter_version": …}`
-//! - `Deny`  → `{"decision":"block",   "reason":…, "adapter_version": …}`
-//! - `Ask`   → `{"decision":"ask",     "reason":…, "adapter_version": …}`
-//!
+//! [VERIFY-OPEN P4-03] OpenCode mapping is Claude-derived until the spike verifies it
+//! against current OpenCode docs (plugin/config system, blockable events).
 //! Unknown schema version → always `ask` + `reason:unsupported_schema` (fail-safe).
-//! All outputs are version-gated with `adapter_version`.
-//!
-//! [VERIFY 2026-09-20] Claude Code hook docs for PreToolUse decision response shapes
-//! (`approve`/`block`/`ask`) and version negotiation. Source: check
-//! https://docs.claude.com/en/docs/claude-code/hooks and the hook JSON schema bundled with
-//! the Claude Code release used in CI. If docs change, update this mapping and the ADR.
+//! All outputs are version-gated with `adapter_version`. If interception cannot
+//! block, degrade to observe/advise via ADR, never guess-and-allow.
 //! The mapping below is behind the `is_supported_schema` gate so a future schema bump fails safe.
 
 use algo_types::{Action, Decision};

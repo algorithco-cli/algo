@@ -6,11 +6,13 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Scanner (P4): tree-sitter pre-filter + Jev judge, report-only"
+keywords = ["security", "scanning", "static-analysis"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../../../core/crates/types" }
-algo-provider = { path = "../../../core/crates/provider" }
-algo-redact = { path = "../../../core/crates/redact" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
+algo-provider = { version = "0.1.0", path = "../../../core/crates/provider" }
+algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 regex = "1"

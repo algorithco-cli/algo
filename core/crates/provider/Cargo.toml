@@ -7,9 +7,11 @@ repository.workspace = true
 rust-version.workspace = true
 description = "DecisionProvider trait + mock + feature-gated Jev client (Jev OFF by default)"
 readme = "README.md"
+keywords = ["ai", "llm", "provider"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../types" }
+algo-types = { version = "0.1.0", path = "../types" }
 thiserror = "2.0"
 # HTTP only for the feature-gated Jev client; default build stays mock-only (no network).
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "json", "http2", "rustls-tls"] }

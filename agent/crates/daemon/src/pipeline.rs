@@ -1,5 +1,5 @@
-use algo_provider::TypedAnswer;
-use algo_types::{Action, Decision, SourceLevel, ToolBefore};
+use algo_provider::{ProviderError, TypedAnswer};
+use algo_types::{Action, Decision, PrivacyMode, SourceLevel, ToolBefore};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -288,7 +288,15 @@ impl Pipeline {
         // L3: Jev (miss + uncertain). Pool already has 700ms timeout.
         // Question set is empty until EVAL-6 pins `questions-v0.1`; the Mock
         // answers from fixtures, the real client fails safe (Parse → ask).
-        let jev_result = self.pool.judge(&event, &[]).await;
+        // Local-only privacy skips the provider entirely: no call, no network
+        // path — the abstain below maps to ask (fail-safe).
+        let jev_result = if event.privacy_mode == PrivacyMode::LocalOnly as i32 {
+            Err(ProviderError::Net(
+                "local-only privacy → ask (no network)".into(),
+            ))
+        } else {
+            self.pool.judge(&event, &[]).await
+        };
 
         let mut decision = match jev_result {
             Ok(answers) => map_answers_to_decision(
@@ -749,5 +757,85 @@ mod tests {
         assert_eq!(action_str_of(Action::Deny as i32), "deny");
         assert_eq!(action_str_of(Action::Allow as i32), "allow");
         assert_eq!(action_str_of(Action::Ask as i32), "ask");
+    }
+
+    /// Counting provider: delegates to Mock, records every judge call.
+    /// Production code never branches on call counts; tests use this to prove
+    /// local-only never reaches the provider (no network path).
+    struct CountingProvider {
+        inner: MockProvider,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingProvider {
+        fn new() -> Self {
+            Self {
+                inner: MockProvider::new(),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl algo_provider::DecisionProvider for CountingProvider {
+        fn judge(
+            &self,
+            event: &ToolBefore,
+            qs: &[algo_provider::TypedQuestion],
+        ) -> Result<algo_provider::TypedAnswers, algo_provider::ProviderError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.judge(event, qs)
+        }
+    }
+
+    fn tool_before_privacy(payload: &str, privacy: PrivacyMode) -> ToolBefore {
+        let mut tb = tool_before(payload);
+        tb.privacy_mode = privacy as i32;
+        tb
+    }
+
+    #[tokio::test]
+    async fn proves_ask_on_local_only_skips_judge() {
+        // Local-only privacy: L3 provider must never be called (no network),
+        // abstain maps to ask (fail-safe), never allow.
+        let engine = Arc::new(algo_policy::Engine::new());
+        let cache = Arc::new(Cache::new());
+        let counting = Arc::new(CountingProvider::new());
+        let pool = Arc::new(JevPool::new(counting.clone()));
+        let (tx, _rx) = mpsc::channel(1000);
+        let pipeline = Pipeline::new(engine, cache, pool, tx);
+        let d = pipeline
+            .decide(tool_before_privacy("echo hello", PrivacyMode::LocalOnly))
+            .await;
+        assert_eq!(d.action, Action::Ask as i32);
+        assert_ne!(d.action, Action::Allow as i32);
+        assert_eq!(counting.call_count(), 0, "local-only must skip L3 judge");
+    }
+
+    #[tokio::test]
+    async fn proves_ask_on_no_redact() {
+        // Defense in depth: a secret-bearing payload must never survive into
+        // the decision or the audit row — pipeline re-redacts before L0/cache/audit.
+        let (pipeline, mut rx) = make_pipeline();
+        let d = pipeline
+            .decide(tool_before("echo key=AKIAZZZZZZZZZZZZZZZZ"))
+            .await;
+        assert_ne!(d.action, Action::Allow as i32);
+        assert!(!d.reason.contains("AKIA"), "secret leaked into reason");
+        let rec = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("audit row")
+            .expect("channel open");
+        assert!(
+            !rec.redacted_command.contains("AKIA"),
+            "secret leaked into audit"
+        );
+        assert!(
+            !rec.reason.contains("AKIA"),
+            "secret leaked into audit reason"
+        );
     }
 }

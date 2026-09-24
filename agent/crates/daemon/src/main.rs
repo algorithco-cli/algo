@@ -108,6 +108,38 @@ fn read_shadow_mode() -> bool {
     true
 }
 
+fn read_privacy_mode() -> i32 {
+    // Privacy default is local-only (privacy-dataflow.md:26): nothing leaves
+    // the machine unless the user opted into redacted/full in `algo init`.
+    // Precedence: ALGO_PRIVACY > config.json > default local-only.
+    // Any I/O/parse error or unknown value => local-only (fail-safe: no network).
+    use algo_types::PrivacyMode;
+    fn parse_mode(s: &str) -> Option<i32> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "local-only" | "local_only" | "localonly" => Some(PrivacyMode::LocalOnly as i32),
+            "redacted" => Some(PrivacyMode::Redacted as i32),
+            "full" => Some(PrivacyMode::Full as i32),
+            _ => None,
+        }
+    }
+    if let Ok(v) = std::env::var("ALGO_PRIVACY") {
+        if let Some(m) = parse_mode(&v) {
+            return m;
+        }
+    }
+    let cfg_path = resolve_home().join(".algo").join("config.json");
+    if let Ok(bytes) = std::fs::read(&cfg_path) {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if let Some(s) = json.get("privacy").and_then(|x| x.as_str()) {
+                if let Some(m) = parse_mode(s) {
+                    return m;
+                }
+            }
+        }
+    }
+    PrivacyMode::LocalOnly as i32
+}
+
 fn ensure_algo_dir() -> std::io::Result<PathBuf> {
     let home = dirs_home();
     let dir = home.join(".algo");
@@ -135,6 +167,9 @@ async fn main() -> std::io::Result<()> {
     let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));
     pool.warm();
     let shadow = read_shadow_mode();
+    // Privacy stamps every event; local-only default means no L3 network path.
+    // Requires daemon restart after `algo init` privacy change (same limit as enforce).
+    let privacy_mode = read_privacy_mode();
 
     #[cfg(unix)]
     let pipeline = Arc::new(Pipeline::new(engine, cache, pool, writer_tx).with_shadow(shadow));
@@ -163,16 +198,17 @@ async fn main() -> std::io::Result<()> {
     #[cfg(unix)]
     {
         eprintln!(
-            "algo-daemon listening on {} shadow={} (enforce {})",
+            "algo-daemon listening on {} shadow={} (enforce {}) privacy={}",
             socket_path,
             shadow,
-            if shadow { "off" } else { "on" }
+            if shadow { "off" } else { "on" },
+            privacy_mode,
         );
 
         if args.oneshot {
             // Single request then exit
             let stream = transport.accept().await?;
-            handle_stream(stream, pipeline.clone()).await;
+            handle_stream(stream, pipeline.clone(), privacy_mode).await;
             // brief sleep to ensure response flushed
             tokio::time::sleep(Duration::from_millis(10)).await;
             return Ok(());
@@ -183,7 +219,7 @@ async fn main() -> std::io::Result<()> {
                 Ok(stream) => {
                     let p = pipeline.clone();
                     tokio::spawn(async move {
-                        handle_stream(stream, p).await;
+                        handle_stream(stream, p, privacy_mode).await;
                     });
                 }
                 Err(e) => {
@@ -197,7 +233,11 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
-async fn handle_stream(stream: transport::TransportStream, pipeline: Arc<Pipeline>) {
+async fn handle_stream(
+    stream: transport::TransportStream,
+    pipeline: Arc<Pipeline>,
+    privacy_mode: i32,
+) {
     let unix = match stream.into_unix() {
         Some(s) => s,
         None => return,
@@ -220,7 +260,7 @@ async fn handle_stream(stream: transport::TransportStream, pipeline: Arc<Pipelin
         if trimmed.is_empty() {
             continue;
         }
-        let decision = match parse_tool_before(trimmed) {
+        let decision = match parse_tool_before(trimmed, privacy_mode) {
             Ok(event) => pipeline.decide(event).await,
             Err(e) => algo_types::ask_on_error(format!("parse error → ask: {e}"), "unknown"),
         };
@@ -249,7 +289,7 @@ async fn handle_stream(stream: transport::TransportStream, pipeline: Arc<Pipelin
     }
 }
 
-fn parse_tool_before(json_str: &str) -> Result<algo_types::ToolBefore, String> {
+fn parse_tool_before(json_str: &str, privacy_mode: i32) -> Result<algo_types::ToolBefore, String> {
     // Try structured JSON with ToolBefore fields first
     let v: serde_json::Value =
         serde_json::from_str(json_str).map_err(|e| format!("json parse: {e}"))?;
@@ -327,7 +367,14 @@ fn parse_tool_before(json_str: &str) -> Result<algo_types::ToolBefore, String> {
         .and_then(|x| x.as_str())
         .map(|s| s.to_string());
 
-    let privacy_mode = algo_types::PrivacyMode::Redacted as i32;
+    // Privacy comes from daemon config (local-only default), never hardcoded.
+    // Unknown/invalid values are normalized to local-only (fail-safe: no network).
+    let privacy_mode = match privacy_mode {
+        x if x == algo_types::PrivacyMode::LocalOnly as i32 => x,
+        x if x == algo_types::PrivacyMode::Redacted as i32 => x,
+        x if x == algo_types::PrivacyMode::Full as i32 => x,
+        _ => algo_types::PrivacyMode::LocalOnly as i32,
+    };
 
     Ok(algo_types::ToolBefore {
         event_id,
@@ -524,7 +571,7 @@ mod tests {
     #[test]
     fn parse_tool_before_minimal() {
         let json = r#"{"event_id":"e1","redacted_payload":"ls -la","tool_kind":1}"#;
-        let tb = parse_tool_before(json).unwrap();
+        let tb = parse_tool_before(json, algo_types::PrivacyMode::LocalOnly as i32).unwrap();
         assert_eq!(tb.event_id, "e1");
         assert_eq!(tb.redacted_payload, "ls -la");
     }
@@ -532,8 +579,30 @@ mod tests {
     #[test]
     fn parse_tool_before_shell_argv() {
         let json = r#"{"redacted_payload":"rm -rf /","shell_argv":["rm","-rf","/"]}"#;
-        let tb = parse_tool_before(json).unwrap();
+        let tb = parse_tool_before(json, algo_types::PrivacyMode::Redacted as i32).unwrap();
         assert_eq!(tb.shell_argv, vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn parse_tool_before_stamps_config_privacy() {
+        // Privacy comes from daemon config, never hardcoded: local-only stays
+        // local-only, redacted stays redacted.
+        let json = r#"{"redacted_payload":"ls"}"#;
+        let local = parse_tool_before(json, algo_types::PrivacyMode::LocalOnly as i32).unwrap();
+        assert_eq!(
+            local.privacy_mode,
+            algo_types::PrivacyMode::LocalOnly as i32
+        );
+        let red = parse_tool_before(json, algo_types::PrivacyMode::Redacted as i32).unwrap();
+        assert_eq!(red.privacy_mode, algo_types::PrivacyMode::Redacted as i32);
+    }
+
+    #[test]
+    fn parse_tool_before_unknown_privacy_fails_safe_to_local_only() {
+        // Unknown/invalid privacy values normalize to local-only (no network).
+        let json = r#"{"redacted_payload":"ls"}"#;
+        let tb = parse_tool_before(json, 999).unwrap();
+        assert_eq!(tb.privacy_mode, algo_types::PrivacyMode::LocalOnly as i32);
     }
 
     #[test]

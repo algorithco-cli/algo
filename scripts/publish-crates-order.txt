@@ -1,0 +1,20 @@
+# Topological publish order for algo-* crates (ADR-0013/0014).
+# Lines starting with # are comments. Consumed by scripts/publish-crates.sh(.ps1).
+algo-types
+algo-redact
+algo-shell-analysis
+algo-hook-client
+algo-backend
+algo-fingerprint
+algo-policy
+algo-audit
+algo-provider
+algo-adapter-claude
+algo-adapter-codex
+algo-adapter-opencode
+algo-daemon
+algo-cli
+algo-verifier
+algo-loop-controller
+algo-scanner
+algo-tui

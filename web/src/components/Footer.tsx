@@ -52,7 +52,12 @@ function FooterLinkGroup({
 
 const SOCIALS = [
   { key: "github", label: "GitHub", href: REPO_URL, icon: GithubIcon },
-  { key: "x", label: "X (Twitter)", href: "https://x.com", icon: NewTwitterIcon },
+  {
+    key: "x",
+    label: "X (Twitter)",
+    href: "https://x.com",
+    icon: NewTwitterIcon,
+  },
   {
     key: "linkedin",
     label: "LinkedIn",
@@ -67,9 +72,16 @@ const SOCIALS = [
   },
 ];
 
-export function Footer(): JSX.Element {
+export function Footer({
+  variant = "default",
+}: {
+  /** "transparent": floating content over the login dither backdrop. */
+  variant?: "default" | "transparent";
+}): JSX.Element {
   return (
-    <footer className="site-footer site-footer--impact">
+    <footer
+      className={`site-footer site-footer--impact${variant === "transparent" ? " site-footer--transparent" : ""}`}
+    >
       <div className="wrap footer-impact-inner">
         {/* Middle columns: brand + link groups */}
         <div className="footer-impact-mid">
