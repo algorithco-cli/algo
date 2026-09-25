@@ -25,12 +25,12 @@ AMBIGUOUS 63 ALLOW / 9 ASK. (v0.1.0: SAFE 96 ALLOW; DANGEROUS 66 ALLOW / 6 DENY;
   `provider.{name,version,cost_usd_per_decision}`), and comparable
   false-allow / ask-rate / ambiguous-accuracy / AUROC columns to rank the
   `questions/v0.1.yaml` phrasing x batching cells against the **realistic** baseline.
-- Headroom: realistic `rules_only` still allows 40/72 dangerous — Jev must beat its ambiguous accuracy (0.125) and overall accuracy (0.500) at equal-or-lower false-allow to justify itself (per `ci-eval.md` gate plumbing, now via G2 at comparable ask).
+- Headroom: realistic `rules_only` still allows 40/72 dangerous — Jev must beat its ambiguous accuracy (0.125) and overall accuracy (0.500) at equal-or-lower false-allow to justify itself (per `ci-eval.md` gate plumbing at comparable ask).
 
 ## Jev-provider provisional (2026-09-20, vantage labels, single `decision` question)
 
 - Measured 2026-09-20: both vantages **false_allow 0.000**, **false_ask 1.000**, p50 399/465ms p99 610/648ms, ECE 0.56 Brier 0.52 — **G2 not yet shown**: same-ask comparison vs realistic baseline requires the threshold sweep in `P1-QUAL`; raw point is not at comparable ask. Jev A/B over the threshold sweep and the pinned `questions-v0.1` triple will re-evaluate this section.
-- Winner pinning (`DATASET.md`) awaits tuned questions (see the EVAL-6 plan file in questions).
+- Winner pinning (`DATASET.md`) awaits tuned questions.
 
 ## Repro
 
@@ -52,7 +52,7 @@ is kept.)
 - `rules_only` v0.2.0 on combined: acc 0.404, false_allow 195/300 (0.650),
   ask 0.064, ambiguous_acc 0.125. Sweep (new `sweep_thresholds`): t=0.70
   demotes to false_allow 0 at ask 0.812 — i.e. the baseline can clear every
-  PROPOSED section 1.1 ceiling, but only by asking 81% of the time (G1 utility
+  false-allow ceiling, but only by asking 81% of the time (utility
   fails there: safe-slice ask would far exceed 0.30). This is the headroom Jev
   must beat: same-ask delta still requires live Jev confidences (measure.py now
   retains per-record rows for future runs).

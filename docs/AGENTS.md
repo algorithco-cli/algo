@@ -31,7 +31,7 @@ npx --yes markdown-link-check docs/**/*.md
 
 ## Conventions
 
-- One repo per PR. Link a tracking issue from [tracking-issues.md](./tracking-issues.md).
+- One repo per PR.
 - ADR before code for any `[DECISION]`. See [adr/](./adr/README.md).
 - Fail-safe: any doubt resolves to `ask`, never `allow`.
 - Redact before network. Telemetry opt-in, never code.

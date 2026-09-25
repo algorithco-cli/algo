@@ -69,7 +69,7 @@ Env:
 
 ## Design tokens
 
-Single source: `plans/design-tokens.md` (Variant 1). Canonical CSS is `design-tokens.css`:
+Single source: `design-tokens.css` (Variant 1). Canonical CSS is `design-tokens.css`:
 
 ```css
 :root,[data-theme="light"]{ --ag-brand:#6D4AFF; --ag-bg:#FAFAFB; --ag-surface:#FFFFFF; --ag-border:#E6E5EE; --ag-text:#17161F; --ag-text-muted:#6B6A7B; --ag-allow:#1E9E63; --ag-ask:#D99A00; --ag-deny:#E5484D; }
@@ -89,7 +89,7 @@ Single source: `plans/design-tokens.md` (Variant 1). Canonical CSS is `design-to
 
 - Any I/O / timeout / parse error resolves to `ask` (never `allow`) — `proves_ask_on_*` in the table and dry-run paths.
 - Static fallback mocks never claim vendor measurements; savings copy is labeled “static estimate — no vendor claim without measurement link” per `AGENTS.md` §8.
-- Privacy copy in footer matches `docs/privacy-dataflow.md` (local-only default, BYOK redacted/full only with consent, `algo log --show-egress`, US-hosted when enabled).
+- Privacy copy in footer (local-only default, BYOK redacted/full only with consent, `algo log --show-egress`).
 
 ## Verification (static check without backend)
 
@@ -107,4 +107,4 @@ The SPA is usable with no daemon/backend: queries fall back to `src/lib/mock.ts`
 
 ## Deferrals
 
-P4 scanner findings are a dashed placeholder in `/` and `/stats`. Real findings will land via the backend audit stream per `plans/phase-4-scanner-questions.md`.
+P4 scanner findings are a dashed placeholder in `/` and `/stats`. Real findings will land via the backend audit stream.

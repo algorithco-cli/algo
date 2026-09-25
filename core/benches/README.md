@@ -1,6 +1,5 @@
-# Benches & latency budgets — P1 exit gate (phase-1-09)
+# Benches & latency budgets
 
-> Spec: `plans/phase-1-09-quality-latency-eval.md:11` + Gates table  
 > Budgets: L0/L1 p50<3ms p99<10ms, L2 <10/<25ms, L3 p50<250 p99<800 (report-only for mock)  
 > Regression: >10% vs baseline `p1-exit` fails CI (`latency-budget` job, adjust only via ADR)
 

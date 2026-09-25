@@ -1,7 +1,7 @@
 # AGENTS.md — proto (`algorithco_guard.v0`)
 
-> Contracts-only tree. No product code. Enforced per workspace `AGENTS.md` +
-> `plans/90-crosscutting-gates-ux-decisions.md` §10. Plan vs this file → stop + ask.
+> Contracts-only tree. No product code. Enforced per workspace `AGENTS.md`.
+> Conflicts → stop + ask.
 
 ## 1. Contracts-first
 

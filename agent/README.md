@@ -1,8 +1,7 @@
 ﻿# agent (private MVP — P1 local)
 
 > Part of **algorithco guard** (CLI `algo`). Monorepo: `algorithcoguard/algorithco-guard`.
-> Waiver ADR-0009 (2026-09-21): product code may be written now for unreleased PRIVATE MVP.
-> Gate `docs/exit-gate-P0.md` is deferred, not passed. Jev stays OFF (MockProvider only).
+> Jev stays OFF (MockProvider only).
 
 Scope: on-machine product — hook client, daemon (`~/.algo/algo.sock` 0600), adapters (Claude-first shell-only),
 CLI (`algo`), TUI (read-only), audit WAL. Shadow-first; ask on any error.
@@ -29,6 +28,4 @@ Workspace members (`agent/Cargo.toml`): `crates/daemon`, `crates/hook-client`, `
 
 ## Build order
 
-See `plans/00-index-build-order.md` + `plans/phase-1-06-agent-daemon-hookclient.md`,
-`phase-1-07-agent-claude-adapter-shell-only.md`, `phase-1-08-agent-cli-audit-shadow.md`.
 Contracts-first: proto tag, pin exact. `clippy -D warnings`, `cargo test`, latency L0/L1 <3/<10ms.

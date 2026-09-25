@@ -1,6 +1,6 @@
 # algo-shell-analysis — tree-sitter-bash
 
-`parse`, `facts`, `obfuscation` per `plans/phase-1-03-core-shell-analysis.md`.
+`parse`, `facts`, `obfuscation` over tree-sitter-bash.
 
 `ParsedCmd{commands:[{bin,args,flags}], redirects[], pipes, subshells, env_assigns, raw}`. On parse error → `Err(ParseFail)`.
 

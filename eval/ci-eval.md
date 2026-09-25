@@ -23,8 +23,7 @@
 ## Gate plumbing
 
 A follow-up job parses `eval/reports/<provider>/report.json` and compares
-against per-profile thresholds (final numbers at the Phase-0 exit gate,
-`plans/phase-0-05-exit-gate.md`):
+against per-profile thresholds (see `.github/workflows/eval.yml`):
 
 ```powershell
 # sketch: fail the build on false-allow regression
@@ -40,4 +39,4 @@ Rules:
   accuracy at equal-or-lower false-allow, else the PR is blocked.
 - Headroom check: if `rules_only` ever stops being worse on the ambiguous
   slice, the dataset (not the policy) needs harder records — file a
-  `P0-EVAL-3` issue instead of weakening the gate.
+  dataset-hardening issue instead of weakening the gate.

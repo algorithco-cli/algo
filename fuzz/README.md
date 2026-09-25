@@ -8,7 +8,7 @@
 | `fuzz_policy_evaluate` | `algo_policy::Engine::evaluate(&str, Profile)` | never panic; returns `Deny` or `Abstain` only, **never `Allow`** on arbitrary input (abstain → ask, fail-safe) |
 | `fuzz_adapter_parse` | `algo_adapter_claude::parse::parse_hook(&str)` | never panic; `Err` maps to **ask** via `proves_ask_on_parse_fail` (never `allow`) |
 
-All three targets follow the fail-safe `proves_ask_on_*` contract (`AGENTS.md:6` + `plans/phase-1-09-quality-latency-eval.md:8`):
+All three targets follow the fail-safe `proves_ask_on_*` contract (`AGENTS.md:6`):
 arbitrary `&[u8]` → `if let Ok(s) = std::str::from_utf8(data) { let _ = target_fn(s); }` inside
 `libfuzzer_sys::fuzz_target!(|data: &[u8]| { … })` with `#![no_main]`.
 
@@ -60,7 +60,7 @@ foreach ($t in "fuzz_shell_parse","fuzz_policy_evaluate","fuzz_adapter_parse") {
 }
 ```
 
-CI PR job `fuzz-smoke` runs the 60s smoke per `plans/phase-1-09-quality-latency-eval.md:8` and fails on panic/crash.
+CI PR job `fuzz-smoke` runs the 60s smoke and fails on panic/crash.
 
 ## Nightly (1h each) — scheduled
 

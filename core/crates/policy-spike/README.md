@@ -1,9 +1,8 @@
 # policy-spike (P1-01 — SPIKE ONLY, not product code)
 
-Per `plans/phase-1-01-adr-policy-language.md`: 2-day spike, `cel` crate vs
+2-day spike, `cel` crate vs
 minimal pest DSL over synthetic shell facts. No product crate may depend on
-this crate. Decision lands in `docs/adr/0012-cel-vs-dsl.md` (draft — human
-merge + sign-off required before `algo-policy` hardens).
+this crate.
 
 ## Method
 

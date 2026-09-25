@@ -2,11 +2,11 @@
 # Human review is mandatory for security-critical paths.
 # Agent approval is never sufficient on these lines.
 # Canonical location: docs/ (recognized by GitHub alongside root and
-# .github/ — no duplicate copies; see docs/github-org-plan.md §2).
+# .github/ — no duplicate copies).
 #
 # NOTE: @algorithcoguard/* teams must exist in the org for review requests
 # to fire. Until then these lines are documentation of intent + the PR
-# template checklist — track team creation in docs/github-org-plan.md §2.
+# template checklist.
 
 # Hard deny list + threshold logic (eval gate, allow/deny tuning)
 /docs/adr/                         @algorithcoguard/security @algorithcoguard/core

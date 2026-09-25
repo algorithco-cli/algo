@@ -25,5 +25,5 @@ Gate: p50<250ms=TBD, p99<800ms=TBD. Per-record rows live in the .json (hashes on
 ## Notes
 
 - Payloads redacted/hashed only (`state_sha256`, never raw states). Cross-run variance = `min`/`max`/`stdev` per metric in the `.json`.
-- Region = vantage label until vendor regions confirmed (`docs/verify/jev-api.md` §5); never present a vantage label as a vendor region.
+- Region = vantage label; never present a vantage label as a vendor region.
 - Miss vs budget ⇒ ADR, never silent adjustment.

@@ -1,15 +1,12 @@
 ﻿# AGENTS.md — algorithco guard (workspace root)
 
 > Working agreement for AI agents (+ humans). Enforced in every PR.
-> Source: `plans/90-crosscutting-gates-ux-decisions.md` §10 + master plan §10.
-> If this file conflicts with a `plans/*.md` file → **stop + ask**. Do not silently pick one.
+> If this file conflicts with reviewer instruction → **stop + ask**. Do not silently pick one.
 
 ## 0. How agents work here
 
-1. **Read the plan + this file first.** Entry point: `plans/00-index-build-order.md`, then the
-   phase file for your task (e.g. `plans/phase-0-02-proto-contracts-v0.md`), then the
-   repo-local `AGENTS.md` (when inside `core/`, `agent/`, …).
-2. **Conflict → stop + ask.** Plan vs `AGENTS.md` vs reviewer instruction: halt, state the
+1. **Read this file first,** then the repo-local `AGENTS.md` (when inside `core/`, `agent/`, …).
+2. **Conflict → stop + ask.** `AGENTS.md` vs reviewer instruction: halt, state the
    conflict, ask the human. Never silently choose.
 3. **`[VERIFY]` rule (no invented APIs).** Hook formats, Jev API/SDK, library capabilities:
    verify against official docs (link + date). If unverifiable → leave `[VERIFY]` /
@@ -26,25 +23,16 @@
    `proves_ask_on_*` test (error → `ask`, never `allow`). Kill allow-on-error mutants.
 7. **No secrets.** gitleaks pre-commit + CI. No secrets in code, logs, fixtures, or datasets.
    Datasets redacted; no user code without consent.
-8. **Small PRs, conventional commits.** One repo per PR. Tests + docs updated. Linked
-   tracking issue in `docs`. PR needs a benchmark or eval link + artifacts for any
+8. **Small PRs, conventional commits.** One repo per PR. Tests + docs updated.
+   PR needs a benchmark or eval link + artifacts for any
    perf/accuracy claim. Install-path PRs include `algo init → algo doctor → algo uninstall → diff` E2E.
 9. **Human sign-off (CODEOWNERS).** Deny list, thresholds, redaction, sig-verify,
    `algo init`/`algo uninstall`, auth — agent approval is never sufficient.
 10. **Flag uncertainty.** PR description has an `Assumptions:` section. Ambiguous → ask,
     not silent choice.
 
-## 1. Phase discipline (Phase 0 = now, gate enforced — waiver ADR-0009 retired 2026-09-24)
+## 1. Phase discipline
 
-- **No product code.** `core/`, `agent/`, `backend/`, `dashboard/`, `web/` scaffold dirs are
-  stubs. Only throwaway redacted probe client in `eval/jev_client/` (Phase 0).
-- **Waiver retired 2026-09-24 (owner direction):** `docs/adr/0009-p0-gate-waiver.md` is
-  **RETIRED** and covers nothing. The P0 exit gate (`docs/exit-gate-P0.md`) is enforced
-  as written: no Phase 1 product code until the gate is fully checked + human gate
-  sign-off. Product code written under the waiver (2026-09-21–24) is recorded as a
-  §3b gate violation until remediated — see the gate file. `docs/DEFERRED.md` is now
-  the P0 exit-gate backlog (not a waiver companion). Security-critical files are
-  tracked in `docs/SECURITY-REVIEW-QUEUE.md`.
 - **Repo and naming (owner decision, final):** we use **ONE repository** (the existing
   monorepo `algorithcoguard/algorithco-guard`), which **stays PRIVATE until release**.
   Top-level packages (`proto`, `core`, `agent`, `backend`, `dashboard`, `web`, `eval`,
@@ -52,12 +40,8 @@
   naming already **accepted in ADR-0002 unchanged**: CLI `algo` (`algo init`,
   `algo doctor`, `algo status`, `algo why`, `algo log`, `algo pause`), crates `algo-*`,
   home `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`. Do **not** amend
-  ADR-0002 (see ADR-0010 naming amendment — **superseded**, keep ADR-0002).
+  ADR-0002.
 - Task IDs: `P0-DOCS-*`, `P0-PROTO-*`, `P0-EVAL-*`, `P0-JEV-*`, `P0-GATE-*`.
-- Build order (Waves 0–4): see `plans/phase-0-00-overview.md`. Critical path:
-  labeling quality → harness → Jev measurement → gate.
-- Do not start Phase 1 until `docs/exit-gate-P0.md` is fully checked + human gate sign-off.
-  **Rules that stay on** (see `docs/DEFERRED.md:3` + §2 below) are merge-blockers and Jev stays OFF.
 
 ## 2. Quality gates (CI merge-blockers)
 
@@ -110,9 +94,9 @@ quiet unless attention · Variant 1 tokens only (`design-tokens.css`, no hard-co
 
 - Naming (DECIDED): product `algorithco guard`, CLI `algo`, proto `algorithco_guard.v0`,
   crates `algo-*`, home `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`.
-- Colors: Variant 1 single source `plans/design-tokens.md` → `design-tokens.css`.
+- Colors: Variant 1 single source `design-tokens.css` (no hard-coded hex).
   Decision colors exclusive: allow/ask/deny only for decisions; brand never for semantics.
-- Docs: `docs/adr/NNNN-title.md` per ADR; `agent-changelog/<phase>-*.md` per scaffold/change batch.
+- Docs: `docs/adr/NNNN-title.md` per ADR.
 - PR template: `.github/PULL_REQUEST_TEMPLATE.md` — all boxes or explicit N/A + reason.
 
 ## 5. Assumptions (template — fill per-PR, delete this line in repo-local copies)

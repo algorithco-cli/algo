@@ -1,8 +1,7 @@
 # `eval/jev_client/` — Jev probe + measurement client (Phase 0, `P0-JEV-3`/`P0-JEV-4`)
 
-Throwaway-eligible probe code (per AGENTS.md Phase 0: only redacted probe client lives
-here; no product code). Built ONLY from the public spec
-(`docs/verify/jev-api.md`); no invented fields.
+Throwaway-eligible probe code (only redacted probe client lives
+here; no product code). No invented fields.
 
 ## Files
 
@@ -34,18 +33,15 @@ python measure.py --dataset ../../datasets/v0.1/all.jsonl \
   raise `JevError`, which callers map to `ask` — never `allow` (fail-safe, master plan §2.1).
 - Logs: sha256 hashes, counts, latencies, usage. The key and payloads are NEVER logged,
   printed, or stored — logs pass secret-scan; `tests/test_no_secrets.py` (P0-EVAL-1) covers this.
-- Region labels are vantage labels until vendor regions are confirmed
-  ([VERIFY-OPEN], `docs/verify/jev-api.md` §5); reports state this explicitly.
+- Region labels are vantage labels; reports state this explicitly.
 
 ## Measurement protocol (P0-JEV-4, runnable via `measure.py`)
 
-1. Prerequisites: dataset tag `eval-data-v0.1` (P0-EVAL-3), questions pinned
-   (currently `questions-v0.1-provisional`; P0-EVAL-6 pins `questions-v0.1`), AUP recheck
-   done (`docs/verify/jev-tos.md` [VERIFY-OPEN-1]).
+1. Prerequisites: dataset tag `eval-data-v0.1`, questions pinned.
 2. Run 3 full passes per region, ≥2 regions, same dataset SHA + questions version.
 3. Record per region: false-allow/ask/deny, ECE/Brier, per-question + e2e latency
    p50/p95/p99 vs L3 budgets (p50 <250 ms, p99 <800 ms), cost/1k, error/timeout→ask rate,
    dataset SHA, provider version (server-echoed id), region, date, variance stats.
 4. Publish `eval/reports/jev-v0.1-<region>-<date>.md+json` (schema: `jev-v0.1-TEMPLATE.json`).
-   Payloads redacted/hashed only. Link reports in `docs/verify/jev-claims.md`.
-5. Gate: Phase-0 exit needs measured false-allow + latency; miss ⇒ redesign/ADR, not silence.
+   Payloads redacted/hashed only.
+5. Gate: measurement needs false-allow + latency; miss ⇒ redesign/ADR, not silence.

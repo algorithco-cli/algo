@@ -1,7 +1,7 @@
 ﻿# web — algorithco guard docs site
 
-> **Stack:** Vite 5.4.21 static · React 18.3.1 · `design-tokens.css` Variant 1 single source (pinned per `docs/adr/0011-web-stack-pin.md`)
-> **Privacy text must match behavior** — source: `docs/privacy-dataflow.md` (owner-confirmed 2026-09-20). No vendor claims without a measurement link.
+> **Stack:** Vite 5.4.21 static · React 18.3.1 · `design-tokens.css` Variant 1 single source
+> **Privacy text must match behavior** — no vendor claims without a measurement link.
 > **Local URL:** `http://127.0.0.1:3007` (dev + preview, `strictPort`). No network on page load — GitHub stars load only on explicit click.
 
 ## Quick start
@@ -29,7 +29,7 @@ npm run preview  # preview dist/ at http://127.0.0.1:3007 (NO vite proxy — bil
 - **Marketing + docs** for `algorithco guard` (CLI `algo`) — real endpoints, not hash anchors:
   `/` `/features` `/how` `/pricing` `/roadmap` `/login` `/faq` `/privacy` `/docs` `/docs/install`
   `/docs/cli` + `404`. Route manifest: `src/lib/routes.ts` (titles, descriptions, prev/next).
-- **Privacy page** embeds the exact copy from `docs/privacy-dataflow.md`:
+- **Privacy page** documents the modes:
   - Modes table (`local-only` default, `redacted` BYOK only-real-data, `full` second consent)
   - Where your data goes (TypeSafe AI, US-hosted, subprocessors AWS / Modal / Nebius / CoreWeave / Slack / Google Workspace — all USA)
   - Retention: “as long as reasonably necessary”, no fixed SLA
@@ -67,7 +67,7 @@ web/
 
 ## Tokens
 
-Single source `plans/design-tokens.md` → `design-tokens.css` → `src/components/Tokens.css`. Dark is not an inversion — use exact `To'q mavzu` values. Decision colors exclusive to `allow/ask/deny`.
+Single source `design-tokens.css` → `src/components/Tokens.css`. Dark is not an inversion — use exact `To'q mavzu` values. Decision colors exclusive to `allow/ask/deny`.
 
 ## Verification
 
@@ -85,4 +85,4 @@ Sitemap/og use absolute `http://127.0.0.1:3007` (private MVP local canonical, se
 ## Relation to dashboard
 
 - `dashboard` is the team SPA (history/policy/stats/SSE, `http://localhost:5173` in dev). This `web` site links to it.
-- Both consume the same `design-tokens.css` single source per `plans/design-tokens.md` §4. This Vite site maps `primary`/`--sl-color-accent` to `var(--ag-brand)` directly (Starlight alias kept for compat, no Starlight runtime).
+- Both consume the same `design-tokens.css` single source. This Vite site maps `primary`/`--sl-color-accent` to `var(--ag-brand)` directly (Starlight alias kept for compat, no Starlight runtime).

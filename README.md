@@ -42,25 +42,9 @@ Most requests never reach Jev. Hypotheses — measured in Phase 0/1, not facts.
 
 Fail-safe: any error / timeout / crash / parse-fail → `ask`. Never `allow`.
 
-## Repo layout / dependency DAG (canonical: [`plans/00-index-build-order.md`](plans/00-index-build-order.md))
+## Repo layout / dependency DAG
 
 Monorepo `algorithcoguard/algorithco-guard` (private until release): `proto → core → agent/backend → dashboard`, `eval` gates thresholds.
-Strict build order, per-package specs, and the full DAG live in the index — this section intentionally keeps only this summary + link.
-
-## Plans (executable breakdown)
-
-Start here: [`plans/00-index-build-order.md`](plans/00-index-build-order.md) (strict build order:
-`proto → core → agent/backend → dashboard`, `eval` gates thresholds).
-
-- Phase 0 (now, no product code): `plans/phase-0-00-overview.md` … `plans/phase-0-05-exit-gate.md`
-- Phase 1 (local MVP): `plans/phase-1-00-overview-gates.md` … `plans/phase-1-10-exit-gate-runbook.md`
-- Phase 2: `plans/phase-2-enforcement-verifier-loop-edit-web.md`
-- Phase 3: `plans/phase-3-backend.md`, `plans/phase-3-dashboard.md`, `plans/phase-3-l2-model.md`
-- Phase 4: `plans/phase-4-adapters.md`, `plans/phase-4-scanner-questions.md`, `plans/phase-4-tui-github-windows.md`
-- Cross-cutting: `plans/90-crosscutting-gates-ux-decisions.md` (§6 gates, §7 UX, §9 decisions, §10 agreement)
-- Design tokens: `plans/design-tokens.md` (Variant 1 DECIDED) + [`design-tokens.css`](design-tokens.css)
-
-Gates: [`docs/exit-gate-P0.md`](docs/exit-gate-P0.md) · Org plan: [`docs/github-org-plan.md`](docs/github-org-plan.md)
 
 ## Non-negotiables
 
@@ -76,5 +60,3 @@ Gates: [`docs/exit-gate-P0.md`](docs/exit-gate-P0.md) · Org plan: [`docs/github
 - [ ] harness + baselines green
 - [ ] Jev multi-region report published
 - [ ] gate signed, Phase 1 unblocked
-
-See [`docs/exit-gate-P0.md`](docs/exit-gate-P0.md) for the full Phase-1 readiness checklist.

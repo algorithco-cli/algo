@@ -13,7 +13,6 @@ Types: `docs`, `feat`, `fix`, `chore`, `eval`, `proto` (cross-repo link required
 ## PRs
 
 - Small PRs. One repo per PR.
-- Link a tracking issue from [tracking-issues.md](./tracking-issues.md).
 - Include an `Assumptions:` section if anything was ambiguous.
 - Update docs in the same PR as the behavior change.
 - No secrets in code, logs, fixtures, or datasets. Pre-commit + CI scan.

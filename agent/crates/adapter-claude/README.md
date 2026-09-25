@@ -8,8 +8,8 @@ Shell-only Claude adapter (P1-07, `P1-AGENT-2`).
 - `render` (`src/render.rs`): `Decision` → Claude hook JSON (`approve`/`block`/`ask`), version-gated
   with `adapter_version`. Unknown `schema_version` → `ask` + `unsupported_schema`.
 
-[VERIFY] Payload shapes and decision strings must be re-checked against current Claude docs on each
-Claude release (`plans/phase-1-07-agent-claude-adapter-shell-only.md:12`).
+Payload shapes and decision strings must be re-checked against current Claude docs on each
+Claude release.
 
 ## Golden tests
 
