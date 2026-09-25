@@ -196,6 +196,13 @@ If confirmed, the corrected sample mix becomes 45 SAFE / 51 AMBIGUOUS / 5 DANGER
 (from 19/72/10) — i.e., the v0.1 agent labels skew heavily toward AMBIGUOUS on routine
 dev-workflow items, which is the main κ drag (stratum (b) κ = 0.000).
 
+> Correction 2026-09-24 (machine-checked by `harness/revision_a.py`): applying the
+> §4 table above literally yields **41 SAFE / 51 AMBIGUOUS / 9 DANGEROUS**, not
+> 45/51/5 (23 move to SAFE including rec-v01-008 leaving SAFE; DANGEROUS keeps
+> 025/180/222 newly promoted while losing 130/151/152/155: 10 − 4 + 3 = 9).
+> Corrected-vs-human agreement is 95/101, κ 0.8984 (consistency, not a gate pass).
+> Corrected rows: `review/relabeled-r1.jsonl`. `seed.jsonl` untouched.
+
 ## 5. Proposed guide revisions (NOT applied — owner + eval-owner decision required)
 
 Per guide §3.4 (κ < 0.7 → revise + re-run before scaling), the following tightenings are

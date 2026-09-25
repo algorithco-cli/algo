@@ -26,20 +26,15 @@ impl Default for Stats {
 }
 
 /// Aggregate stats for org (if Some) or all orgs (if None).
+/// Empty-string filter matches nothing (fail-closed; handlers reject it with 400).
 pub fn query_stats(org_id: Option<&str>) -> Stats {
     let records = all_records();
     let filtered: Vec<_> = records
         .into_iter()
-        .filter(|r| {
-            if let Some(filter_org) = org_id {
-                if filter_org.is_empty() {
-                    true
-                } else {
-                    r.org_id.as_deref() == Some(filter_org)
-                }
-            } else {
-                true
-            }
+        .filter(|r| match org_id {
+            Some("") => false,
+            Some(filter_org) => r.org_id.as_deref() == Some(filter_org),
+            None => true,
         })
         .collect();
 
@@ -58,7 +53,7 @@ pub fn query_stats(org_id: Option<&str>) -> Stats {
             "ask" => ask += 1,
             _ => ask += 1, // unknown → ask failsafe
         }
-        latency_sum += r.latency_ms;
+        latency_sum = latency_sum.saturating_add(r.latency_ms);
     }
     let avg_latency_ms = latency_sum as f64 / total as f64;
     Stats {

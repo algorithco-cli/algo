@@ -1,4 +1,4 @@
-import { Action, SourceLevel, ToolKind, PrivacyMode } from "./api";
+import { Action, PrivacyMode, SourceLevel, ToolKind } from "./api";
 import type { AuditEntry, QueryStatsResponse } from "./api";
 
 // Mock audit history — matches proto shapes; used when /v1/audit unavailable (static SPA demo).
@@ -43,7 +43,8 @@ export const mockAuditEntries: AuditEntry[] = [
     redacted_payload: "rm -rf /tmp/build/*",
     decision: {
       action: Action.ACTION_ASK,
-      reason: "destructive path requires confirmation (ask, never allow on doubt)",
+      reason:
+        "destructive path requires confirmation (ask, never allow on doubt)",
       confidence_0_1: 0.76,
       source_level: SourceLevel.SOURCE_LEVEL_RULE,
       latency_ms: 3,
@@ -145,10 +146,12 @@ export const mockAuditEntries: AuditEntry[] = [
     event_id: "evt-0007",
     timestamp: daysAgo(1),
     tool_kind: ToolKind.TOOL_KIND_NET,
-    redacted_payload: "fetch https://api.typesafe.ai/v1/jev/evaluate (*** redacted ***)",
+    redacted_payload:
+      "fetch https://api.typesafe.ai/v1/jev/evaluate (*** redacted ***)",
     decision: {
       action: Action.ACTION_ALLOW,
-      reason: "egress allowlisted (api.typesafe.ai) — inspect via algo log --show-egress",
+      reason:
+        "egress allowlisted (api.typesafe.ai) — inspect via algo log --show-egress",
       confidence_0_1: 0.9,
       source_level: SourceLevel.SOURCE_LEVEL_RULE,
       latency_ms: 4,
@@ -186,11 +189,13 @@ export const mockAuditEntries: AuditEntry[] = [
 
 export const mockStats: QueryStatsResponse = {
   total: mockAuditEntries.length,
-  allow: mockAuditEntries.filter((e) => e.action === Action.ACTION_ALLOW).length,
+  allow: mockAuditEntries.filter((e) => e.action === Action.ACTION_ALLOW)
+    .length,
   deny: mockAuditEntries.filter((e) => e.action === Action.ACTION_DENY).length,
   ask: mockAuditEntries.filter((e) => e.action === Action.ACTION_ASK).length,
   avg_latency_ms: Math.round(
-    mockAuditEntries.reduce((acc, e) => acc + e.latency_ms, 0) / mockAuditEntries.length,
+    mockAuditEntries.reduce((acc, e) => acc + e.latency_ms, 0) /
+      mockAuditEntries.length,
   ),
 };
 
@@ -207,18 +212,20 @@ export const mockPerProject = [
 ];
 
 // Time series placeholder for uPlot
-export const mockTimeSeries: { ts: number; allow: number; ask: number; deny: number }[] = Array.from(
-  { length: 14 },
-  (_, i) => {
-    const ts = Math.floor(Date.now() / 1000) - (13 - i) * 86400;
-    return {
-      ts,
-      allow: 3 + Math.floor(Math.random() * 5),
-      ask: Math.floor(Math.random() * 2),
-      deny: Math.floor(Math.random() * 1.5),
-    };
-  },
-);
+export const mockTimeSeries: {
+  ts: number;
+  allow: number;
+  ask: number;
+  deny: number;
+}[] = Array.from({ length: 14 }, (_, i) => {
+  const ts = Math.floor(Date.now() / 1000) - (13 - i) * 86400;
+  return {
+    ts,
+    allow: 3 + Math.floor(Math.random() * 5),
+    ask: Math.floor(Math.random() * 2),
+    deny: Math.floor(Math.random() * 1.5),
+  };
+});
 
 export function sourceLabel(s: SourceLevel): string {
   switch (s) {

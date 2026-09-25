@@ -6,7 +6,7 @@
 //! Baselines: html_reports + json under target/criterion/redact_10k/*/new/estimates.json
 
 use algo_redact::Redactor;
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 /// Build a deterministic 10 KiB payload containing secrets interleaved with filler.
 /// Contains: AWS key, Github PAT, Slack token, PEM block, vendor SK, JWT-like, credential assignment, high-entropy.
@@ -68,16 +68,16 @@ fn bench_redact_10k(c: &mut Criterion) {
     // Primary: redact 10KB with secrets
     group.bench_function("redact_10k_with_secrets", |b| {
         b.iter(|| {
-            let (masked, findings) = redactor.redact(black_box(payload_static));
-            black_box((masked, findings));
+            let (masked, findings) = redactor.redact(std::hint::black_box(payload_static));
+            std::hint::black_box((masked, findings));
         });
     });
 
     // Global (OnceLock) path — same implementation but via global singleton
     group.bench_function("redact_10k_global", |b| {
         b.iter(|| {
-            let (masked, findings) = algo_redact::redact(black_box(payload_static));
-            black_box((masked, findings));
+            let (masked, findings) = algo_redact::redact(std::hint::black_box(payload_static));
+            std::hint::black_box((masked, findings));
         });
     });
 
@@ -85,7 +85,7 @@ fn bench_redact_10k(c: &mut Criterion) {
     group.bench_function("throughput_100x10k", |b| {
         b.iter(|| {
             for _ in 0..100 {
-                black_box(redactor.redact(black_box(payload_static)));
+                std::hint::black_box(redactor.redact(std::hint::black_box(payload_static)));
             }
         });
     });
@@ -96,7 +96,7 @@ fn bench_redact_10k(c: &mut Criterion) {
     let start = std::time::Instant::now();
     let iters = 1000usize;
     for _ in 0..iters {
-        black_box(redactor.redact(black_box(payload_static)));
+        std::hint::black_box(redactor.redact(std::hint::black_box(payload_static)));
     }
     let avg_ns = start.elapsed().as_nanos() as f64 / iters as f64;
     let budget_ns = 500_000.0; // 500us

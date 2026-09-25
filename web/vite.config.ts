@@ -18,6 +18,14 @@ export default defineConfig({
     port: 3007,
     host: "127.0.0.1",
     warmup: { clientFiles: ["./src/main.tsx", "./src/App.tsx"] },
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8080",
+        changeOrigin: true,
+        // Backend serves /v1/* (no /api prefix); strip it on proxy.
+        rewrite: (path) => path.replace(/^\/api(?=\/|$)/, ""),
+      },
+    },
   },
   preview: { port: 3007, host: "127.0.0.1" },
   build: {

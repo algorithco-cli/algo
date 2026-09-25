@@ -7,9 +7,11 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Fingerprint normalization for cache (proptest idempotence, blake3 cache_key)"
 readme = "README.md"
+keywords = ["caching", "hashing", "fingerprint"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../types" }
+algo-types = { version = "0.1.0", path = "../types" }
 blake3 = "1.5"
 regex = "1.12"
 

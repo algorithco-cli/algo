@@ -2,7 +2,7 @@
 //! and eval p50/p99 per decision (500 rules over all sample fact-sets).
 //! Budgets under test: L0/L1 p50<3ms / p99<10ms per decision.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::time::Duration;
 
 use algo_policy_spike::cel_engine::CelEngine;
@@ -44,7 +44,7 @@ fn bench_compile(c: &mut Criterion) {
     let cel_refs: Vec<(&str, &str)> = cel.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     c.bench_function("cel_compile_once_500", |b| {
         b.iter(|| {
-            let (e, errors) = CelEngine::compile_all(black_box(&cel_refs));
+            let (e, errors) = CelEngine::compile_all(std::hint::black_box(&cel_refs));
             assert!(errors.is_empty());
             assert_eq!(e.rule_count(), 500);
             e
@@ -55,7 +55,7 @@ fn bench_compile(c: &mut Criterion) {
     let dsl_refs: Vec<(&str, &str)> = dsl.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     c.bench_function("dsl_parse_once_500", |b| {
         b.iter(|| {
-            let (e, errors) = DslEngine::compile_all(black_box(&dsl_refs));
+            let (e, errors) = DslEngine::compile_all(std::hint::black_box(&dsl_refs));
             assert!(errors.is_empty());
             assert_eq!(e.rule_count(), 500);
             e
@@ -79,7 +79,7 @@ fn bench_eval(c: &mut Criterion) {
     c.bench_function("cel_eval_500rules_allfacts", |b| {
         b.iter(|| {
             for f in &facts {
-                black_box(cel_engine.evaluate(black_box(f)));
+                std::hint::black_box(cel_engine.evaluate(std::hint::black_box(f)));
             }
         });
     });
@@ -87,7 +87,7 @@ fn bench_eval(c: &mut Criterion) {
     c.bench_function("dsl_eval_500rules_allfacts", |b| {
         b.iter(|| {
             for f in &facts {
-                black_box(dsl_engine.evaluate(black_box(f)));
+                std::hint::black_box(dsl_engine.evaluate(std::hint::black_box(f)));
             }
         });
     });
@@ -97,17 +97,17 @@ fn bench_eval(c: &mut Criterion) {
     // case. Worst case is a safe input (scans all 500) — measured below.
     let one = &facts[0];
     c.bench_function("cel_eval_single_decision_500rules", |b| {
-        b.iter(|| black_box(cel_engine.evaluate(black_box(one))));
+        b.iter(|| std::hint::black_box(cel_engine.evaluate(std::hint::black_box(one))));
     });
     c.bench_function("dsl_eval_single_decision_500rules", |b| {
-        b.iter(|| black_box(dsl_engine.evaluate(black_box(one))));
+        b.iter(|| std::hint::black_box(dsl_engine.evaluate(std::hint::black_box(one))));
     });
     let safe = facts_of("ls -la --color=auto /tmp");
     c.bench_function("cel_eval_single_safe_500rules", |b| {
-        b.iter(|| black_box(cel_engine.evaluate(black_box(&safe))));
+        b.iter(|| std::hint::black_box(cel_engine.evaluate(std::hint::black_box(&safe))));
     });
     c.bench_function("dsl_eval_single_safe_500rules", |b| {
-        b.iter(|| black_box(dsl_engine.evaluate(black_box(&safe))));
+        b.iter(|| std::hint::black_box(dsl_engine.evaluate(std::hint::black_box(&safe))));
     });
 }
 

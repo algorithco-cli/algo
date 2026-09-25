@@ -7,6 +7,8 @@ repository = "https://github.com/algorithcoguard/algorithco-guard"
 rust-version = "1.75"
 description = "algorithco guard backend: Auth(device flow), Org/Team/Role, Policy sync, Audit ingest, Stats (P3-01..P3-05 MVP, in-memory scaffold)"
 readme = "README.md"
+keywords = ["api", "server", "security"]
+categories = ["development-tools"]
 
 [[bin]]
 name = "algo-backend"
@@ -17,25 +19,32 @@ axum = { version = "0.7" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-prost = "0.13"
 ed25519-dalek = { version = "3", features = ["rand_core"] }
+# Email/password auth (argon2id hashing, no plaintext secrets at rest).
+argon2 = "0.5"
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Planned for Zitadel OIDC JWT verification (P3-03); stub auth until wired.
 jsonwebtoken = "9"
-tower = "0.5"
-tower-http = { version = "0.5", features = ["trace", "cors"] }
+tower = { version = "0.5", features = ["timeout", "limit"] }
+tower-http = { version = "0.5", features = ["trace", "limit", "timeout", "cors"] }
+# OAuth providers (P3-03): GitHub device flow + Google OIDC (PKCE/JWKS).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+# 0.11 unifies with ed25519-dalek's sha2 (avoids a duplicate runtime version).
+sha2 = "0.11"
 uuid = { version = "1", features = ["v4", "serde"] }
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-http = "1"
 base64 = "0.22"
-http-body-util = "0.1"
 
 # Optional Postgres scaffolding (MVP uses in-memory HashMap, compile-checked when enabled)
 # sqlx = { version = "0.8", features = ["postgres", "rustls", "chrono", "uuid"], optional = true }
 
 [dev-dependencies]
-# no extra dev deps; tests use tower::ServiceExt via main deps
+# Ephemeral RSA keygen for Google JWKS/ID-token tests (dev-only, never shipped).
+rsa = "0.9"
+rand = "0.8"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

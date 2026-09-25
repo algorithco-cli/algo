@@ -4,7 +4,6 @@ import * as React from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useScrolled } from "../hooks/useScrolled";
 import { NAV_LINKS } from "../lib/routes";
-import { ThemeToggle } from "./ThemeToggle";
 
 export function Header(): JSX.Element {
   const scrolled = useScrolled();
@@ -51,7 +50,6 @@ export function Header(): JSX.Element {
           ))}
         </nav>
         <div className="header-cta">
-          <ThemeToggle />
           <Link to="/login" className="btn btn-ghost cta-login">
             Log in
           </Link>

@@ -4,9 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Algorithco Guard — the control layer for AI coding agents. Hard-deny destructive commands, fail-safe ask, redact-first privacy. Free local MVP." />
-    <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0D15" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAFAFB" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0E0D15" />
     <meta property="og:type" content="website" />
     <!-- Canonical: private MVP local dev http://127.0.0.1:3007 — production domain TBD (see src/lib/site.ts + ADR-0011). -->
     <meta property="og:url" content="http://127.0.0.1:3007/" />
@@ -28,13 +27,13 @@
     <link rel="prefetch" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <noscript><style>.reveal{opacity:1 !important;transform:none !important}</style></noscript>
     <script>
+      // Dark-only site: pin the theme, ignore any stale stored value.
       try {
-        var t = localStorage.getItem("ag-theme");
-        if (t !== "light" && t !== "dark") t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-        document.documentElement.setAttribute("data-theme", t);
+        window.localStorage.removeItem("ag-theme");
       } catch (e) {
-        document.documentElement.setAttribute("data-theme", "dark");
+        /* storage unavailable — nothing to clean */
       }
+      document.documentElement.setAttribute("data-theme", "dark");
     </script>
     <script type="application/ld+json">
       {

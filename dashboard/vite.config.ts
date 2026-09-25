@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 // Static SPA — no Node runtime in prod. Dev proxies /v1 to local daemon/backend if present.
 export default defineConfig({

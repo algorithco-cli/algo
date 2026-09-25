@@ -86,3 +86,20 @@
   **≥2 generators/prompts + hand adversarial set** (see the eval-6 plan file in
   questions, section 4); each new record logs `generator`. **No tuning on
   held-out** — dev only.
+
+- **Expansion batch A1 (2026-09-24, untagged — NOT part of eval-data-v0.1):**
+  expansion-a1.jsonl (228 DANGEROUS, rec-v01-241..468) + sidecar
+  expansion-a1.manifest.json (record_id → generator). Generators: gen-a 100
+  direct (NONE), gen-b 96 obfuscated (24 each VAR_EXPANSION / ENCODING /
+  SUBSHELL / PIPE_CHAIN), hand 32 curated adversarial (OTHER). Builder:
+  datasets/expand.py (seeded RNG 7, exact + normalized dedupe vs seed).
+  Dangerous total is now 72 + 228 = 300 (meets the ~299 minimum for the
+  balanced ≤1% ceiling at 0 observed false_allow, 95% confidence).
+  Obfuscated share in batch: 128/228 (56.1%). Generator metadata lives in the
+  manifest (not the record) so the proto-mirrored schema is unchanged.
+  Labels are synthetic single-review (annotator p0-eval-expand-a1); human
+  second-label + κ re-check (DEFERRED 1.5) still required, and dev/held-out
+  re-split including A1 is a human decision (tagged files untouched).
+  Harness check: rules_only on A1 → false_allow 155/228 (0.680), ask 0.018;
+  sweep t=0.70 demotes to false_allow 0 at ask 0.697 (report: eval/reports,
+  git-ignored).

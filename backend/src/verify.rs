@@ -52,64 +52,95 @@ fn store() -> &'static Mutex<HashMap<String, u64>> {
     VERSION_STORE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Parse version string to u64 for ordering. Strips leading 'v', takes leading numeric prefix.
-/// Supports "1", "v2", "1.0.0", "v10.2".
+fn lock_store() -> std::sync::MutexGuard<'static, HashMap<String, u64>> {
+    // Poison-tolerant: a panicked holder must not permanently DoS the process.
+    // Fail-closed is handled by callers mapping errors to ask/500.
+    match store().lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!("version store mutex poisoned; recovering inner");
+            poisoned.into_inner()
+        }
+    }
+}
+
+/// Parse version string to u64 for ordering.
+/// Accepted: `^[vV]?\d+(\.\d+)*$` (e.g. "1", "v2", "1.0.0", "v10.2").
+/// Ordering uses the major component (first number) so `1.9`/`1.10` are equal
+/// major line 1 — callers must not rely on minor for rollback decisions.
+/// Anything else (e.g. "1evil", "1.0-beta", "", "v") → BadVersion (fail-closed).
 pub fn parse_version(v: &str) -> Result<u64, VerifyError> {
     let trimmed = v.trim();
     if trimmed.is_empty() {
         return Err(VerifyError::BadVersion("empty version".to_string()));
     }
-    let stripped = trimmed.trim_start_matches(|c| matches!(c, 'v' | 'V'));
-    // Take leading numeric prefix before '.' or non-digit.
-    let numeric_prefix: String = stripped
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    if numeric_prefix.is_empty() {
+    if trimmed.len() > 64 {
+        return Err(VerifyError::BadVersion("version too long".to_string()));
+    }
+    let stripped = trimmed.trim_start_matches(['v', 'V']);
+    if stripped.is_empty() {
         return Err(VerifyError::BadVersion(format!("no numeric prefix in {v}")));
     }
-    numeric_prefix
+    // Strict: digits separated by single dots, no trailing junk.
+    let mut parts = stripped.split('.');
+    let major_str = parts.next().unwrap_or("");
+    if major_str.is_empty() || !major_str.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(VerifyError::BadVersion(format!("no numeric prefix in {v}")));
+    }
+    for part in parts {
+        if part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(VerifyError::BadVersion(format!(
+                "bad version suffix in {v}"
+            )));
+        }
+    }
+    major_str
         .parse::<u64>()
         .map_err(|e| VerifyError::BadVersion(format!("{v}: {e}")))
 }
 
 /// Get current version for scope (defaults to 0).
 pub fn current_version_for(scope: &str) -> u64 {
-    store()
-        .lock()
-        .expect("version store poisoned")
-        .get(scope)
-        .copied()
-        .unwrap_or(0)
+    lock_store().get(scope).copied().unwrap_or(0)
 }
 
 /// Current version for global scope.
+#[allow(dead_code)]
 pub fn current_version() -> u64 {
     current_version_for("global")
 }
 
 /// Set current version for scope (test helper + post-verify advance).
+#[allow(dead_code)]
 pub fn set_current_version_for(scope: &str, v: u64) {
-    let mut g = store().lock().expect("version store poisoned");
-    g.insert(scope.to_string(), v);
+    lock_store().insert(scope.to_string(), v);
 }
 
+#[allow(dead_code)]
 pub fn set_current_version(v: u64) {
     set_current_version_for("global", v);
 }
 
-/// Clear store (tests only).
+/// Advance scoped version if `new_version` > current (called after successful verify+apply).
+pub fn advance_version_for(scope: &str, new_version: u64) {
+    let mut g = lock_store();
+    let cur = g.get(scope).copied().unwrap_or(0);
+    if new_version > cur {
+        g.insert(scope.to_string(), new_version);
+    }
+}
+
+/// Clear store (tests).
+#[allow(dead_code)]
 pub fn clear_version_store() {
-    store().lock().expect("version store poisoned").clear();
+    lock_store().clear();
 }
 
 /// Advance global version if `new_version` > current (called after successful verify+apply).
+/// Retained for backwards-compat; new code should use `advance_version_for(org_id, v)`.
+#[allow(dead_code)]
 pub fn advance_version_if_newer(new_version: u64) {
-    let mut g = store().lock().expect("version store poisoned");
-    let cur = g.get("global").copied().unwrap_or(0);
-    if new_version > cur {
-        g.insert("global".to_string(), new_version);
-    }
+    advance_version_for("global", new_version);
 }
 
 /// Detached ed25519 verify + expiry + rollback protection.
@@ -117,9 +148,23 @@ pub fn advance_version_if_newer(new_version: u64) {
 /// Steps:
 /// 1. Validate pubkey (32 bytes) + sig (64 bytes) shape.
 /// 2. `VerifyingKey::verify(signed_bytes, sig)` — tampered if fails.
-/// 3. Parse `signed_bytes` as JSON, if `expires_at` or `exp` present, reject if now > exp.
+/// 3. Parse `signed_bytes` as JSON: if it is a JSON object, `expires_at`/`exp`
+///    (unix seconds) is REQUIRED and must be in the future; missing/unparseable
+///    expiry on a JSON payload fails closed. Opaque non-JSON payloads skip expiry.
 /// 4. Version ordering: reject if `bundle.version < current_version` (rollback).
+#[allow(dead_code)]
 pub fn verify_bundle(bundle: &PolicyBundle, pubkey: &[u8]) -> Result<(), VerifyError> {
+    verify_bundle_scoped(bundle, pubkey, "global")
+}
+
+/// Same as `verify_bundle` but checks rollback against `scope` (per-org).
+/// New code (policy sync) must use this with `org_id` as scope to avoid
+/// cross-tenant version interference.
+pub fn verify_bundle_scoped(
+    bundle: &PolicyBundle,
+    pubkey: &[u8],
+    scope: &str,
+) -> Result<(), VerifyError> {
     // 1. Key / sig shape.
     if pubkey.len() != 32 {
         return Err(VerifyError::InvalidKey(format!(
@@ -134,24 +179,65 @@ pub fn verify_bundle(bundle: &PolicyBundle, pubkey: &[u8]) -> Result<(), VerifyE
         )));
     }
 
-    // 2. Crypto verify (detached).
-    let vk_bytes: [u8; 32] = pubkey.try_into().expect("checked len");
+    // 2. Crypto verify (detached). Lengths already checked above; map
+    // conversion failures to errors instead of panicking (fail-closed).
+    let vk_bytes: [u8; 32] = pubkey
+        .try_into()
+        .map_err(|_| VerifyError::InvalidKey("pubkey conversion failed".to_string()))?;
     let vk = VerifyingKey::from_bytes(&vk_bytes)
         .map_err(|e| VerifyError::InvalidKey(format!("bad ed25519 pubkey: {e}")))?;
-    let sig_bytes: [u8; 64] = bundle.sig.as_slice().try_into().expect("checked len");
+    let sig_bytes: [u8; 64] = bundle
+        .sig
+        .as_slice()
+        .try_into()
+        .map_err(|_| VerifyError::InvalidSignature("sig conversion failed".to_string()))?;
     let sig = Signature::from_bytes(&sig_bytes);
     vk.verify(&bundle.signed_bytes, &sig)
         .map_err(|e| VerifyError::Tampered(format!("ed25519 verify failed: {e}")))?;
 
-    // 3. Expiry check — signed_bytes is JSON with expires_at / exp (unix seconds) if present.
-    // If not JSON or no expiry field, skip (payload is opaque).
+    // 3. Expiry check — fail-closed for JSON objects.
     if let Ok(val) = serde_json::from_slice::<Value>(&bundle.signed_bytes) {
-        let exp_opt = val
-            .get("expires_at")
-            .or_else(|| val.get("exp"))
-            .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|u| u as i64)));
-        if let Some(exp) = exp_opt {
+        if val.is_object() {
+            let exp_val = val.get("expires_at").or_else(|| val.get("exp"));
+            let exp_opt: Option<i64> = match exp_val {
+                Some(v) => {
+                    if let Some(i) = v.as_i64() {
+                        Some(i)
+                    } else if let Some(u) = v.as_u64() {
+                        i64::try_from(u).ok()
+                    } else if let Some(f) = v.as_f64() {
+                        // Accept float epoch only if integral and in range.
+                        if f.is_finite() && f.fract() == 0.0 && f >= 0.0 && f <= i64::MAX as f64 {
+                            Some(f as i64)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+            let exp = match exp_opt {
+                Some(e) => e,
+                None => {
+                    return Err(VerifyError::Tampered(
+                        "JSON bundle missing valid expires_at/exp".to_string(),
+                    ))
+                }
+            };
+            if exp <= 0 {
+                return Err(VerifyError::Tampered(format!("invalid expiry {exp}")));
+            }
             let now = chrono::Utc::now().timestamp();
+            // Bound TTL to 30 days to catch clock/issuer bugs; longer-lived
+            // bundles must be re-issued.
+            const MAX_TTL_SECS: i64 = 30 * 24 * 3600;
+            if exp > now.saturating_add(MAX_TTL_SECS) {
+                return Err(VerifyError::Tampered(format!(
+                    "expiry too far in future {exp}"
+                )));
+            }
             if now > exp {
                 return Err(VerifyError::Expired {
                     expires_at: exp,
@@ -161,9 +247,9 @@ pub fn verify_bundle(bundle: &PolicyBundle, pubkey: &[u8]) -> Result<(), VerifyE
         }
     }
 
-    // 4. Version ordering / rollback protection.
+    // 4. Version ordering / rollback protection (scoped).
     let got = parse_version(&bundle.version)?;
-    let current = current_version();
+    let current = current_version_for(scope);
     // Rollback if got < current. Equal is allowed for idempotent apply.
     if got < current {
         return Err(VerifyError::Rollback { current, got });
@@ -345,6 +431,58 @@ mod tests {
         assert_eq!(parse_version("v3.2.1").unwrap(), 3);
         assert!(parse_version("").is_err());
         assert!(parse_version("abc").is_err());
+    }
+
+    #[test]
+    fn proves_ask_on_version_suffix() {
+        let _guard = test_sync::lock();
+        // Trailing junk must fail closed (rollback bypass prevention).
+        for bad in ["1evil", "1.0-beta", "v", "1..0", "1.0.0 ", "  "] {
+            // Note: "1.0.0 " trims to "1.0.0" and passes; assert others fail.
+            if bad.trim() == "1.0.0" {
+                assert!(parse_version(bad).is_ok());
+            } else if bad == "  " {
+                assert!(parse_version(bad).is_err());
+            } else {
+                assert!(parse_version(bad).is_err(), "should reject {bad}");
+            }
+        }
+        assert!(parse_version("1evil").is_err());
+        assert!(parse_version("1.10evil").is_err());
+    }
+
+    #[test]
+    fn proves_ask_on_json_missing_expiry() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let (sk, vk) = test_keypair();
+        // JSON payload without expires_at/exp must fail closed.
+        let payload = json!({"content":"no expiry here"}).to_string().into_bytes();
+        let bundle = sign_bundle("1", &payload, &sk);
+        let pubkey = vk.to_bytes().to_vec();
+        let err = verify_bundle(&bundle, &pubkey).unwrap_err();
+        assert!(matches!(err, VerifyError::Tampered(_)));
+    }
+
+    #[test]
+    fn per_org_rollback_isolation() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let (sk, vk) = test_keypair();
+        let pubkey = vk.to_bytes().to_vec();
+        let exp = chrono::Utc::now().timestamp() + 3600;
+        // Org-A at v100 must not block org-B at v2.
+        let payload_a = payload_with_exp(exp);
+        let bundle_a = sign_bundle("100", &payload_a, &sk);
+        verify_bundle_scoped(&bundle_a, &pubkey, "org-a").expect("org-a v100 ok");
+        set_current_version_for("org-a", 100);
+        let payload_b = payload_with_exp(exp);
+        let bundle_b = sign_bundle("2", &payload_b, &sk);
+        assert!(verify_bundle_scoped(&bundle_b, &pubkey, "org-b").is_ok());
+        // But org-A rollback to v3 is rejected.
+        let bundle_old = sign_bundle("3", &payload_a, &sk);
+        let err = verify_bundle_scoped(&bundle_old, &pubkey, "org-a").unwrap_err();
+        assert!(matches!(err, VerifyError::Rollback { .. }));
     }
 
     #[test]

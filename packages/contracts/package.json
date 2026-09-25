@@ -1,0 +1,58 @@
+{
+  "name": "@algorithco/guard-contracts",
+  "version": "0.1.0",
+  "private": false,
+  "description": "algorithco guard contracts SDK (protobuf-es output from algorithco_guard.v0). Generated at build from pinned proto tag — never hand-edit.",
+  "license": "UNLICENSED",
+  "author": "algorithco guard",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/algorithcoguard/algorithco-guard"
+  },
+  "homepage": "https://github.com/algorithcoguard/algorithco-guard/tree/main/proto#readme",
+  "bugs": "https://github.com/algorithcoguard/algorithco-guard/issues",
+  "keywords": [
+    "security",
+    "protobuf",
+    "contracts",
+    "guardrails"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('src/gen',{recursive:true,force:true});require('fs').rmSync('gen',{recursive:true,force:true})\"",
+    "generate": "buf generate ../../proto --template ../../proto/buf.gen.yaml && node -e \"const fs=require('fs');fs.rmSync('src/gen',{recursive:true,force:true});fs.mkdirSync('src/gen',{recursive:true});fs.cpSync('gen/ts/algorithco_guard','src/gen/algorithco_guard',{recursive:true});fs.rmSync('gen',{recursive:true,force:true});console.log('generated src/gen from proto tag v0.0.1-alpha')\"",
+    "generate:root": "buf generate proto --template proto/buf.gen.yaml",
+    "build": "npm run generate && tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "prepack": "npm run build",
+    "lint": "npm run generate && tsc --noEmit -p tsconfig.json",
+    "test": "npm run build"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

@@ -2,7 +2,7 @@ version: v2
 # Codegen inputs: canonical v0 contracts only.
 # Generated code is build output — never hand-edit (see VERSIONING.md).
 inputs:
-  - directory: algorithco_guard/v0
+  - directory: .
 plugins:
   # Rust codegen via prost.
   - local: protoc-gen-prost

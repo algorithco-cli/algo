@@ -24,7 +24,14 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # (hits go to `ignore` with reason).
 yanked = "warn"
 unmaintained = "workspace"
-ignore = []
+ignore = [
+  # RUSTSEC-2023-0071 (rsa Marvin timing sidechannel, no patch available):
+  # rsa is a DEV-ONLY dep of backend (ephemeral test keygen + mock ID-token
+  # signing). Never in the shipped binary, never decrypts attacker input —
+  # the advisory's own workaround (local-only use) applies. Revisit if rsa
+  # ever becomes a runtime dependency.
+  { id = "RUSTSEC-2023-0071", reason = "dev-only test keygen/signing in backend (never shipped, no decryption oracle); advisory workaround applies" },
+]
 
 [licenses]
 # cargo-deny ≥0.18: deny-by-default — every license must be in `allow`
@@ -44,6 +51,7 @@ allow = [
   "CC0-1.0",
   "MPL-2.0",
   "CDDL-1.0",
+  "CDLA-Permissive-2.0",
   "OpenSSL",
   "Zlib",
   "LicenseRef-TBD-legal-signoff",

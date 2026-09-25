@@ -6,6 +6,8 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "CLI for algorithco guard (algo init|uninstall|doctor|pause|resume|status|why|log)"
+keywords = ["cli", "command-line", "security"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "algo"
@@ -18,12 +20,12 @@ serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5.0"
 chrono = "0.4"
-algo-audit = { path = "../audit" }
-algo-types = { path = "../../../core/crates/types" }
-algo-redact = { path = "../../../core/crates/redact" }
-algo-fingerprint = { path = "../../../core/crates/fingerprint" }
-algo-provider = { path = "../../../core/crates/provider" }
-algo-policy = { path = "../../../core/crates/policy" }
+algo-audit = { version = "0.1.0", path = "../audit" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
+algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
+algo-fingerprint = { version = "0.1.0", path = "../../../core/crates/fingerprint" }
+algo-provider = { version = "0.1.0", path = "../../../core/crates/provider" }
+algo-policy = { version = "0.1.0", path = "../../../core/crates/policy" }
 
 [dev-dependencies]
 tempfile = "3.10"

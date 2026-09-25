@@ -7,10 +7,12 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Policy engine: hard-deny + profiles, compile-once at load (P1-CORE-3/4)"
 readme = "README.md"
+keywords = ["policy", "security", "guardrails"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../types" }
-algo-shell-analysis = { path = "../shell-analysis" }
+algo-types = { version = "0.1.0", path = "../types" }
+algo-shell-analysis = { version = "0.1.0", path = "../shell-analysis" }
 regex = "1.12"
 
 [[bench]]

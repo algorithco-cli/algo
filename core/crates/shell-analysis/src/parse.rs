@@ -33,6 +33,10 @@ pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
     if input.as_bytes().contains(&0) {
         return Err(ParseError("input contains null".into()));
     }
+    // Empty input is not a command — Err so the caller maps to ASK.
+    if input.trim().is_empty() {
+        return Err(ParseError("empty input".into()));
+    }
     let mut parser = Parser::new();
     let lang: tree_sitter::Language = tree_sitter_bash::LANGUAGE.into();
     parser
@@ -81,6 +85,10 @@ pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
             stack.push(child);
         }
     }
+
+    // The DFS stack above visits siblings in reverse — restore source order
+    // so tree-order checks (pipe-to-shell: net before shell) are correct.
+    commands.reverse();
 
     // Fallback: if no commands found but input is not empty, try to extract via simple split
     // (for cases where tree-sitter didn't produce a command node due to incomplete parse)
@@ -157,12 +165,14 @@ mod tests {
 
     #[test]
     fn proves_ask_on_parse_fail() {
-        // Empty or garbage should still produce a ParsedCmd via fallback, but truly unparseable with tree error should be Ask
-        // For this crate, we treat tree.has_error() as ParseFail -> caller maps to ASK
-        let res = parse("<<<>>>");
-        // This may be Ok via fallback, but if it has tree error, it should be Err
-        // We test that an obviously broken input like "''" with unmatched quote is handled
-        assert!(res.is_ok() || res.is_err());
+        // Fail-safe: unparseable input is Err (caller maps to ASK, never ALLOW).
+        // Empty / whitespace-only can never be a command.
+        assert!(parse("").is_err());
+        assert!(parse("   ").is_err());
+        // Broken redirections are a tree error → Err, not fallback-Ok.
+        assert!(parse("<<<>>>").is_err());
+        // Null bytes would SEGV the C parser — guarded to Err.
+        assert!(parse("ls\x00 -la").is_err());
     }
 
     #[test]

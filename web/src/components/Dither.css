@@ -1,0 +1,13 @@
+/* Dither — full-bleed WebGL backdrop (decorative, never interactive). */
+.dither-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  pointer-events: none;
+  contain: strict;
+  transform: translateZ(0);
+}
+.dither-container canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}

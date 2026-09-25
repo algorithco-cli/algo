@@ -7,27 +7,27 @@
 
 :root,
 [data-theme="light"] {
-  --ag-brand: #6D4AFF;
-  --ag-bg: #FAFAFB;
-  --ag-surface: #FFFFFF;
-  --ag-border: #E6E5EE;
-  --ag-text: #17161F;
-  --ag-text-muted: #6B6A7B;
-  --ag-allow: #1E9E63;
-  --ag-ask: #D99A00;
-  --ag-deny: #E5484D;
+  --ag-brand: #6d4aff;
+  --ag-bg: #fafafb;
+  --ag-surface: #ffffff;
+  --ag-border: #e6e5ee;
+  --ag-text: #17161f;
+  --ag-text-muted: #6b6a7b;
+  --ag-allow: #1e9e63;
+  --ag-ask: #d99a00;
+  --ag-deny: #e5484d;
 }
 
 [data-theme="dark"] {
-  --ag-brand: #8E77FF;
-  --ag-bg: #0E0D15;
-  --ag-surface: #16151F;
-  --ag-border: #26243A;
-  --ag-text: #F4F3FF;
-  --ag-text-muted: #9C9AB0;
-  --ag-allow: #3DD68C;
-  --ag-ask: #F5B82E;
-  --ag-deny: #FF6B6F;
+  --ag-brand: #8e77ff;
+  --ag-bg: #0e0d15;
+  --ag-surface: #16151f;
+  --ag-border: #26243a;
+  --ag-text: #f4f3ff;
+  --ag-text-muted: #9c9ab0;
+  --ag-allow: #3dd68c;
+  --ag-ask: #f5b82e;
+  --ag-deny: #ff6b6f;
 }
 
 /* Tailwind v4 compat @theme inline mapping */

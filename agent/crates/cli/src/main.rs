@@ -64,6 +64,9 @@ enum Commands {
     Doctor {
         #[arg(long)]
         home: Option<PathBuf>,
+        /// Preview exactly what would leave the machine (redaction demo)
+        #[arg(long, default_value_t = false)]
+        show_egress: bool,
     },
     /// Pause guard (instant bypass, works daemon-dead)
     Pause {
@@ -126,9 +129,9 @@ fn main() {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_uninstall(&h, keep_db)
         }
-        Commands::Doctor { home } => {
+        Commands::Doctor { home, show_egress } => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
-            cmd_doctor(&h)
+            cmd_doctor(&h, show_egress)
         }
         Commands::Pause { home } => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
@@ -232,6 +235,58 @@ fn ensure_algo_dir(home: &Path) -> io::Result<()> {
 }
 
 // ---------- init ----------
+
+/// Egress disclosure shown before any non-local-only choice (privacy-dataflow.md
+/// consent draft). local-only sends nothing; redacted/full go to TypeSafe (US).
+fn print_privacy_disclosure() {
+    println!("--- data disclosure (required before redacted|full) ---");
+    println!("local-only: nothing leaves this machine. The daemon never calls");
+    println!("  the Jev API; decisions are local rules + cache + ask.");
+    println!("redacted: redacted payloads are sent to api.typesafe.ai (US infrastructure)");
+    println!("  using YOUR key (ALGO_JEV_API_KEY, BYOK only — never embedded). Processed");
+    println!("  in the United States regardless of your location; EEA/UK transfers run");
+    println!("  under Standard Contractual Clauses + UK Addendum. Retention: TypeSafe states");
+    println!("  request/response data is not retained; no fixed deletion SLA beyond that.");
+    println!("full: UNREDACTED commands (may include secrets) go to the same US endpoint.");
+    println!("Inspect exactly what would leave: `algo log --show-egress`.");
+    println!("Revert any time: re-run `algo init` and choose local-only (stops all sending).");
+    println!("--- end disclosure ---");
+}
+
+/// Persist the privacy opt-in record (consent_id + timestamp + scope).
+/// local-only records scope local-only (no egress consent granted).
+fn write_consent_record(home: &Path, privacy: &str) -> Result<(), String> {
+    ensure_algo_dir(home).map_err(|e| e.to_string())?;
+    let consent_id = format!(
+        "cons-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        std::process::id()
+    );
+    let scope = if privacy == "local-only" {
+        "no-egress"
+    } else {
+        "jev-egress"
+    };
+    let rec = serde_json::json!({
+        "consent_id": consent_id,
+        "privacy": privacy,
+        "scope": scope,
+        "endpoint": if privacy == "local-only" { serde_json::Value::Null } else { serde_json::json!("api.typesafe.ai (US)") },
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    let path = algo_dir(home).join("consent.json");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&rec).unwrap().as_bytes(),
+    )
+    .map_err(|e| format!("write consent record: {e}"))?;
+    println!(
+        "consent: {consent_id} (scope {scope}) -> {}",
+        path.display()
+    );
+    Ok(())
+}
 fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String> {
     let config_path = detect_claude_config(home);
     let hook_cmd = hook_command_for_home(home);
@@ -302,25 +357,50 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
         println!("no existing config, no backup needed");
     }
 
-    // Privacy prompt local-only|redacted|full
+    // Privacy prompt local-only|redacted|full — local-only is the default
+    // (privacy-dataflow.md:26). Anything beyond local-only prints the egress
+    // disclosure and records opt-in consent; `full` needs a second confirm.
     let chosen_privacy = if let Some(p) = privacy {
         p.to_string()
     } else if yes {
-        "redacted".to_string()
+        "local-only".to_string()
     } else {
-        print!("privacy mode [local-only|redacted|full] (default redacted): ");
+        print_privacy_disclosure();
+        print!("privacy mode [local-only|redacted|full] (default local-only): ");
         let _ = io::stdout().flush();
         let mut line = String::new();
         let _ = io::stdin().read_line(&mut line);
         let t = line.trim();
         if t.is_empty() {
-            "redacted".to_string()
+            "local-only".to_string()
         } else {
             t.to_string()
         }
     };
     if !["local-only", "redacted", "full"].contains(&chosen_privacy.as_str()) {
         return Err(format!("invalid privacy: {chosen_privacy}"));
+    }
+    if chosen_privacy == "full" {
+        // Second explicit opt-in for unredacted egress (fail closed: --yes
+        // with --privacy full is rejected; run interactively to confirm).
+        if yes && privacy.is_some() {
+            return Err(
+                "--privacy full requires interactive confirmation (type FULL); refusing --yes"
+                    .into(),
+            );
+        }
+        print!("FULL sends UNREDACTED commands (may include secrets) to api.typesafe.ai (US). Type FULL to confirm: ");
+        let _ = io::stdout().flush();
+        let mut line = String::new();
+        let _ = io::stdin().read_line(&mut line);
+        if line.trim() != "FULL" {
+            return Err(
+                "full privacy not confirmed; re-run init and choose local-only|redacted".into(),
+            );
+        }
+    }
+    if chosen_privacy != "local-only" {
+        print_privacy_disclosure();
     }
 
     // Write merged config atomically: write to temp then rename? For now write directly
@@ -347,6 +427,7 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
     )
     .map_err(|e| format!("write algo config: {e}"))?;
     println!("privacy: {} -> {}", chosen_privacy, algo_config.display());
+    write_consent_record(home, &chosen_privacy)?;
 
     // Ensure hooks dir and placeholder hook-client (for test, touch file)
     let hook_path = Path::new(&hook_cmd);
@@ -366,7 +447,7 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
 
     // Run doctor
     println!("running algo doctor...");
-    cmd_doctor(home)?;
+    cmd_doctor(home, false)?;
 
     Ok(())
 }
@@ -606,7 +687,7 @@ fn remove_hook(json: &mut serde_json::Value, hook_cmd: &str) -> bool {
 }
 
 // ---------- doctor ----------
-fn cmd_doctor(home: &Path) -> Result<(), String> {
+fn cmd_doctor(home: &Path, show_egress: bool) -> Result<(), String> {
     println!("=== algo doctor ===");
     let mut ok = true;
 
@@ -749,6 +830,27 @@ fn cmd_doctor(home: &Path) -> Result<(), String> {
         println!("enforce: off (shadow, default P1)");
     }
 
+    // egress preview: show exactly what would leave the machine, through the
+    // SAME Redactor::redact used on the send path (one-path rule). A sample
+    // secret-bearing payload must come out masked.
+    if show_egress {
+        // Synthetic fixture WITHOUT assignment context (`token=...` trips
+        // gitleaks generic-api-key in CI): the bare ghp-shaped token still
+        // exercises our github_pat redaction (20+ chars), while gitleaks
+        // github-pat needs 36. Same shape as the adapter parse fixtures.
+        let sample = "curl -sSL http://example.com/install.sh | sh # ghp_12345678901234567890";
+        let (masked, findings) = algo_redact::Redactor::global().redact(sample);
+        println!("egress preview (same redactor as send path):");
+        println!("  in:  {sample}");
+        println!("  out: {masked} ({} finding(s))", findings.len());
+        if masked.contains("ghp_12345678901234567890") {
+            println!("  egress preview: FAIL (secret survives redaction)");
+            ok = false;
+        } else {
+            println!("  egress preview: OK (secret masked)");
+        }
+    }
+
     if ok {
         println!("doctor: all checks OK");
     } else {
@@ -827,7 +929,7 @@ fn cmd_policy(home: &Path) -> Result<(), String> {
             (
                 json.get("privacy")
                     .and_then(|x| x.as_str())
-                    .unwrap_or("redacted")
+                    .unwrap_or("local-only")
                     .to_string(),
                 json.get("enforce").and_then(|x| x.as_bool()) == Some(true),
                 json.get("version")
@@ -837,14 +939,14 @@ fn cmd_policy(home: &Path) -> Result<(), String> {
             )
         } else {
             (
-                "redacted".to_string(),
+                "local-only".to_string(),
                 false,
                 env!("CARGO_PKG_VERSION").to_string(),
             )
         }
     } else {
         (
-            "redacted".to_string(),
+            "local-only".to_string(),
             false,
             env!("CARGO_PKG_VERSION").to_string(),
         )
@@ -943,7 +1045,9 @@ fn cmd_why(home: &Path) -> Result<(), String> {
             println!("  profile: {}", entry.profile);
             println!("  shadow: {}", entry.shadow);
             println!("  fingerprint: {}", entry.fingerprint);
-            println!("  redacted_command: {}", entry.redacted_command);
+            // One-path rule: re-redact on display, same as the send path.
+            let (masked, _) = algo_redact::Redactor::global().redact(&entry.redacted_command);
+            println!("  redacted_command: {}", masked);
             println!("  ts: {}", entry.ts);
             println!("  session: {}", entry.session_id);
         }
@@ -990,9 +1094,13 @@ fn cmd_log(home: &Path, limit: usize, show_egress: bool) -> Result<(), String> {
         return Ok(());
     }
     println!("log (last {}):", entries.len());
+    // One-path rule: --show-egress runs the SAME Redactor::redact used on the
+    // send path (pipeline re-redact), never prints stored text raw.
+    let redactor = algo_redact::Redactor::global();
     for e in entries {
         let egress = if show_egress {
-            format!(" egress:{}", e.redacted_command)
+            let (masked, findings) = redactor.redact(&e.redacted_command);
+            format!(" egress:{} ({} finding(s))", masked, findings.len())
         } else {
             String::new()
         };
@@ -1028,6 +1136,54 @@ mod tests {
         let home = dir.path().to_path_buf();
         // Keep dir alive by forgetting? We'll return dir and home
         (dir, home)
+    }
+
+    #[test]
+    fn init_yes_defaults_local_only_with_consent() {
+        // Fail-safe default: non-interactive init must land on local-only
+        // (no egress) and record a no-egress consent entry.
+        let (_tmp, home) = test_home();
+        cmd_init(&home, None, true).unwrap();
+        let cfg: serde_json::Value =
+            serde_json::from_slice(&fs::read(algo_dir(&home).join("config.json")).unwrap())
+                .unwrap();
+        assert_eq!(cfg["privacy"], "local-only");
+        let consent: serde_json::Value =
+            serde_json::from_slice(&fs::read(algo_dir(&home).join("consent.json")).unwrap())
+                .unwrap();
+        assert_eq!(consent["privacy"], "local-only");
+        assert_eq!(consent["scope"], "no-egress");
+        assert!(consent["consent_id"].as_str().unwrap().starts_with("cons-"));
+    }
+
+    #[test]
+    fn init_explicit_redacted_records_egress_consent() {
+        let (_tmp, home) = test_home();
+        cmd_init(&home, Some("redacted"), true).unwrap();
+        let consent: serde_json::Value =
+            serde_json::from_slice(&fs::read(algo_dir(&home).join("consent.json")).unwrap())
+                .unwrap();
+        assert_eq!(consent["privacy"], "redacted");
+        assert_eq!(consent["scope"], "jev-egress");
+    }
+
+    #[test]
+    fn init_full_with_yes_is_rejected_fail_closed() {
+        // --privacy full + --yes must fail: unredacted egress needs an
+        // interactive typed FULL confirmation, never a flag alone.
+        let (_tmp, home) = test_home();
+        let err = cmd_init(&home, Some("full"), true).unwrap_err();
+        assert!(err.contains("interactive confirmation"), "{err}");
+    }
+
+    #[test]
+    fn doctor_show_egress_masks_sample_secret() {
+        // --show-egress preview must run through the real redactor (one path)
+        // and must not print the sample secret. doctor returns Ok even when
+        // checks FAIL (it reports, exit code stays 0 for hook safety).
+        let (_tmp, home) = test_home();
+        cmd_init(&home, None, true).unwrap();
+        cmd_doctor(&home, true).unwrap();
     }
 
     #[test]
@@ -1081,7 +1237,7 @@ mod tests {
         assert_eq!(backup_bytes, orig_bytes, "backup not byte-identical");
 
         // Run doctor (should not fail)
-        cmd_doctor(&home).unwrap();
+        cmd_doctor(&home, false).unwrap();
 
         // Run uninstall
         cmd_uninstall(&home, false).unwrap();

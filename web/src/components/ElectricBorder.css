@@ -47,12 +47,13 @@
 }
 
 .eb-glow-1 {
-  border: 2px solid oklch(from var(--electric-border-color) l c h / 0.6);
+  border: var(--eb-glow, 2px) solid
+    oklch(from var(--electric-border-color) l c h / 0.6);
   filter: blur(1px);
 }
 
 .eb-glow-2 {
-  border: 2px solid var(--electric-light-color);
+  border: var(--eb-glow, 2px) solid var(--electric-light-color);
   filter: blur(4px);
 }
 
@@ -67,4 +68,11 @@
     transparent,
     var(--electric-border-color)
   );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eb-canvas-container,
+  .eb-layers {
+    display: none;
+  }
 }

@@ -7,6 +7,8 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Shell analysis via tree-sitter-bash (parse, facts, obfuscation)"
 readme = "README.md"
+keywords = ["shell", "parsing", "security"]
+categories = ["development-tools"]
 
 [dependencies]
 # Upgraded 0.20 → 0.27/0.25.1 on 2026-09-23: CI fuzz-smoke found a SEGV in

@@ -7,6 +7,8 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Redact secrets and PII before egress (core, first Phase 1 task per ADR-0009 waiver)"
 readme = "README.md"
+keywords = ["security", "privacy", "redaction", "pii"]
+categories = ["development-tools"]
 
 [dependencies]
 regex = "1.12"

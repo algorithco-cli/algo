@@ -6,9 +6,11 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Loop controller (P2-07): per-session failure fingerprints, retry/stop/ask"
+keywords = ["ai", "automation", "control"]
+categories = ["development-tools"]
 
 [dependencies]
-algo-types = { path = "../../../core/crates/types" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

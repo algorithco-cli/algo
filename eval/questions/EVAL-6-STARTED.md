@@ -183,7 +183,12 @@ The time-box prevents indefinite tuning. Effort estimate: question tuning + dev 
 ## Repro (dev tuning)
 
 ```powershell
-# dev split (70% stratified, seed 42) — TODO script `eval/harness/split.py` to land
+# dev split (70% stratified, seed 42) — script landed: `eval/harness/split.py`
+# (usage: python -m harness.split --dataset <all> --dev <dev> --held-out <held>).
+# NOTE 2026-09-24: dev.jsonl is 169 lines and held-out.jsonl 71 (planned 168/72)
+# due to split.py nearest-rounding on small buckets — see exit-gate-P0.md addendum.
+# Expansion batch A1 (expansion-a1.jsonl, 228 DANGEROUS) is NOT in the split;
+# re-split including A1 is a human decision (tagged files untouched).
 python -m harness.cli --dataset eval/datasets/v0.1/dev.jsonl --provider rules_only --output eval/reports/dev_rules
 python eval/jev_client/measure.py --dataset eval/datasets/v0.1/dev.jsonl --regions vantage-eu-central --runs 3 --out-dir eval/reports/dev_jev
 ```

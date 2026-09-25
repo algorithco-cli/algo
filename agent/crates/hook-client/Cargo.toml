@@ -6,6 +6,8 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Hook client for algorithco guard (tiny, fail-safe, never non-zero)"
+keywords = ["cli", "hooks", "security"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "algo-hook-client"

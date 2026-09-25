@@ -88,6 +88,10 @@ describe("token hex hygiene (Variant 1)", () => {
       "src/components/BranchedMenu.css",
       "src/components/ElectricBorder.tsx",
       "src/components/Grainient.tsx",
+      "src/components/FolderFloat.css",
+      "src/components/FolderFloat.tsx",
+      "src/components/PlatformIcons.tsx", // third-party brand marks (Google "G" must keep its official colors)
+      "src/components/PixelGuardDog.tsx", // pixel-sprite palette (fixed artwork, not the Variant 1 theme)
       "src/pages/Home.tsx",
       "src/pages/Pricing.tsx",
     ]);
@@ -108,20 +112,17 @@ describe("token hex hygiene (Variant 1)", () => {
   });
 
   it("Tokens.css core values match canonical design-tokens.css", () => {
+    // Dark-only palette (light theme deleted): dark values must exist in both.
     const tokens = read("src/components/Tokens.css").toLowerCase();
     const canonical = read("design-tokens.css").toLowerCase();
-    for (const v of [
-      "#6d4aff",
-      "#fafafb",
-      "#e5484d",
-      "#d99a00",
-      "#6b6a7b",
-      "#8e77ff",
-      "#ff6b6f",
-      "#9c9ab0",
-    ]) {
+    for (const v of ["#8e77ff", "#ff6b6f", "#9c9ab0"]) {
       expect(tokens).toContain(v);
       expect(canonical).toContain(v);
+    }
+    // No light-theme values may remain in either file.
+    for (const v of ["#6d4aff", "#fafafb", "#e5484d", "#d99a00", "#6b6a7b"]) {
+      expect(tokens).not.toContain(v);
+      expect(canonical).not.toContain(v);
     }
   });
 });

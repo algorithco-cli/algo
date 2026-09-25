@@ -9,6 +9,16 @@ pub struct Facts {
     pub has_pipe_to_shell: bool,
 }
 
+/// Basename, lowercased, quotes stripped — `"/USR/BIN/CuRL"` → `"curl"`.
+/// Tree bins come from raw text splits, so callers must not assume clean names.
+fn bin_name(bin: &str) -> String {
+    bin.trim_matches(|c| c == '"' || c == '\'')
+        .rsplit('/')
+        .next()
+        .unwrap_or(bin)
+        .to_ascii_lowercase()
+}
+
 pub fn facts(parsed: &ParsedCmd) -> Facts {
     let mut bins = Vec::new();
     let mut flags = Vec::new();
@@ -19,41 +29,34 @@ pub fn facts(parsed: &ParsedCmd) -> Facts {
     for cmd in &parsed.commands {
         bins.push(cmd.bin.clone());
         flags.extend(cmd.flags.clone());
-        // Net indicators: curl, wget, ssh, nc, etc. — match on bin, not raw contains
-        if matches!(
-            cmd.bin.as_str(),
-            "curl" | "wget" | "ssh" | "nc" | "scp" | "rsync"
-        ) {
-            net_indicators.push(cmd.bin.clone());
+        // Net indicators: match on normalized bin basename, not raw contains.
+        match bin_name(&cmd.bin).as_str() {
+            "curl" | "wget" | "ssh" | "nc" | "scp" | "rsync" => {
+                net_indicators.push(cmd.bin.clone())
+            }
+            _ => {}
         }
     }
 
     for r in &parsed.redirects {
         redirect_targets.push(r.clone());
-        if r.contains("/dev/") {
-            // e.g., dd of=/dev/sda
-            redirect_targets.push(r.clone());
-        }
     }
 
-    // Check for pipe to shell: e.g., curl ... | sh
+    // Pipe-to-shell is derived from the TREE only (bins + pipe count) —
+    // never raw `contains` (spec: rules match on tree). A net-indicator bin
+    // (curl|wget) anywhere before a shell bin (sh|bash|...) with a pipe
+    // between them is pipe-to-shell. Position check uses command order, not text.
     if parsed.pipes > 0 {
-        for (i, cmd) in parsed.commands.iter().enumerate() {
-            if i > 0 && matches!(cmd.bin.as_str(), "sh" | "bash" | "zsh" | "dash" | "ksh") {
-                // Previous command was a net indicator?
-                if i > 0 {
-                    let prev = &parsed.commands[i - 1];
-                    if matches!(prev.bin.as_str(), "curl" | "wget") {
-                        has_pipe_to_shell = true;
-                    }
+        let mut seen_net = false;
+        for cmd in parsed.commands.iter() {
+            match bin_name(&cmd.bin).as_str() {
+                "curl" | "wget" => seen_net = true,
+                "sh" | "bash" | "zsh" | "dash" | "ksh" if seen_net => {
+                    has_pipe_to_shell = true;
+                    break;
                 }
+                _ => {}
             }
-        }
-        // Also check raw for pipe to shell pattern (fallback)
-        if parsed.raw.contains("|")
-            && (parsed.raw.contains("| sh") || parsed.raw.contains("| bash"))
-        {
-            has_pipe_to_shell = true;
         }
     }
 

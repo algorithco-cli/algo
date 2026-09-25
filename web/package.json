@@ -1,9 +1,25 @@
 {
   "name": "algorithco-guard-web",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "algorithco guard — docs site (Vite static, privacy text matches docs/privacy-dataflow.md)",
+  "license": "UNLICENSED",
+  "author": "algorithco guard",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/algorithcoguard/algorithco-guard"
+  },
+  "homepage": "https://github.com/algorithcoguard/algorithco-guard#readme",
+  "bugs": "https://github.com/algorithcoguard/algorithco-guard/issues",
+  "keywords": [
+    "security",
+    "guardrails",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/prerender.mjs",
@@ -17,15 +33,21 @@
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react": "^1.1.10",
+    "@react-three/fiber": "^8.18.0",
+    "@react-three/postprocessing": "^2.19.1",
     "lucide-react": "^1.47.0",
+    "matter-js": "^0.20.0",
     "motion": "^13.4.1",
     "ogl": "^1.0.11",
+    "postprocessing": "^6.39.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "three": "^0.186.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@types/matter-js": "^0.20.2",
     "@types/node": "^26.6.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

@@ -156,6 +156,172 @@ message QueryStatsResponse {
   double avg_latency_ms = 5;
 }
 
+// --- Plans & subscriptions (self-managed; no MoR/payment secrets) ---
+//
+// Tiers pro/max/team mirror the web Pricing page (per seat). Enforcement
+// reads GetEntitlement; plans are bundles of entitlements, never bare
+// `plan_id ==` checks. Billing provider integration (ADR-0006 MoR) is
+// deferred: `provider` is "manual" until a vendor lands, and
+// BillingWebhook is reserved (unimplemented) so no fake processing exists.
+
+enum PlanTier {
+  PLAN_TIER_UNSPECIFIED = 0;
+  PLAN_TIER_FREE = 1;
+  PLAN_TIER_PRO = 2;
+  PLAN_TIER_MAX = 3;
+  PLAN_TIER_TEAM = 4;
+}
+
+message FeatureSet {
+  bool signed_bundles = 1;
+  bool dry_run = 2;
+  bool dashboard = 3;
+  bool per_user_stats = 4;
+  bool oauth_org = 5;
+  bool siem_export = 6;
+  bool sso_scim = 7;
+}
+
+message Plan {
+  PlanTier tier = 1;
+  string name = 2;
+  // Per-seat per-month, minor units (cents).
+  int64 monthly_cents = 3;
+  int64 annual_cents = 4;
+  int32 seats_included = 5;
+  // Hard seat cap; -1 = unlimited.
+  int64 max_seats = 6;
+  int32 rate_multiplier = 7;
+  int32 retention_days = 8;
+  FeatureSet features = 9;
+}
+
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_TRIALING = 1;
+  SUBSCRIPTION_STATUS_ACTIVE = 2;
+  SUBSCRIPTION_STATUS_PAST_DUE = 3;
+  SUBSCRIPTION_STATUS_CANCELED = 4;
+  SUBSCRIPTION_STATUS_UNPAID = 5;
+  SUBSCRIPTION_STATUS_EXPIRED = 6;
+  SUBSCRIPTION_STATUS_INCOMPLETE = 7;
+}
+
+message Subscription {
+  string id = 1;
+  string org_id = 2;
+  // Owner identity (auth subject) bound at creation. Only the owner may
+  // read, mutate, or spend this subscription — org_id alone never confers
+  // access. Never exposed outside the backend.
+  string owner_id = 16;
+  PlanTier tier = 3;
+  SubscriptionStatus status = 4;
+  int32 seats = 5;
+  // "monthly" | "annual".
+  string cycle = 6;
+  // Total per-period price, minor units (cents).
+  int64 price_cents = 7;
+  // Unix seconds.
+  int64 period_start = 8;
+  int64 period_end = 9;
+  // Unix seconds; 0 = no trial.
+  int64 trial_end = 10;
+  bool cancel_at_period_end = 11;
+  // Pending downgrade applied at period end; UNSPECIFIED = none.
+  PlanTier scheduled_tier = 12;
+  // Billing provider: "manual" until ADR-0006 MoR vendor lands.
+  string provider = 13;
+  string provider_subscription_id = 14;
+  // Reserved per ADR-0006: inert tier snapshot label. Enforcement MUST read
+  // GetEntitlement; unknown values prove ask downstream, never allow.
+  optional string entitlement = 15;
+}
+
+message Entitlement {
+  PlanTier tier = 1;
+  SubscriptionStatus status = 2;
+  // Paid features currently usable (status + grace resolved server-side).
+  bool valid = 3;
+  FeatureSet features = 4;
+  int64 max_seats = 5;
+  int32 rate_multiplier = 6;
+  int32 retention_days = 7;
+  // Seconds of past-due grace left; 0 when not past due.
+  int64 grace_seconds_left = 8;
+  // Short human-readable upsell hint; empty when entitled.
+  string upgrade_hint = 9;
+  Subscription subscription = 10;
+}
+
+message GetPlansRequest {}
+
+message GetPlansResponse {
+  repeated Plan plans = 1;
+}
+
+message GetSubscriptionRequest {
+  string org_id = 1;
+}
+
+message GetSubscriptionResponse {
+  // Set when the org has a subscription; otherwise tier=free/status=none.
+  Subscription subscription = 1;
+  PlanTier tier = 2;
+  string status = 3;
+}
+
+message CreateSubscriptionRequest {
+  string org_id = 1;
+  PlanTier tier = 2;
+  // "monthly" | "annual".
+  string cycle = 3;
+  int32 seats = 4;
+}
+
+message CreateSubscriptionResponse {
+  Subscription subscription = 1;
+}
+
+message ChangeSubscriptionRequest {
+  string id = 1;
+  // Optional fields: UNSPECIFIED / empty = unchanged.
+  PlanTier tier = 2;
+  int32 seats = 3;
+  string cycle = 4;
+}
+
+message ChangeSubscriptionResponse {
+  Subscription subscription = 1;
+  // True when the tier change was scheduled for period end (downgrade).
+  bool scheduled = 2;
+}
+
+message CancelSubscriptionRequest {
+  string id = 1;
+  bool at_period_end = 2;
+}
+
+message CancelSubscriptionResponse {
+  Subscription subscription = 1;
+}
+
+message UpdateSeatsRequest {
+  string id = 1;
+  int32 seats = 2;
+}
+
+message UpdateSeatsResponse {
+  Subscription subscription = 1;
+}
+
+message GetEntitlementRequest {
+  string org_id = 1;
+}
+
+message GetEntitlementResponse {
+  Entitlement entitlement = 1;
+}
+
 // --- GuardService: ConnectRPC service defs ---
 
 service GuardService {
@@ -173,4 +339,12 @@ service GuardService {
   rpc IngestAudit(IngestAuditRequest) returns (IngestAuditResponse);
   // Stats aggregates.
   rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse);
+  // Plans & subscriptions (self-managed billing; MoR webhook reserved).
+  rpc GetPlans(GetPlansRequest) returns (GetPlansResponse);
+  rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse);
+  rpc ChangeSubscription(ChangeSubscriptionRequest) returns (ChangeSubscriptionResponse);
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (CancelSubscriptionResponse);
+  rpc UpdateSeats(UpdateSeatsRequest) returns (UpdateSeatsResponse);
+  rpc GetEntitlement(GetEntitlementRequest) returns (GetEntitlementResponse);
 }

@@ -8,6 +8,7 @@ const Home = React.lazy(() => import("./pages/Home"));
 const Features = React.lazy(() => import("./pages/Features"));
 const How = React.lazy(() => import("./pages/How"));
 const Pricing = React.lazy(() => import("./pages/Pricing"));
+const Billing = React.lazy(() => import("./pages/Billing"));
 const Roadmap = React.lazy(() => import("./pages/Roadmap"));
 const Login = React.lazy(() => import("./pages/Login"));
 const Faq = React.lazy(() => import("./pages/Faq"));
@@ -27,6 +28,7 @@ export function AppRoutes(): JSX.Element {
             <Route path="features" element={<Features />} />
             <Route path="how" element={<How />} />
             <Route path="pricing" element={<Pricing />} />
+            <Route path="billing" element={<Billing />} />
             <Route path="roadmap" element={<Roadmap />} />
             <Route path="login" element={<Login />} />
             <Route path="faq" element={<Faq />} />

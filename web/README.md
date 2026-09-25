@@ -14,8 +14,15 @@ npm run build    # static dist/
 npm run lint     # tsc --noEmit + biome check
 npm run test     # vitest run (verdict, hex-guard, sitemap/og)
 npm run gen:deny # parity check core deny_list.rs vs src/lib/verdict.ts
-npm run preview  # preview dist/ at http://127.0.0.1:3007
+npm run preview  # preview dist/ at http://127.0.0.1:3007 (NO vite proxy — billing needs a VITE_BACKEND_URL build + running backend, see below)
 ```
+
+> **Preview/billing note:** `vite preview` serves `dist/` with no `/api` proxy.
+> The billing page works under `npm run dev` (proxy `/api/*` → `127.0.0.1:8080`
+> with the `/api` prefix stripped) or under preview/dist only when built with
+> `VITE_BACKEND_URL` set to the backend's bare origin (e.g.
+> `http://127.0.0.1:8080`, no trailing `/api`) and the backend running with
+> CORS allowing the page origin (`ALGO_CORS_ORIGINS`).
 
 ## What this site is
 
@@ -50,7 +57,8 @@ web/
     lib/routes.ts              # IA manifest: path/title/desc/layout/prev/next
     lib/site.ts                # SITE_URL + canonicalFor()
     components/layout          # RootLayout/Header/Footer + Marketing/Docs layouts + Seo/Breadcrumbs/PrevNext
-    components/                # Section/Counter/CopyButton/VerdictDemo/PipelineDiagram/InstallTabs/LoginMock/FaqList/Cta
+    components/                # Section/Counter/CopyButton/VerdictDemo/PipelineDiagram/InstallTabs/DeviceLogin/PixelGuardDog/Dither/FaqList/Cta
+    lib/auth.ts                # live auth client (email signup/login, GitHub device, Google OIDC, backend liveness)
     pages/                     # Home/Features/How/Pricing/Roadmap/Login/Faq/Privacy/NotFound
     pages/docs/                # DocsIndex/Install/Cli
     components/Tokens.css      # @import design-tokens.css + shadcn var mapping (web side)

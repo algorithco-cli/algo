@@ -1,6 +1,6 @@
-import * as React from "react";
-import { cn } from "../../lib/utils";
+import type * as React from "react";
 import { Action } from "../../lib/api";
+import { cn } from "../../lib/utils";
 
 type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & {
   action: Action;
@@ -16,7 +16,6 @@ function actionClass(a: Action): string {
       return "badge-allow";
     case Action.ACTION_DENY:
       return "badge-deny";
-    case Action.ACTION_ASK:
     default:
       return "badge-ask";
   }
@@ -28,14 +27,16 @@ function actionLabel(a: Action): string {
       return "allow";
     case Action.ACTION_DENY:
       return "deny";
-    case Action.ACTION_ASK:
-      return "ask";
     default:
       return "ask";
   }
 }
 
-export function DecisionBadge({ action, className, ...props }: BadgeProps): JSX.Element {
+export function DecisionBadge({
+  action,
+  className,
+  ...props
+}: BadgeProps): JSX.Element {
   return (
     <span
       className={cn(

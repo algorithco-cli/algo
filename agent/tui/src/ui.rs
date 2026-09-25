@@ -15,13 +15,17 @@
 //!   policy: real config snapshot (read-only, never writes decision path)
 //!   footer: keyboard hints + auto-refresh note
 
-use crate::app::{App, LoginFocus, LoginStatus, ViewMode, CLI_TOOLS, CLI_TOOL_COUNT};
+use crate::app::{
+    App, LoginFocus, LoginStatus, ViewMode, CLI_TOOLS, CLI_TOOL_COUNT, SPINNER_GRACE_MS,
+};
+use crate::dog::{CELLS_H, CELLS_W};
+use crate::theme::Theme;
 use chrono::{DateTime, Utc};
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
+    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, Wrap},
     Frame,
 };
 
@@ -33,6 +37,110 @@ const COLOR_ASK: Color = Color::Rgb(217, 154, 0); // #D99A00 --ag-ask
 const COLOR_DENY: Color = Color::Rgb(229, 72, 77); // #E5484D --ag-deny
 const COLOR_MUTED: Color = Color::Rgb(107, 106, 123); // #6B6A7B --ag-text-muted
 const COLOR_BORDER: Color = Color::Rgb(230, 229, 238); // #E6E5EE --ag-border
+
+// Hand-tuned 256-color fallbacks (research: never auto-dither, quantize at
+// startup against the XTERM table). Used when COLORTERM lacks truecolor.
+const COLOR_BRAND_256: Color = Color::Indexed(99); // ~#875FFF
+const COLOR_ALLOW_256: Color = Color::Indexed(35); // ~#00AF5F
+const COLOR_ASK_256: Color = Color::Indexed(172); // ~#D78700
+const COLOR_DENY_256: Color = Color::Indexed(167); // ~#D75F5F
+
+/// True when the terminal advertises truecolor (`COLORTERM=truecolor|24bit`).
+/// Research: `supports-color` precedence — NO_COLOR/TERM=dumb handled
+/// separately; this only gates Rgb vs Indexed so non-truecolor terms don't
+/// get glitched output (ratatui docs warning).
+fn supports_truecolor() -> bool {
+    if let Ok(v) = std::env::var("COLORTERM") {
+        let v = v.to_ascii_lowercase();
+        if v.contains("truecolor") || v.contains("24bit") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Resolve a Variant-1 token to Rgb (truecolor) or hand-tuned Indexed fallback.
+fn token_brand() -> Color {
+    if supports_truecolor() {
+        COLOR_BRAND
+    } else {
+        COLOR_BRAND_256
+    }
+}
+#[allow(dead_code)]
+fn token_allow() -> Color {
+    if supports_truecolor() {
+        COLOR_ALLOW
+    } else {
+        COLOR_ALLOW_256
+    }
+}
+fn token_ask() -> Color {
+    if supports_truecolor() {
+        COLOR_ASK
+    } else {
+        COLOR_ASK_256
+    }
+}
+#[allow(dead_code)]
+fn token_deny() -> Color {
+    if supports_truecolor() {
+        COLOR_DENY
+    } else {
+        COLOR_DENY_256
+    }
+}
+
+/// NO_COLOR spec (2017): non-empty => strip color, keep bold/underline.
+/// Callers use this to decide whether to emit color at all.
+#[allow(dead_code)]
+fn no_color() -> bool {
+    std::env::var("NO_COLOR")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+}
+
+/// Three-tier icon set: ascii → unicode (default) → nerd (opt-in).
+/// Research: default to widely-supported Unicode; Nerd only when
+/// `ALGO_ICON_SET=nerd`; ASCII when `ALGO_ICON_SET=ascii` or `TERM=dumb`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IconSet {
+    Ascii,
+    Unicode,
+}
+
+fn icon_set() -> IconSet {
+    if let Ok(v) = std::env::var("ALGO_ICON_SET") {
+        let v = v.to_ascii_lowercase();
+        if v == "ascii" {
+            return IconSet::Ascii;
+        }
+        if v == "nerd" {
+            return IconSet::Unicode; // Nerd glyphs are same-width Unicode twins here
+        }
+    }
+    if std::env::var("TERM").map(|v| v == "dumb").unwrap_or(false) {
+        return IconSet::Ascii;
+    }
+    IconSet::Unicode
+}
+
+/// Triple-encode decision (WCAG 1.4.1: never hue-only): color + glyph + word.
+/// Red/green collapse under deuteranopia — glyph + label keep them distinct.
+fn action_glyph(action: &str) -> &'static str {
+    match icon_set() {
+        IconSet::Ascii => match action {
+            "allow" => "*",
+            "deny" => "x",
+            _ => "?",
+        },
+        IconSet::Unicode => match action {
+            "allow" => "✓",
+            "deny" => "✗",
+            _ => "?",
+        },
+    }
+}
 
 fn action_color(action: &str) -> Color {
     match action {
@@ -72,14 +180,24 @@ fn truncate(s: &str, max: usize) -> String {
 fn confidence_bar(conf: f64) -> String {
     let filled = (conf.clamp(0.0, 1.0) * 10.0).round() as usize;
     let empty = 10 - filled;
-    format!("{}{} {:.2}", "█".repeat(filled), "░".repeat(empty), conf)
+    // Fixed cell width per frame; ASCII twin when Nerd/Unicode unavailable.
+    // Research: every gauge carries numeric % + label (screen-reader safe).
+    match icon_set() {
+        IconSet::Ascii => format!("{}{} {:.2}", "#".repeat(filled), "-".repeat(empty), conf),
+        IconSet::Unicode => format!("{}{} {:.2}", "█".repeat(filled), "░".repeat(empty), conf),
+    }
 }
 
 /// Spinner frames for the login animation (tick-driven, no blocking).
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/// ASCII twin (same single-cell width) for `TERM=dumb` / `ALGO_ICON_SET=ascii`.
+const SPINNER_ASCII: [&str; 4] = ["-", "\\", "|", "/"];
 
 fn spinner_frame(tick: usize) -> &'static str {
-    SPINNER[tick % SPINNER.len()]
+    match icon_set() {
+        IconSet::Ascii => SPINNER_ASCII[tick % SPINNER_ASCII.len()],
+        IconSet::Unicode => SPINNER[tick % SPINNER.len()],
+    }
 }
 
 /// Marching-ants outline: a rotating dashed border with gaps.
@@ -221,6 +339,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             *r = None;
         }
         render_login(frame, app, area);
+        if app.help_visible {
+            render_help_overlay(frame, app, area);
+        }
         return;
     }
 
@@ -231,6 +352,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.tab_policy = None;
         app.table_inner = None;
         render_connect(frame, app, area);
+        if app.help_visible {
+            render_help_overlay(frame, app, area);
+        }
         return;
     }
 
@@ -273,6 +397,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
     idx += 1;
     render_footer(frame, app, chunks[idx]);
+    // `?` help sits on top of every view (research: k9s/gh-dash parity).
+    if app.help_visible {
+        render_help_overlay(frame, app, area);
+    }
 }
 
 fn mode_badges(app: &App) -> Vec<Span<'static>> {
@@ -396,211 +524,610 @@ fn render_header(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_offline_banner(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    // Persistent degraded banner (research: users must never wonder if the
+    // view is stale). Amber = degraded, red only for hard fail. Always shows
+    // next action + staleness instead of a silent empty feed.
+    let stale = format!("{} cached", app.entries.len());
     let msg = if let Some(err) = &app.error {
         format!(
-            "Offline read-only — {} — hooks unaffected.",
-            truncate(err, 120)
+            "! OFFLINE — {} — showing {} (actions disabled, ask-only) [r] retry [d] doctor — hooks unaffected.",
+             truncate(err, 80), stale
         )
     } else {
-        "Offline read-only — daemon down or audit.db missing. Press r to retry.".to_string()
+        format!(
+            "! OFFLINE read-only — daemon down or audit.db missing — showing {} [r] retry [d] doctor.",
+            stale
+        )
     };
     let banner = Paragraph::new(Line::from(vec![Span::styled(
         format!(" {msg} "),
         Style::default()
             .fg(Color::Black)
-            .bg(COLOR_ASK)
+            .bg(token_ask())
             .add_modifier(Modifier::BOLD),
     )]));
     frame.render_widget(banner, area);
 }
 
-fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
-    // Production-quality auth gate — two primary paths, one secondary fallback.
-    // No outer container box: the card area is used directly (borderless).
-    let inner = centered_fixed(68, 24, area);
+/// Login dispatcher: wide terminals get the form + guard-dog side panel;
+/// narrow ones keep the single-column stacked form (tests + small screens).
+/// Login layout tokens: one spacing unit (1 blank row), left alignment
+/// everywhere. Form cards are 52 wide; two columns need form + gap + dog.
+const LOGIN_MIN_W: u16 = 60;
+const LOGIN_MIN_H: u16 = 18;
+const LOGIN_FORM_W: u16 = 52;
+const LOGIN_GAP_W: u16 = 4;
+const DOG_COL_W: u16 = 38;
+const TWO_COL_MIN_W: u16 = 100;
+const TWO_COL_MIN_H: u16 = 28;
+/// Reserved status rows: fixed so state changes never shift the layout.
+const STATUS_ROWS: u16 = 3;
+const BROWSER_CARD_H: u16 = 5;
+const API_COLLAPSED_H: u16 = 3;
+const API_EXPANDED_H: u16 = 5;
 
-    if inner.width < 40 || inner.height < 18 {
-        // Fallback for smaller but not tiny terminals
-        let msg = Paragraph::new(vec![
-            Line::from(Span::styled(
-                "Sign in to Algorithco Guard",
-                Style::default()
-                    .fg(COLOR_BRAND)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(Span::styled(
-                "Resize wider for full auth options.",
-                Style::default().fg(COLOR_MUTED),
-            )),
-        ]);
-        frame.render_widget(msg, inner);
+fn render_login(frame: &mut Frame, app: &mut App, area: Rect) {
+    // Gate first: login needs room for cards + footer. Smaller areas get the
+    // gate — never clipped widgets, never a panic on resize.
+    if area.width < LOGIN_MIN_W || area.height < LOGIN_MIN_H {
+        render_login_too_small(frame, app, area);
         return;
     }
-
-    // Split inner vertically: title, subtitle, browser box, apikey box, status, offline, hints
-    // Heights are tuned to be pixel-polished with proper spacing.
-    let is_browser_pending = app.login_status == LoginStatus::BrowserPending;
-    let is_apikey_editing = matches!(
-        app.login_status,
-        LoginStatus::ApiKeyEditing | LoginStatus::Error(_)
-    );
-    let is_validating = app.login_status == LoginStatus::ApiKeyValidating;
-    let is_success = app.login_status == LoginStatus::Success;
-    let is_error = matches!(app.login_status, LoginStatus::Error(_));
-
-    // Determine box heights based on state — keep total ~ inner.height
-    let browser_h: u16 = if is_browser_pending { 7 } else { 5 };
-    let apikey_h: u16 = if is_apikey_editing || is_validating || is_success || is_error {
-        7
+    if area.width >= TWO_COL_MIN_W && area.height >= TWO_COL_MIN_H {
+        render_login_two_col(frame, app, area);
     } else {
-        5
+        render_login_single_col(frame, app, area);
+    }
+}
+
+fn render_login_too_small(frame: &mut Frame, app: &mut App, area: Rect) {
+    app.login_browser = None;
+    app.login_apikey = None;
+    app.login_apikey_input = None;
+    app.login_submit = None;
+    app.login_cancel = None;
+    app.login_offline = None;
+    app.login_quit = None;
+    app.login_signin = None;
+    app.login_dog = None;
+    let msg = Paragraph::new(vec![
+        Line::from(Span::styled("Terminal too small", app.theme.fg_bold())),
+        Line::from(Span::styled(
+            format!(
+                "Login needs {}x{}. Current: {}x{}.",
+                LOGIN_MIN_W, LOGIN_MIN_H, area.width, area.height
+            ),
+            app.theme.muted(),
+        )),
+    ]);
+    let w = 42.min(area.width);
+    let h = 4.min(area.height);
+    frame.render_widget(
+        msg,
+        Rect {
+            x: area.x + area.width.saturating_sub(w) / 2,
+            y: area.y + area.height.saturating_sub(h) / 2,
+            width: w,
+            height: h,
+        },
+    );
+}
+
+/// Right-side guard-dog stage: borderless art with the shared status block
+/// directly underneath (1 row gap). Symbol + text, never color alone.
+fn render_dog_panel(frame: &mut Frame, app: &mut App, area: Rect) {
+    // No box, no border — the dog floats directly on the background.
+    let art_h = CELLS_H.min(area.height);
+    let art_w = CELLS_W.min(area.width);
+    let art = Rect {
+        x: area.x + area.width.saturating_sub(art_w) / 2,
+        y: area.y,
+        width: art_w,
+        height: art_h,
+    };
+    frame.render_widget(&app.dog, art);
+    // Clicking the art barks; the whole column stays hover-clean.
+    app.login_dog = Some(art);
+
+    let status_y = area.y + art_h + 1;
+    if status_y < area.bottom() {
+        let status = Rect {
+            x: area.x,
+            y: status_y,
+            width: area.width,
+            height: area.bottom().saturating_sub(status_y),
+        };
+        render_login_status(frame, app, status);
+    }
+}
+
+/// One login card. Rounded solid border (font-safe), title carries the
+/// leading shortcut, and the whole card is the button — no inner buttons,
+/// no duplicated labels. Exactly one accent element when focused.
+fn login_card(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    focused: bool,
+    theme: &Theme,
+    rows: Vec<Line<'_>>,
+) -> Rect {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(if focused {
+            theme.border_focus()
+        } else {
+            theme.border_idle()
+        })
+        .title(Span::styled(
+            format!(" {title} "),
+            if focused {
+                theme.title_focus()
+            } else {
+                theme.title_idle()
+            },
+        ));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(rows), inner);
+    inner
+}
+
+/// Fit a row into `width` cells (char-boundary truncate with ellipsis).
+fn fit_row(s: &str, width: usize) -> String {
+    truncate(s, width.max(1))
+}
+
+/// Browser card rows: action, destination, state lives in the status block.
+/// The destination URL is always shown so the user can verify it.
+fn browser_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static>> {
+    let t = &app.theme;
+    let action = if focused {
+        Line::from(vec![
+            Span::styled("▶ ", t.fg_bold()),
+            Span::styled("Continue in browser", t.fg_bold()),
+        ])
+    } else {
+        Line::from(Span::styled("  Continue in browser", t.muted()))
+    };
+    let dest = match app.oauth_url.as_deref() {
+        Some(url) => fit_row(url, width.saturating_sub(2)),
+        None => "Not configured in this build".to_string(),
+    };
+    vec![
+        action,
+        Line::from(Span::styled("  Opens OAuth at", t.muted())),
+        Line::from(Span::styled(format!("  {dest}"), t.muted())),
+    ]
+}
+
+/// API card rows. Collapsed: one line. Expanded: masked input + hints.
+fn api_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static>> {
+    let t = &app.theme;
+    let expanded = api_expanded(app);
+    if !expanded {
+        let line = if focused {
+            Line::from(vec![
+                Span::styled("▶ ", t.fg_bold()),
+                Span::styled("Paste a key from your dashboard", t.fg_bold()),
+            ])
+        } else {
+            Line::from(Span::styled("  Paste a key from your dashboard", t.muted()))
+        };
+        return vec![line];
+    }
+    match &app.login_status {
+        LoginStatus::ApiKeyValidating => {
+            let dots = "•".repeat(app.login_api_input.chars().count().min(width));
+            vec![
+                Line::from(Span::styled(format!("  {dots}"), t.fg())),
+                Line::from(Span::styled("  Storing key locally…", t.muted())),
+                Line::from(""),
+            ]
+        }
+        LoginStatus::Success => {
+            let user = app.login_user.clone().unwrap_or_default();
+            vec![
+                Line::from(Span::styled("  ✓ Key accepted", t.ok())),
+                Line::from(Span::styled(fit_row(&format!("  {user}"), width), t.fg())),
+                Line::from(Span::styled("  Loading your workspace…", t.muted())),
+            ]
+        }
+        _ => {
+            let input = if app.login_api_input.is_empty() {
+                Line::from(Span::styled("  Ctrl+V to paste", t.muted()))
+            } else {
+                let dots = "•".repeat(app.login_api_input.chars().count().min(width));
+                let cursor = if focused { "█" } else { "" };
+                Line::from(vec![
+                    Span::styled("  ", t.fg()),
+                    Span::styled(fit_row(&dots, width.saturating_sub(3)), t.fg()),
+                    Span::styled(cursor, t.fg_bold()),
+                ])
+            };
+            vec![
+                input,
+                Line::from(Span::styled("  Enter verifies · Esc collapses", t.muted())),
+                Line::from(Span::styled(
+                    "  Stored locally · masked for security",
+                    t.muted(),
+                )),
+            ]
+        }
+    }
+}
+
+/// Card 2 is expanded while the key is being entered, validated, accepted,
+/// or after a key error (so the user can fix it inline).
+fn api_expanded(app: &App) -> bool {
+    matches!(
+        app.login_status,
+        LoginStatus::ApiKeyEditing
+            | LoginStatus::ApiKeyValidating
+            | LoginStatus::Success
+            | LoginStatus::Error(_)
+    )
+}
+
+fn api_card_height(app: &App) -> u16 {
+    if api_expanded(app) {
+        API_EXPANDED_H
+    } else {
+        API_COLLAPSED_H
+    }
+}
+
+/// Single shared status block (dog-adjacent in two columns, under the form
+/// in one). Symbol + words, never color alone; no apologies, always a fix.
+fn login_status_lines(app: &App, width: usize) -> Vec<Line<'static>> {
+    let t = &app.theme;
+    let w = width.max(8);
+    match &app.login_status {
+        LoginStatus::Idle => vec![Line::from(Span::styled("○ calm — guarding", t.ok()))],
+        LoginStatus::ApiKeyEditing => vec![Line::from(Span::styled(
+            "○ Key entry — Enter verifies · Esc collapses",
+            t.muted(),
+        ))],
+        LoginStatus::ApiKeyValidating => {
+            vec![Line::from(Span::styled(
+                "○ Storing key locally…",
+                t.muted(),
+            ))]
+        }
+        LoginStatus::BrowserPending => {
+            if app.browser_wait_ms() >= SPINNER_GRACE_MS {
+                vec![Line::from(vec![
+                    Span::styled(format!("{} ", spinner_frame(app.spin_phase)), t.accent()),
+                    Span::styled("Waiting for browser… Esc to cancel", t.warn()),
+                ])]
+            } else {
+                vec![Line::from(Span::styled("○ Opening browser…", t.muted()))]
+            }
+        }
+        LoginStatus::Success => {
+            let user = app.login_user.clone().unwrap_or_default();
+            vec![
+                Line::from(Span::styled(
+                    fit_row(&format!("✓ Signed in as {user}."), w),
+                    t.ok(),
+                )),
+                Line::from(Span::styled(
+                    "Key stored locally — not verified yet.",
+                    t.muted(),
+                )),
+            ]
+        }
+        LoginStatus::Error(msg) => wrap_status_error(msg, w, t),
+    }
+}
+
+/// Wrap `▲ {msg}` to at most [`STATUS_ROWS`] rows for the status block.
+fn wrap_status_error(msg: &str, width: usize, t: &Theme) -> Vec<Line<'static>> {
+    let style = t.err();
+    let first_prefix = "▲ ";
+    let cont_prefix = "  ";
+    let first_w = width.saturating_sub(first_prefix.chars().count()).max(8);
+    let cont_w = width.saturating_sub(cont_prefix.chars().count()).max(8);
+    let chars: Vec<char> = msg.chars().collect();
+    let mut rows: Vec<Line<'static>> = Vec::new();
+    let mut rest = chars.as_slice();
+    // First row carries the symbol (never color alone).
+    let take = first_w.min(rest.len());
+    let (head, tail) = rest.split_at(take);
+    let head: String = head.iter().collect();
+    rest = tail;
+    rows.push(Line::from(Span::styled(
+        format!("{first_prefix}{head}"),
+        style,
+    )));
+    while !rest.is_empty() && rows.len() < STATUS_ROWS as usize {
+        let last = rows.len() == STATUS_ROWS as usize - 1;
+        let mut take = cont_w.min(rest.len());
+        if last && take < rest.len() {
+            take = take.saturating_sub(1);
+        }
+        let (head, tail) = rest.split_at(take);
+        let mut line: String = head.iter().collect();
+        rest = tail;
+        if last && !rest.is_empty() {
+            line.push('…');
+            rest = &[];
+        }
+        rows.push(Line::from(Span::styled(
+            format!("{cont_prefix}{line}"),
+            style,
+        )));
+    }
+    rows
+}
+
+fn render_login_status(frame: &mut Frame, app: &App, area: Rect) {
+    let lines = login_status_lines(app, area.width as usize);
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Offline row: leading underlined shortcut, muted description.
+fn render_login_offline(frame: &mut Frame, app: &mut App, area: Rect) {
+    let t = app.theme;
+    let focused = app.login_focus == LoginFocus::Offline && app.login_status == LoginStatus::Idle;
+    let line = Line::from(vec![
+        Span::styled(
+            "o",
+            if focused {
+                t.fg_bold().add_modifier(Modifier::UNDERLINED)
+            } else {
+                t.muted().add_modifier(Modifier::UNDERLINED)
+            },
+        ),
+        Span::styled(
+            "  Continue offline · limited features, no sync",
+            if focused { t.fg_bold() } else { t.muted() },
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
+    app.login_offline = Some(area);
+}
+
+/// Global footer: one line, every shortcut visible, nothing hidden.
+/// Compressed to 48 cells so it fits the 52-wide form untruncated.
+fn login_footer_height(app: &App) -> u16 {
+    if app.debug {
+        2
+    } else {
+        1
+    }
+}
+
+fn render_login_footer(frame: &mut Frame, app: &mut App, area: Rect) {
+    let t = app.theme;
+    let keys = "↑↓ select  Enter confirm  1/2/o  ? help  Esc quit";
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            fit_row(keys, area.width as usize),
+            t.muted(),
+        ))),
+        Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: 1.min(area.height),
+        },
+    );
+    if app.debug && area.height >= 2 {
+        let layer = app.theme.layer;
+        let layer_name = match layer {
+            crate::dog::ColorMode::TrueColor => "truecolor",
+            crate::dog::ColorMode::Ansi16 => "ansi16",
+            crate::dog::ColorMode::Mono => "mono",
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                fit_row(
+                    &format!(
+                        "debug: color={layer_name} tick={} · b bark · m color",
+                        app.tick
+                    ),
+                    area.width as usize,
+                ),
+                t.muted(),
+            ))),
+            Rect {
+                x: area.x,
+                y: area.y + 1,
+                width: area.width,
+                height: 1,
+            },
+        );
+    }
+    // No mouse-quit target on login: `Esc`/`q` quit from the keyboard.
+    app.login_quit = None;
+}
+
+/// Wide login: form (52) + dog column (38) under a shared header.
+fn render_login_two_col(frame: &mut Frame, app: &mut App, area: Rect) {
+    let api_h = api_card_height(app);
+    let footer_h = login_footer_height(app);
+    // Header 3 + body 22 (dog 18 + gap + status 3) + gap + footer.
+    let content_h = 3 + CELLS_H + 1 + STATUS_ROWS + 1 + footer_h;
+    let content_w = LOGIN_FORM_W + LOGIN_GAP_W + DOG_COL_W;
+    let ox = area.x + area.width.saturating_sub(content_w) / 2;
+    let mut y = area.y + area.height.saturating_sub(content_h) / 2;
+
+    render_login_header(
+        frame,
+        app,
+        Rect {
+            x: ox,
+            y,
+            width: content_w,
+            height: 2,
+        },
+    );
+    y += 3; // title + subtitle + gap
+
+    let form = Rect {
+        x: ox,
+        y,
+        width: LOGIN_FORM_W,
+        height: api_h + BROWSER_CARD_H + 3,
+    };
+    render_login_cards(frame, app, form);
+    let dog_col = Rect {
+        x: ox + LOGIN_FORM_W + LOGIN_GAP_W,
+        y,
+        width: DOG_COL_W,
+        height: CELLS_H + 1 + STATUS_ROWS,
+    };
+    // Dog art top-aligned with the cards; status sits 1 row below the art.
+    render_dog_panel(frame, app, dog_col);
+    y += CELLS_H + 1 + STATUS_ROWS + 1; // body + gap
+
+    render_login_footer(
+        frame,
+        app,
+        Rect {
+            x: ox,
+            y,
+            width: content_w,
+            height: footer_h,
+        },
+    );
+    app.login_signin = app.login_browser;
+}
+
+/// Narrow login: single column, dog hidden, the shared status line stays.
+/// Gaps are spacing luxury: dropped first when rows are scarce, so the form
+/// (cards + status + offline + footer) always fits heights down to 15.
+fn render_login_single_col(frame: &mut Frame, app: &mut App, area: Rect) {
+    let api_h = api_card_height(app);
+    let footer_h = login_footer_height(app);
+    let content_w = LOGIN_FORM_W.min(area.width.saturating_sub(4)).max(40);
+    let form_h = BROWSER_CARD_H + 1 + api_h;
+    // Core rows (never dropped): header + cards + status + offline + footer.
+    let core_h = 2 + form_h + STATUS_ROWS + 1 + footer_h;
+    // Droppable 1-row gaps: after header, after cards, after offline.
+    let mut keep_gaps = 3u16;
+    while core_h + keep_gaps > area.height && keep_gaps > 0 {
+        keep_gaps -= 1;
+    }
+    // Gaps are spent in reading order: header gap, cards gap, offline gap.
+    let mut gaps_left = keep_gaps;
+
+    let ox = area.x + area.width.saturating_sub(content_w) / 2;
+    let mut y = area.y + area.height.saturating_sub(core_h + keep_gaps) / 2;
+    let w = content_w;
+    let mut row = |h: u16| {
+        let r = Rect {
+            x: ox,
+            y,
+            width: w,
+            height: h,
+        };
+        y += h;
+        r
     };
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // title
-            Constraint::Length(1), // subtitle
-            Constraint::Length(1), // spacer
-            Constraint::Length(browser_h),
-            Constraint::Length(1), // spacer
-            Constraint::Length(apikey_h),
-            Constraint::Length(1), // status line
-            Constraint::Length(1), // offline option
-            Constraint::Min(1),    // hints + quit
-        ])
-        .split(inner);
+    render_login_header(frame, app, row(2));
+    if gaps_left > 0 {
+        row(1);
+        gaps_left -= 1;
+    }
 
-    // ---- Title ----
-    let title = Paragraph::new(Line::from(Span::styled(
-        "Sign in to Algorithco Guard",
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
-    )))
-    .alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(title, chunks[0]);
+    app.login_dog = None;
+    render_login_cards_compact(frame, app, row(form_h));
+    if gaps_left > 0 {
+        row(1);
+        gaps_left -= 1;
+    }
 
-    // ---- Subtitle ----
-    let subtitle = Paragraph::new(Line::from(Span::styled(
-        "Choose how to authenticate — browser or API key",
-        Style::default().fg(COLOR_MUTED),
-    )))
-    .alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(subtitle, chunks[1]);
+    render_login_status(frame, app, row(STATUS_ROWS));
 
-    // ---- Browser box ----
+    render_login_offline(frame, app, row(1));
+    if gaps_left > 0 {
+        row(1);
+    }
+
+    render_login_footer(
+        frame,
+        app,
+        Rect {
+            x: ox,
+            y,
+            width: w,
+            height: footer_h,
+        },
+    );
+    app.login_signin = app.login_browser;
+}
+
+fn render_login_header(frame: &mut Frame, app: &mut App, area: Rect) {
+    let t = app.theme;
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "Sign in to Algorithco Guard",
+            t.fg_bold(),
+        ))),
+        Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: 1.min(area.height),
+        },
+    );
+    if area.height >= 2 {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "Choose how to authenticate",
+                t.muted(),
+            ))),
+            Rect {
+                x: area.x,
+                y: area.y + 1,
+                width: area.width,
+                height: 1,
+            },
+        );
+    }
+}
+
+/// Both cards + the offline row inside `area` (left-aligned, 1-row rhythm).
+/// `area` height must be `BROWSER_CARD_H + 1 + api_h + 1 + 1`.
+fn render_login_cards(frame: &mut Frame, app: &mut App, area: Rect) {
+    let api_h = api_card_height(app);
+    render_login_cards_compact(
+        frame,
+        app,
+        Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: BROWSER_CARD_H + 1 + api_h,
+        },
+    );
+    render_login_offline(
+        frame,
+        app,
+        Rect {
+            x: area.x,
+            y: area.y + BROWSER_CARD_H + 1 + api_h + 1,
+            width: area.width,
+            height: 1,
+        },
+    );
+}
+
+/// Browser + API cards only (no offline row).
+/// `area` height must be `BROWSER_CARD_H + 1 + api_h`.
+fn render_login_cards_compact(frame: &mut Frame, app: &mut App, area: Rect) {
+    let t = app.theme;
+    let w = area.width as usize;
     let browser_focused = app.login_focus == LoginFocus::Browser
         && matches!(
             app.login_status,
             LoginStatus::Idle | LoginStatus::BrowserPending
         );
-    let browser_border = if browser_focused {
-        Style::default()
-            .fg(COLOR_BRAND)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(COLOR_BORDER)
-    };
-    let browser_title = if browser_focused {
-        Span::styled(
-            " [1] ● Sign in with browser ",
-            Style::default()
-                .fg(Color::White)
-                .bg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::styled(
-            " [1] Sign in with browser ",
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        )
-    };
-    let browser_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(browser_border)
-        .title(browser_title);
-    let browser_inner = browser_block.inner(chunks[3]);
-    frame.render_widget(browser_block, chunks[3]);
-    app.login_browser = Some(chunks[3]);
-
-    // Browser box contents — honest: no backend, no fabricated device code.
-    if is_browser_pending {
-        let spin = spinner_frame(app.spin_phase);
-        let lines = vec![
-            Line::from(vec![
-                Span::styled(
-                    format!(" {spin} "),
-                    Style::default()
-                        .fg(COLOR_BRAND)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "Browser sign-in is not available yet",
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(Span::styled(
-                "Use an API key or Continue offline instead",
-                Style::default().fg(COLOR_MUTED),
-            )),
-            Line::from(Span::styled(
-                "No browser was opened — nothing is waiting",
-                Style::default().fg(COLOR_MUTED),
-            )),
-            Line::from(Span::styled(
-                "Press Esc to cancel  •  [Esc] Cancel",
-                Style::default().fg(COLOR_MUTED),
-            )),
-        ];
-        let p = Paragraph::new(lines);
-        frame.render_widget(p, browser_inner);
-        // Cancel hit area is the last line
-        app.login_cancel = Some(ratatui::layout::Rect {
-            x: browser_inner.x,
-            y: browser_inner.y.saturating_add(3),
-            width: browser_inner.width,
-            height: 1,
-        });
-    } else {
-        let btn_style = if browser_focused {
-            Style::default()
-                .fg(Color::White)
-                .bg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD)
-        };
-        let desc = if browser_focused {
-            "Opens your browser for OAuth  •  Press Enter to start"
-        } else {
-            "Opens your browser for OAuth"
-        };
-        let lines = vec![
-            Line::from(Span::styled(desc, Style::default().fg(COLOR_MUTED))),
-            Line::from(""),
-            Line::from(Span::styled(
-                if browser_focused {
-                    " ▶  Sign in with browser  "
-                } else {
-                    "    Sign in with browser    "
-                },
-                btn_style,
-            )),
-        ];
-        let p = Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center);
-        frame.render_widget(p, browser_inner);
-        app.login_cancel = None;
-    }
-
-    // ---- API key box ----
-    let apikey_focused = app.login_focus == LoginFocus::ApiKey
+    let api_focused = app.login_focus == LoginFocus::ApiKey
         && matches!(
             app.login_status,
             LoginStatus::Idle
@@ -609,408 +1136,43 @@ fn render_login(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
                 | LoginStatus::Success
                 | LoginStatus::Error(_)
         );
-    let apikey_border = if apikey_focused {
-        Style::default()
-            .fg(COLOR_BRAND)
-            .add_modifier(Modifier::BOLD)
-    } else if is_error {
-        Style::default().fg(COLOR_DENY)
-    } else {
-        Style::default().fg(COLOR_BORDER)
+    let api_h = api_card_height(app);
+
+    let browser_rect = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: BROWSER_CARD_H,
     };
-    let apikey_title = if apikey_focused {
-        Span::styled(
-            " [2] ● Use an API key ",
-            Style::default()
-                .fg(Color::White)
-                .bg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::styled(
-            " [2] Use an API key ",
-            Style::default()
-                .fg(COLOR_MUTED)
-                .add_modifier(Modifier::BOLD),
-        )
+    login_card(
+        frame,
+        browser_rect,
+        "1 Browser",
+        browser_focused,
+        &t,
+        browser_card_rows(app, browser_focused, w.saturating_sub(2)),
+    );
+    app.login_browser = Some(browser_rect);
+    app.login_cancel = None;
+
+    let api_rect = Rect {
+        x: area.x,
+        y: area.y + BROWSER_CARD_H + 1,
+        width: area.width,
+        height: api_h,
     };
-    let apikey_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(apikey_border)
-        .title(apikey_title);
-    let apikey_inner = apikey_block.inner(chunks[5]);
-    frame.render_widget(apikey_block, chunks[5]);
-    app.login_apikey = Some(chunks[5]);
-
-    // API key contents — legacy validating state resolves honestly (no fake
-    // network check); normal flow goes straight to Success on submit.
-    if is_validating {
-        let lines = vec![
-            Line::from(vec![Span::styled(
-                "Storing API key locally (not verified)…",
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(""),
-            Line::from(Span::styled(
-                "No network validation in this MVP",
-                Style::default().fg(COLOR_MUTED),
-            )),
-        ];
-        frame.render_widget(
-            Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center),
-            apikey_inner,
-        );
-        app.login_apikey_input = None;
-        app.login_submit = None;
-    } else if is_success {
-        let lines = vec![
-            Line::from(vec![
-                Span::styled(
-                    " ✓ ",
-                    Style::default()
-                        .fg(COLOR_ALLOW)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "API key stored locally, not verified.",
-                    Style::default()
-                        .fg(COLOR_ALLOW)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Loading your workspace…",
-                Style::default().fg(COLOR_MUTED),
-            )),
-        ];
-        frame.render_widget(
-            Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center),
-            apikey_inner,
-        );
-        app.login_apikey_input = None;
-        app.login_submit = None;
-    } else if is_apikey_editing || is_error {
-        // Input field
-        let has_input = !app.login_api_input.is_empty();
-        let display = if has_input {
-            if app.login_api_masked {
-                "•".repeat(app.login_api_input.chars().count())
-            } else {
-                app.login_api_input.clone()
-            }
-        } else {
-            String::new()
-        };
-        let input_line = if has_input {
-            // Masked with cursor
-            let cursor = if apikey_focused { "█" } else { "" };
-            Line::from(vec![
-                Span::styled("  ", Style::default()),
-                Span::styled(display, Style::default().fg(Color::White)),
-                Span::styled(
-                    cursor,
-                    Style::default()
-                        .fg(COLOR_BRAND)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ])
-        } else {
-            Line::from(Span::styled(
-                "  Paste your API key…",
-                Style::default()
-                    .fg(COLOR_MUTED)
-                    .add_modifier(Modifier::ITALIC),
-            ))
-        };
-        // Input box border inside apikey box: field is 3 rows high (border + input line + border)
-        let field_rect = ratatui::layout::Rect {
-            x: apikey_inner.x,
-            y: apikey_inner.y,
-            width: apikey_inner.width,
-            height: 3,
-        };
-        app.login_apikey_input = Some(field_rect);
-
-        let field_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(if is_error {
-                Style::default().fg(COLOR_DENY)
-            } else if apikey_focused {
-                Style::default().fg(COLOR_BRAND)
-            } else {
-                Style::default().fg(COLOR_BORDER)
-            });
-        let field_inner = field_block.inner(field_rect);
-        frame.render_widget(field_block, field_rect);
-        frame.render_widget(Paragraph::new(input_line), field_inner);
-
-        // Submit / helper line (below the input field).
-        // The Submit button gets its OWN sub-Rect from a Layout split and the
-        // label is drawn into exactly that rect — no hand-computed centering
-        // that can drift from what's drawn.
-        let helper_area = ratatui::layout::Rect {
-            x: apikey_inner.x,
-            y: apikey_inner.y + 3,
-            width: apikey_inner.width,
-            height: 1,
-        };
-        let can_submit = has_input && !app.login_api_input.trim().is_empty();
-        let submit_label = " Submit ";
-        let submit_style = if can_submit {
-            Style::default()
-                .fg(Color::White)
-                .bg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(COLOR_MUTED)
-                .bg(Color::Rgb(230, 230, 240))
-        };
-        if is_error {
-            app.login_submit = None;
-            frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    "Press Enter to retry  •  Esc to go back",
-                    Style::default().fg(COLOR_MUTED),
-                )))
-                .alignment(ratatui::layout::Alignment::Center),
-                helper_area,
-            );
-        } else if has_input {
-            // Centered 8-wide slot for Submit via Layout — stored rect IS the
-            // drawn rect.
-            let parts = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Min(0),
-                    Constraint::Length(8),
-                    Constraint::Min(0),
-                ])
-                .split(helper_area);
-            let submit_rect = parts[1];
-            app.login_submit = Some(submit_rect);
-            frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(submit_label, submit_style)))
-                    .alignment(ratatui::layout::Alignment::Center),
-                submit_rect,
-            );
-            // Helper hint goes on the row below (when space allows) so it
-            // never overlaps the button.
-            if apikey_inner.height >= 5 {
-                let hint_below = ratatui::layout::Rect {
-                    x: apikey_inner.x,
-                    y: apikey_inner.y + 4,
-                    width: apikey_inner.width,
-                    height: 1,
-                };
-                frame.render_widget(
-                    Paragraph::new(Line::from(Span::styled(
-                        "Press Enter to submit  •  Esc to cancel",
-                        Style::default().fg(COLOR_MUTED),
-                    )))
-                    .alignment(ratatui::layout::Alignment::Center),
-                    hint_below,
-                );
-            }
-        } else {
-            app.login_submit = None;
-            frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    "Press Enter to submit  •  Esc to go back",
-                    Style::default().fg(COLOR_MUTED),
-                )))
-                .alignment(ratatui::layout::Alignment::Center),
-                helper_area,
-            );
-        }
-
-        // Also render a subtle second line for empty hint (below helper)
-        if !is_error && !has_input {
-            // Move hint one row below helper to avoid overlap — but inner is only 5 high, so check bounds
-            if apikey_inner.height >= 5 {
-                let hint_area = ratatui::layout::Rect {
-                    x: apikey_inner.x,
-                    y: apikey_inner.y + 4,
-                    width: apikey_inner.width,
-                    height: 1,
-                };
-                frame.render_widget(
-                    Paragraph::new(Line::from(Span::styled(
-                        "Keys start with ag_…  •  masked for security",
-                        Style::default().fg(COLOR_MUTED),
-                    )))
-                    .alignment(ratatui::layout::Alignment::Center),
-                    hint_area,
-                );
-            }
-        }
-    } else {
-        // Idle
-        let desc = if apikey_focused {
-            "Paste a key from your dashboard  •  Press Enter to enter key"
-        } else {
-            "Paste a key from your dashboard"
-        };
-        let btn_style = if apikey_focused {
-            Style::default()
-                .fg(Color::White)
-                .bg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD)
-        };
-        let lines = vec![
-            Line::from(Span::styled(desc, Style::default().fg(COLOR_MUTED))),
-            Line::from(""),
-            Line::from(Span::styled(
-                if apikey_focused {
-                    " ▶  Use an API key  "
-                } else {
-                    "    Use an API key    "
-                },
-                btn_style,
-            )),
-        ];
-        frame.render_widget(
-            Paragraph::new(lines).alignment(ratatui::layout::Alignment::Center),
-            apikey_inner,
-        );
-        app.login_apikey_input = None;
-        app.login_submit = None;
-    }
-
-    // ---- Single authoritative status line (replaces duplicated orange banner) ----
-    let status_style = if is_error {
-        Style::default()
-            .fg(Color::White)
-            .bg(COLOR_DENY)
-            .add_modifier(Modifier::BOLD)
-    } else if is_success {
-        Style::default()
-            .fg(Color::White)
-            .bg(COLOR_ALLOW)
-            .add_modifier(Modifier::BOLD)
-    } else if is_browser_pending || is_validating {
-        Style::default()
-            .fg(COLOR_BRAND)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(COLOR_MUTED)
-    };
-    let status_text = if is_error {
-        if let LoginStatus::Error(msg) = &app.login_status {
-            format!(" ✕ {msg} ")
-        } else {
-            " ✕ Invalid API key ".to_string()
-        }
-    } else if is_success {
-        " ✓ Stored locally, not verified — loading… ".to_string()
-    } else if is_browser_pending {
-        if let Some(msg) = &app.login_status_msg {
-            format!(" {} ", msg)
-        } else {
-            " Browser sign-in is not available yet ".to_string()
-        }
-    } else if is_validating {
-        " Storing API key locally (not verified)… ".to_string()
-    } else if is_apikey_editing {
-        if app.login_api_input.is_empty() {
-            " Paste your API key above and press Enter ".to_string()
-        } else {
-            " Press Enter to submit your API key ".to_string()
-        }
-    } else {
-        // Idle — no hint text (deliberately blank, keeps spacing).
-        String::new()
-    };
-    let status = Paragraph::new(Line::from(Span::styled(status_text, status_style)))
-        .alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(status, chunks[6]);
-
-    // ---- Offline option (secondary/tertiary, muted, at bottom) ----
-    let offline_focused =
-        app.login_focus == LoginFocus::Offline && app.login_status == LoginStatus::Idle;
-    let offline_style = if offline_focused {
-        Style::default()
-            .fg(Color::White)
-            .bg(Color::Rgb(140, 140, 155))
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(COLOR_MUTED)
-    };
-    let offline_line = if offline_focused {
-        Line::from(Span::styled(
-            " ▶ Continue offline (limited features, no sync)  [o] ",
-            offline_style,
-        ))
-    } else {
-        Line::from(Span::styled(
-            "   Continue offline (limited features, no sync)  [o] ",
-            offline_style,
-        ))
-    };
-    let offline_para = Paragraph::new(offline_line).alignment(ratatui::layout::Alignment::Center);
-    frame.render_widget(offline_para, chunks[7]);
-    app.login_offline = Some(chunks[7]);
-
-    // ---- Footer hints + quit (de-emphasized) ----
-    let hints = Paragraph::new(vec![Line::from(vec![
-        Span::styled(
-            " Tab ",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("switch  ", Style::default().fg(COLOR_MUTED)),
-        Span::styled(
-            "Enter ",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("select  ", Style::default().fg(COLOR_MUTED)),
-        Span::styled(
-            "Esc ",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("back  ", Style::default().fg(COLOR_MUTED)),
-        Span::styled(
-            " 1",
-            Style::default()
-                .fg(COLOR_BRAND)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("/2 ", Style::default().fg(COLOR_MUTED)),
-        Span::styled("quick  ", Style::default().fg(COLOR_MUTED)),
-    ])])
-    .alignment(ratatui::layout::Alignment::Center);
-    // Footer row intentionally left blank (hints removed). `hints` is
-    // intentionally unrendered; the mouse-quit target is gone with its label
-    // (keyboard `q` still quits). Reference chunks[8] to keep layout stable.
-    let _ = (&hints, chunks[8]);
-    app.login_quit = None;
-
-    // Animated focus rings: rotating dashed border on the active box only.
-    // Drawn last so the dash phase owns the border cells outright.
-    let dash_style = Style::default()
-        .fg(COLOR_BRAND)
-        .add_modifier(Modifier::BOLD);
-    if browser_focused || is_browser_pending {
-        render_marching_dashes(frame, chunks[3], app.anim_phase, dash_style);
-    }
-    if apikey_focused {
-        render_marching_dashes(frame, chunks[5], app.anim_phase, dash_style);
-    }
-
-    // Keep legacy alias in sync for tests that still read login_signin
-    app.login_signin = app.login_browser;
+    login_card(
+        frame,
+        api_rect,
+        "2 API key",
+        api_focused,
+        &t,
+        api_card_rows(app, api_focused, w.saturating_sub(2)),
+    );
+    app.login_apikey = Some(api_rect);
+    // The card itself is the button: no inner input/submit rects.
+    app.login_apikey_input = None;
+    app.login_submit = None;
 }
 
 /// CLI-integration picker — the main view. Lists the terminal coding tools
@@ -1258,11 +1420,9 @@ fn render_table(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
         .map(|(i, e)| {
             let action = e.action_str();
             let color = action_color(action);
-            let dot = match action {
-                "allow" => "●",
-                "deny" => "●",
-                _ => "●",
-            };
+            // Triple-encoded (color+glyph+word): ✓/?/✗ stay distinct under
+            // red-green colorblindness and in grayscale (research §2.3).
+            let dot = action_glyph(action);
             let selected = i == selected_idx;
             let base = if selected {
                 Style::default()
@@ -1398,21 +1558,35 @@ fn render_detail(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_empty(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let hint = if app.is_offline {
-        "audit.db not found — run algo init, trigger a Bash tool, new rows appear automatically."
+    // Empty states with next action (research: never a blank list — show help
+    // + status). Distinguish offline-cached vs genuinely-empty.
+    let (title, hint, next) = if app.is_offline {
+        (
+            " Feed empty — offline ",
+            "audit.db not found or daemon down — showing cached (possibly zero) rows.",
+            "[r] retry  ·  run algo init, trigger a Bash tool, rows appear automatically.",
+        )
     } else {
-        "No decisions yet. Trigger a Bash tool via the Claude hook — new rows appear automatically."
+        (
+            " No decisions yet ",
+            "No tool events yet. Trigger a Bash tool via the hook — new rows appear automatically.",
+            "[r] refresh  ·  algo status shows counts+savings · algo why shows last decision.",
+        )
     };
     let text = vec![
         Line::from(Span::styled(
-            " No decisions yet ",
-            Style::default().fg(Color::White).bg(COLOR_BRAND).add_modifier(Modifier::BOLD),
+            title,
+            Style::default()
+                .fg(Color::White)
+                .bg(token_brand())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(hint, Style::default().fg(COLOR_MUTED))),
         Line::from(""),
+        Line::from(Span::styled(next, Style::default().fg(COLOR_MUTED))),
         Line::from(Span::styled(
-            "algo status shows counts+savings · algo why shows last decision · algo log --show-egress inspects egress",
+            "algo log --show-egress inspects egress  ·  ? help  ·  q quit",
             Style::default().fg(COLOR_MUTED),
         )),
     ];
@@ -1423,6 +1597,58 @@ fn render_empty(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     frame.render_widget(
         Paragraph::new(text).block(block).wrap(Wrap { trim: true }),
         area,
+    );
+}
+
+/// `?` help overlay — context keys for every view (research: k9s/gh-dash `?`).
+fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
+    let t = app.theme;
+    let help = centered_fixed(64, 18, area);
+    let lines = vec![
+        Line::from(Span::styled(
+            " Keys (? to close, Esc closes) ",
+            if t.is_mono() {
+                Style::default().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(Color::White)
+                    .bg(t.accent)
+                    .add_modifier(Modifier::BOLD)
+            },
+        )),
+        Line::from(""),
+        Line::from(Span::raw(
+            " Login:   Up/Down/Tab move · Enter activates card · 1/2/o shortcut · Esc cancel/quit",
+        )),
+        Line::from(Span::raw(
+            " Mascot:  click dog or b to bark · m cycles color (truecolor/ansi16/mono)",
+        )),
+        Line::from(Span::raw(" Connect: j/k or Up/Down move · 1-4 jump · Enter choose · q/Esc quit")),
+        Line::from(Span::raw(" Feed:    j/k move · g/G or Home/End top/bottom · PgUp/PgDn page")),
+        Line::from(Span::raw("          r refresh · ? help · q/Esc quit · click a row to inspect")),
+        Line::from(Span::raw(" Detail:  action+reason+confidence+source+latency (= algo why)")),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Mouse-first: every button/row/tab is clickable. Shift+click bypasses capture for text select.",
+            t.muted(),
+        )),
+        Line::from(Span::styled(
+            "Offline: read-only cached view — actions disabled, ask-only. [r] retries.",
+            t.muted(),
+        )),
+    ];
+    // Clear behind the popup so text stays readable (ratatui recipe).
+    frame.render_widget(ratatui::widgets::Clear, help);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(t.border_focus()),
+            )
+            .wrap(Wrap { trim: true }),
+        help,
     );
 }
 
@@ -1623,7 +1849,7 @@ fn render_footer(frame: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
     );
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            "click a row to inspect · refreshes automatically",
+            "j/k move · g/G top/bottom · r refresh · ? help · click row",
             Style::default().fg(COLOR_MUTED),
         )))
         .alignment(ratatui::layout::Alignment::Center),
@@ -1785,7 +2011,7 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        // New hierarchy: clear title, subtitle, two primary boxes, secondary offline, single status line
+        // Hierarchy: left-aligned title, one card per auth path, muted offline.
         assert!(
             s.contains("Sign in to Algorithco Guard"),
             "title missing: {s}"
@@ -1794,43 +2020,53 @@ mod tests {
             s.contains("Choose how to authenticate"),
             "subtitle missing: {s}"
         );
+        // Leading shortcuts, card text appears exactly once (card IS the button).
         assert!(
-            s.contains("[1]") && s.contains("Sign in with browser"),
-            "browser option missing: {s}"
+            s.contains("1 Browser") && s.contains("Continue in browser"),
+            "browser card missing: {s}"
+        );
+        assert_eq!(
+            s.matches("Continue in browser").count(),
+            1,
+            "card label must not repeat: {s}"
         );
         assert!(
-            s.contains("[2]") && s.contains("Use an API key"),
-            "apikey option missing: {s}"
+            s.contains("2 API key") && s.contains("Paste a key from your dashboard"),
+            "apikey card missing: {s}"
         );
         assert!(
             s.contains("Continue offline"),
             "offline secondary missing: {s}"
         );
-        // Offline should be present but not underlined primary — check we don't have duplicated orange banner
+        // Rounded solid borders, never dashed marching ants.
         assert!(
-            !s.contains("You're offline — nothing is synced. Choose Continue offline."),
-            "duplicated warning should be removed"
+            s.contains('╭') && s.contains('╮'),
+            "rounded corners missing"
         );
-        // Hint lines removed: idle status and footer must not show them
+        // Global footer with every shortcut; no hidden keys.
         assert!(
-            !s.contains("1 / 2 to choose"),
-            "idle status hint should be gone"
+            s.contains("↑↓ select") && s.contains("? help") && s.contains("Esc quit"),
+            "footer missing: {s}"
         );
-        assert!(!s.contains("1/2 quick"), "footer hints should be gone");
-        assert!(!s.contains("q quit"), "footer quit label should be gone");
-        // Click areas recorded (offline kept; quit target gone with its label)
+        // No dev hints on the login surface (moved to `?` / --debug).
+        assert!(!s.contains("click/[b]"), "dev hint leaked onto login: {s}");
+        assert!(!s.contains("[m] color"), "dev hint leaked onto login: {s}");
+        // Click areas recorded (quit target gone with its label).
         assert!(app.login_browser.is_some(), "browser rect not recorded");
         assert!(app.login_apikey.is_some(), "apikey rect not recorded");
         assert!(app.login_offline.is_some(), "offline rect not recorded");
         assert!(app.login_quit.is_none(), "quit rect should be gone");
+        assert!(app.login_submit.is_none(), "no inner submit button");
     }
 
     #[test]
     fn render_login_states_browser_pending_and_apikey() {
         let mut app = App::new(None);
         app.show_login();
-        // Browser pending
+        app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
+        // Browser pending past the grace period: spinner + wait line + URL.
         app.start_browser_signin();
+        app.browser_since = Some(std::time::Instant::now() - std::time::Duration::from_millis(500));
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -1841,25 +2077,45 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
+        assert!(s.contains("Waiting for browser"), "wait line missing: {s}");
         assert!(
-            s.contains("not available yet"),
-            "honest browser-pending message missing: {s}"
+            s.contains("127.0.0.1"),
+            "destination URL must be shown: {s}"
         );
+        assert!(s.contains("Esc to cancel"), "cancel hint missing: {s}");
         assert!(
-            !s.contains("WD-4829-XK"),
-            "fabricated device code must be gone"
+            !s.contains("WD-4829-XK") && !s.contains("Device code"),
+            "fabricated device code must be gone: {s}"
         );
+        // Before the grace period: static opening line, no spinner yet.
+        app.browser_since = Some(std::time::Instant::now());
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let early: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
         assert!(
-            !s.contains("Device code"),
-            "fabricated device-code line must be gone: {s}"
+            early.contains("Opening browser"),
+            "grace line missing: {early}"
         );
-        assert!(
-            s.contains("Esc to cancel") || s.contains("Cancel"),
-            "cancel hint missing"
-        );
-        // API key editing
+        // API key editing: empty entry invites paste, typed entry masks.
         app.show_login();
         app.start_api_key_entry();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let empty: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            empty.contains("Ctrl+V to paste"),
+            "paste hint missing: {empty}"
+        );
         app.push_api_key_char('a');
         app.push_api_key_char('b');
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -1870,11 +2126,9 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(
-            s2.contains("••") || s2.contains("Paste your API key"),
-            "masked input missing"
-        );
-        // Error state
+        assert!(s2.contains("••"), "masked input missing: {s2}");
+        assert!(app.login_submit.is_none(), "card is the button");
+        // Error state: specific message with fix, symbol+text.
         app.login_api_input = "".to_string();
         app.submit_api_key();
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -1886,12 +2140,13 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s3.contains("cannot be empty") || s3.contains("API key"),
-            "error message missing"
+            s3.contains("▲") && s3.contains("empty") && s3.contains("ag_"),
+            "specific error missing: {s3}"
         );
-        // Success state
+        assert!(!s3.to_lowercase().contains("sorry"), "no apologies: {s3}");
+        // Success state names the key suffix.
         app.login_api_input = "ag-valid-key-12345".to_string();
-        app.login_status = LoginStatus::Success;
+        app.submit_api_key();
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let s4: String = terminal
             .backend()
@@ -1901,10 +2156,10 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s4.contains("stored locally, not verified") || s4.contains("Stored locally"),
-            "honest success missing: {s4}"
+            s4.contains("✓ Signed in as key ••••2345"),
+            "success identity missing: {s4}"
         );
-        // Legacy validating state resolves honestly (no fake network check)
+        // Legacy validating state resolves honestly (no fake network check).
         app.login_status = LoginStatus::ApiKeyValidating;
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let s5: String = terminal
@@ -1915,7 +2170,7 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s5.contains("not verified") || s5.contains("Storing"),
+            s5.contains("Storing key locally"),
             "honest validating missing: {s5}"
         );
         assert!(
@@ -2055,7 +2310,9 @@ mod tests {
     }
 
     #[test]
-    fn login_submit_rect_matches_drawn_button_at_widths() {
+    fn login_card_is_the_button_no_inner_submit() {
+        // The card itself is the button: no inner submit/input rects, and a
+        // click anywhere on the API card starts key entry.
         for width in [80u16, 120u16] {
             let mut app = App::new(None);
             app.show_login();
@@ -2066,13 +2323,34 @@ mod tests {
             let backend = TestBackend::new(width, 30);
             let mut terminal = Terminal::new(backend).unwrap();
             terminal.draw(|f| render(f, &mut app)).unwrap();
-            let buf = terminal.backend().buffer().clone();
-            let r = app.login_submit.expect("submit rect must be recorded");
-            assert!(has_non_whitespace(&buf, r), "submit rect {r:?} has no text");
-            let text = rect_text(&buf, r);
             assert!(
-                text.contains("Submit"),
-                "submit rect {r:?} must contain label, got {text:?}"
+                app.login_submit.is_none(),
+                "inner submit button must be gone at {width}"
+            );
+            assert!(
+                app.login_apikey_input.is_none(),
+                "inner input rect must be gone at {width}"
+            );
+            let card = app.login_apikey.expect("api card rect");
+            let buf = terminal.backend().buffer().clone();
+            assert!(
+                has_non_whitespace(&buf, card),
+                "api card {card:?} is empty at {width}"
+            );
+            // Clicking the card body submits the typed key (Enter equivalent).
+            let mut clicked = App::new(None);
+            clicked.show_login();
+            clicked.login_focus = crate::app::LoginFocus::ApiKey;
+            clicked.login_status = crate::app::LoginStatus::ApiKeyEditing;
+            for c in "ag-valid-key-12345".chars() {
+                clicked.push_api_key_char(c);
+            }
+            clicked.login_apikey = Some(card);
+            assert!(!clicked.handle_click(card.x + 2, card.y + 2));
+            assert_eq!(
+                clicked.login_status,
+                crate::app::LoginStatus::Success,
+                "card click must activate like Enter"
             );
         }
     }
@@ -2137,53 +2415,79 @@ mod tests {
     }
 
     #[test]
-    fn focused_box_has_rotating_dashed_border() {
-        // Idle login focuses the browser box: its border must be dashed with
-        // gaps, the title must survive the overlay, and the dash pattern must
-        // march between ticks and loop cleanly after a full period.
-        let mut app = App::new(None);
-        app.show_login(); // focus Browser, Idle
-        app.anim_phase = 0;
-        let backend = TestBackend::new(100, 30);
-        let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| render(f, &mut app)).unwrap();
-        let browser = app.login_browser.expect("browser rect");
-        let top_row = |buf: &ratatui::buffer::Buffer| -> String {
-            (browser.x..browser.x + browser.width)
-                .map(|x| buf[(x, browser.y)].symbol().to_string())
-                .collect()
-        };
-        let first = top_row(terminal.backend().buffer());
-        assert!(
-            first.contains("─"),
-            "focused box must keep dashes, got {first:?}"
-        );
-        assert!(
-            first.contains("[1]"),
-            "title must survive dash overlay, got {first:?}"
-        );
-        // Unfocused API-key box keeps a solid border (no dash gaps).
-        // Strip its title first — the title text legitimately contains spaces.
-        let apikey = app.login_apikey.expect("apikey rect");
-        let abuf = terminal.backend().buffer().clone();
-        let atop: String = (apikey.x..apikey.x + apikey.width)
-            .map(|x| abuf[(x, apikey.y)].symbol().to_string())
-            .collect();
-        let border_only = atop.replace(" [2] Use an API key ", "");
-        assert!(
-            !border_only.contains(' '),
-            "unfocused box must stay solid, got {atop:?}"
-        );
-        // Advance one phase step: the dash pattern must visibly march.
-        app.anim_phase = 1;
-        terminal.draw(|f| render(f, &mut app)).unwrap();
-        let second = top_row(terminal.backend().buffer());
-        assert_ne!(first, second, "dashes must rotate between phases");
-        // Full period (5 dash cells) returns to the start.
-        app.anim_phase = 5;
-        terminal.draw(|f| render(f, &mut app)).unwrap();
-        let third = top_row(terminal.backend().buffer());
-        assert_eq!(first, third, "dash cycle must loop cleanly");
+    fn focused_card_has_rounded_accent_border() {
+        // One accent element per focused card: solid rounded border in the
+        // focus color, bold title, single ▶ marker. Unfocused: dim idle
+        // border, muted title, no marker. No dashed borders anywhere.
+        use crate::dog::ColorMode;
+        for layer in [ColorMode::TrueColor, ColorMode::Ansi16, ColorMode::Mono] {
+            let mut app = App::new(None);
+            app.set_color_layer(layer);
+            app.show_login(); // focus Browser, Idle
+            let backend = TestBackend::new(80, 24);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &mut app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            let content: String = buf
+                .content()
+                .iter()
+                .map(|c| c.symbol().to_string())
+                .collect();
+            assert!(
+                !content.contains("●"),
+                "focus chips must be gone ({layer:?})"
+            );
+            let browser = app.login_browser.expect("browser rect");
+            let apikey = app.login_apikey.expect("apikey rect");
+            let top = |r: ratatui::layout::Rect| -> String {
+                (r.x..r.x + r.width)
+                    .map(|x| buf[(x, r.y)].symbol().to_string())
+                    .collect()
+            };
+            let btop = top(browser);
+            let atop = top(apikey);
+            // Rounded corners on both cards, titles intact.
+            for (name, row) in [("browser", &btop), ("apikey", &atop)] {
+                assert!(
+                    row.starts_with('╭'),
+                    "{name} missing rounded corner ({layer:?}): {row:?}"
+                );
+                assert!(
+                    row.ends_with('╮'),
+                    "{name} missing rounded corner ({layer:?}): {row:?}"
+                );
+            }
+            assert!(btop.contains("1 Browser"), "title cut: {btop:?}");
+            assert!(atop.contains("2 API key"), "title cut: {atop:?}");
+            // Focused border style differs from idle border style.
+            let bcell = &buf[(browser.x, browser.y)];
+            let acell = &buf[(apikey.x, apikey.y)];
+            assert_ne!(
+                (bcell.fg, bcell.modifier),
+                (acell.fg, acell.modifier),
+                "focused card must be visually distinct ({layer:?})"
+            );
+            // Single ▶ marker on the focused card only.
+            let body = |r: ratatui::layout::Rect| -> String {
+                let mut s = String::new();
+                for y in r.y..r.y + r.height {
+                    for x in r.x..r.x + r.width {
+                        s.push_str(buf[(x, y)].symbol());
+                    }
+                }
+                s
+            };
+            assert_eq!(
+                body(browser).matches('▶').count(),
+                1,
+                "exactly one marker on focused card ({layer:?})"
+            );
+            assert_eq!(
+                body(apikey).matches('▶').count(),
+                0,
+                "no marker on unfocused card ({layer:?})"
+            );
+        }
     }
 
     #[test]
@@ -2283,5 +2587,355 @@ mod tests {
             "chosen row must show selected"
         );
         assert!(content.contains("Not connected"), "others stay unconnected");
+    }
+
+    #[test]
+    fn feed_actions_are_triple_encoded() {
+        // Research §2.3: color+glyph+word so red/green stay distinct.
+        assert_eq!(action_glyph("allow"), "✓");
+        assert_eq!(action_glyph("deny"), "✗");
+        assert_eq!(action_glyph("ask"), "?");
+        // Feed rows render the glyph next to the word.
+        let mut app = many_entry_app(2);
+        app.entries[0].action = Action::Deny as i32;
+        app.entries[1].action = Action::Allow as i32;
+        app.select_first();
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(s.contains("✗ deny"), "deny row must be triple-encoded: {s}");
+        assert!(
+            s.contains("✓ allow"),
+            "allow row must be triple-encoded: {s}"
+        );
+    }
+
+    #[test]
+    fn offline_banner_has_retry_hints() {
+        let mut app = App::new(None);
+        app.is_offline = true;
+        app.error = Some("simulated daemon down".to_string());
+        app.mode = crate::app::ViewMode::Feed;
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(s.contains("OFFLINE"), "banner missing: {s}");
+        assert!(s.contains("[r]"), "retry hint missing: {s}");
+        assert!(
+            s.contains("ask-only") || s.contains("read-only"),
+            "degraded note missing: {s}"
+        );
+    }
+
+    #[test]
+    fn help_overlay_renders_on_all_views() {
+        for mode in [
+            crate::app::ViewMode::Login,
+            crate::app::ViewMode::Connect,
+            crate::app::ViewMode::Feed,
+        ] {
+            let mut app = App::new(None);
+            app.mode = mode.clone();
+            if mode == crate::app::ViewMode::Login {
+                app.show_login();
+            }
+            app.help_visible = true;
+            let backend = TestBackend::new(100, 30);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|f| render(f, &mut app)).unwrap();
+            let s: String = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol().to_string())
+                .collect();
+            assert!(
+                s.contains("? to close") || s.contains("Keys"),
+                "help missing for {mode:?}: {s}"
+            );
+            assert!(s.contains("j/k"), "vim hints missing for {mode:?}");
+        }
+    }
+
+    #[test]
+    fn footer_shows_help_hint() {
+        let mut app = many_entry_app(2);
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(s.contains("? help"), "footer ? hint missing: {s}");
+        assert!(s.contains("j/k"), "footer vim hint missing: {s}");
+    }
+
+    #[test]
+    fn ascii_fallbacks_keep_width() {
+        // ASCII twins must exist and keep single-cell width (research §3.2/§6).
+        assert!(confidence_bar(0.9).contains("0.90"));
+        for i in 0..10 {
+            assert_eq!(
+                spinner_frame(i).chars().count(),
+                1,
+                "spinner frame {i} must be 1 cell"
+            );
+        }
+    }
+
+    #[test]
+    fn login_wide_shows_dog_right_panel() {
+        // 130-wide terminal: form left + 36x18 guard dog right, status under it.
+        let mut app = App::new(None);
+        app.show_login();
+        let backend = TestBackend::new(130, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        // Form side intact.
+        assert!(
+            s.contains("Sign in to Algorithco Guard"),
+            "form title missing"
+        );
+        assert!(
+            s.contains("1 Browser") && s.contains("Continue in browser"),
+            "browser card missing"
+        );
+        // Dog side: art + adjacent status line, no dev hints.
+        assert!(
+            s.contains("calm") || s.contains("alert") || s.contains("barking"),
+            "dog status missing"
+        );
+        assert!(
+            !s.contains("[b] bark") && !s.contains("[m] color"),
+            "dev hints must live in `?`, not on login: {s}"
+        );
+        // Click rect recorded and form rects intact.
+        assert!(app.login_dog.is_some(), "dog click rect not recorded");
+        assert!(
+            app.login_browser.is_some(),
+            "browser rect missing in wide layout"
+        );
+        assert!(
+            app.login_apikey.is_some(),
+            "apikey rect missing in wide layout"
+        );
+        // Dog art sits right of the form (perfect side-by-side).
+        let dog = app.login_dog.expect("dog rect");
+        let form = app.login_browser.expect("form rect");
+        assert!(
+            dog.x > form.x + form.width,
+            "dog must be right of form: dog {dog:?} form {form:?}"
+        );
+        assert!(
+            dog.width >= crate::dog::CELLS_W,
+            "dog art must fit 36 cells: {dog:?}"
+        );
+        assert!(
+            dog.height >= crate::dog::CELLS_H,
+            "dog art must fit 18 cells: {dog:?}"
+        );
+    }
+
+    #[test]
+    fn login_narrow_hides_dog_gracefully() {
+        // 80-wide: single column, no dog art, but the status line stays.
+        let mut app = App::new(None);
+        app.show_login();
+        let backend = TestBackend::new(80, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(
+            s.contains("Sign in to Algorithco Guard"),
+            "form missing in narrow"
+        );
+        assert!(app.login_dog.is_none(), "dog must hide on narrow terminals");
+        assert!(
+            s.contains("calm"),
+            "status line must stay without the dog: {s}"
+        );
+        assert!(
+            app.login_browser.is_some(),
+            "browser rect missing in narrow"
+        );
+    }
+
+    #[test]
+    fn dog_alert_caption_and_bark() {
+        let mut app = App::new(None);
+        app.show_login();
+        app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
+        app.start_browser_signin();
+        // Past the spinner grace period so the wait line is visible.
+        app.browser_since = Some(std::time::Instant::now() - std::time::Duration::from_millis(500));
+        app.tick(); // syncs dog alert
+        assert!(app.dog.is_alert(), "dog must mirror BrowserPending alert");
+        let backend = TestBackend::new(130, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &mut app)).unwrap();
+        let s: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect();
+        assert!(s.contains("Waiting for browser"), "wait line missing: {s}");
+        // Clicking the dog barks.
+        let r = app.login_dog.expect("dog rect");
+        let cx = r.x + r.width / 2;
+        let cy = r.y + r.height / 2;
+        assert!(!app.handle_click(cx, cy));
+        assert!(app.dog.barking(), "dog click must bark");
+        // Color layers cycle truecolor -> ansi-16 -> mono.
+        let first = app.dog.color_mode();
+        app.cycle_dog_color();
+        assert_ne!(app.dog.color_mode(), first);
+    }
+
+    fn render_login_text(app: &mut App, w: u16, h: u16) -> String {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, app)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn login_matrix_sizes_and_layers() {
+        // Required matrix: 80x24, 100x30, 120x40, 60x18 in all three tiers.
+        // No panic, no missing essentials, focused card always distinct.
+        use crate::dog::ColorMode;
+        for (w, h) in [(80u16, 24u16), (100, 30), (120, 40), (60, 18)] {
+            for layer in [ColorMode::TrueColor, ColorMode::Ansi16, ColorMode::Mono] {
+                let mut app = App::new(None);
+                app.set_color_layer(layer);
+                app.show_login();
+                let backend = TestBackend::new(w, h);
+                let mut terminal = Terminal::new(backend).unwrap();
+                terminal
+                    .draw(|f| render(f, &mut app))
+                    .unwrap_or_else(|e| panic!("panic at {w}x{h} {layer:?}: {e}"));
+                let buf = terminal.backend().buffer().clone();
+                let s: String = buf
+                    .content()
+                    .iter()
+                    .map(|c| c.symbol().to_string())
+                    .collect();
+                if w < 60 || h < 18 {
+                    // Only 60x18 hits the gate here (60x18: h == 18 renders).
+                    continue;
+                }
+                assert!(
+                    s.contains("Sign in to Algorithco Guard"),
+                    "title missing at {w}x{h} {layer:?}"
+                );
+                assert!(
+                    s.contains("Esc quit"),
+                    "footer missing at {w}x{h} {layer:?}"
+                );
+                // Focused card visually distinct from the idle one.
+                let b = app.login_browser.expect("browser rect");
+                let a = app.login_apikey.expect("apikey rect");
+                let bc = &buf[(b.x, b.y)];
+                let ac = &buf[(a.x, a.y)];
+                assert_ne!(
+                    (bc.fg, bc.modifier),
+                    (ac.fg, ac.modifier),
+                    "focus invisible at {w}x{h} {layer:?}"
+                );
+                // Dog art only where it fits; status always present.
+                if w >= 100 && h >= 28 {
+                    assert!(app.login_dog.is_some(), "dog missing at {w}x{h} {layer:?}");
+                } else {
+                    assert!(
+                        app.login_dog.is_none(),
+                        "dog must hide at {w}x{h} {layer:?}"
+                    );
+                }
+                assert!(
+                    s.contains("calm"),
+                    "status missing at {w}x{h} {layer:?}: {s}"
+                );
+                // Never vague, never sorry, never debug-colored internals.
+                assert!(!s.to_lowercase().contains("sorry"), "apology at {w}x{h}");
+                assert!(!s.contains("[b] bark"), "dev hint at {w}x{h}");
+            }
+        }
+    }
+
+    #[test]
+    fn login_gate_below_minimum() {
+        // Below the minimum the UI explains instead of clipping. The global
+        // 60-wide gate fires first on narrow screens; the login 60x18 gate
+        // fires on short-but-wide screens.
+        let mut app = App::new(None);
+        app.show_login();
+        let narrow = render_login_text(&mut app, 59, 30);
+        assert!(
+            narrow.contains("too small"),
+            "narrow gate missing: {narrow}"
+        );
+        assert!(app.login_browser.is_none(), "no hit rects behind gate");
+        let mut app = App::new(None);
+        app.show_login();
+        let short = render_login_text(&mut app, 80, 17);
+        assert!(
+            short.contains("Terminal too small") && short.contains("60x18"),
+            "login gate missing at 80x17: {short}"
+        );
+        assert!(app.login_browser.is_none(), "no hit rects behind gate");
+        assert!(app.login_dog.is_none(), "no hit rects behind gate");
+        let mut app = App::new(None);
+        app.show_login();
+        let tiny = render_login_text(&mut app, 50, 10);
+        assert!(tiny.contains("too small"), "tiny gate missing: {tiny}");
+        // 80x24 must work (required breakpoint).
+        let mut app = App::new(None);
+        app.show_login();
+        let s = render_login_text(&mut app, 80, 24);
+        assert!(
+            s.contains("Sign in to Algorithco Guard"),
+            "80x24 broken: {s}"
+        );
+        assert!(s.contains("2 API key"), "api card missing at 80x24");
+        assert!(s.contains("Esc quit"), "footer missing at 80x24");
     }
 }

@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Action } from "../lib/api";
 import type { AuditEntry } from "../lib/api";
-import { fetchAuditHistoryWithFallback } from "../lib/api";
-import { ActionDot } from "./HistoryTable";
+import { fetchAuditHistoryWithFallback } from "../lib/fallback";
 import { fmtLatency, fmtTs } from "../lib/utils";
+import { ActionDot } from "./HistoryTable";
 
 /**
  * LiveFeed — SSE EventSource to /v1/audit/stream with polling fallback.
@@ -14,9 +14,13 @@ import { fmtLatency, fmtTs } from "../lib/utils";
 const SSE_URL = "/v1/audit/stream";
 const POLL_MS = 5000;
 
-export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void }): JSX.Element {
+export function LiveFeed({
+  onNewEntry,
+}: { onNewEntry?: (e: AuditEntry) => void }): JSX.Element {
   const [events, setEvents] = React.useState<AuditEntry[]>([]);
-  const [status, setStatus] = React.useState<"sse" | "polling" | "idle">("idle");
+  const [status, setStatus] = React.useState<"sse" | "polling" | "idle">(
+    "idle",
+  );
   const [error, setError] = React.useState<string | null>(null);
 
   const appendIfNew = React.useCallback(
@@ -67,7 +71,9 @@ export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void 
             if (parsed?.trace_id) appendIfNew(parsed);
           } catch {
             // parse fail → ask semantics: keep prior state, log
-            setError("SSE parse error — fail-safe: ignoring malformed event (ask)");
+            setError(
+              "SSE parse error — fail-safe: ignoring malformed event (ask)",
+            );
           }
         };
         es.onerror = () => {
@@ -81,7 +87,9 @@ export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void 
             }
           }
           if (!cancelled && pollTimer === null) {
-            startPolling("SSE unavailable — fallback to polling (static build / no daemon)");
+            startPolling(
+              "SSE unavailable — fallback to polling (static build / no daemon)",
+            );
           }
         };
         // If SSE doesn't open within 1.5s, assume static build and poll
@@ -98,9 +106,8 @@ export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void 
         return () => {
           window.clearTimeout(fallbackTimeout);
         };
-      } else {
-        startPolling("EventSource not supported — polling");
       }
+      startPolling("EventSource not supported — polling");
     } catch (e) {
       startPolling(String(e));
     }
@@ -119,41 +126,89 @@ export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void 
   }, [appendIfNew]);
 
   return (
-    <div className="rounded-xl border" style={{ borderColor: "var(--ag-border)", background: "var(--ag-surface)" }}>
-      <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "var(--ag-border)" }}>
+    <div
+      className="rounded-xl border"
+      style={{
+        borderColor: "var(--ag-border)",
+        background: "var(--ag-surface)",
+      }}
+    >
+      <div
+        className="flex items-center justify-between border-b px-4 py-3"
+        style={{ borderColor: "var(--ag-border)" }}
+      >
         <h3 className="text-sm font-semibold">Live feed</h3>
         <div className="flex items-center gap-2 text-xs">
           <span
             className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1"
             style={{
-              borderColor: status === "sse" ? "var(--ag-allow)" : "var(--ag-border)",
-              color: status === "sse" ? "var(--ag-allow)" : "var(--ag-text-muted)",
-              background: status === "sse" ? "color-mix(in srgb, var(--ag-allow) 10%, transparent)" : "transparent",
+              borderColor:
+                status === "sse" ? "var(--ag-allow)" : "var(--ag-border)",
+              color:
+                status === "sse" ? "var(--ag-allow)" : "var(--ag-text-muted)",
+              background:
+                status === "sse"
+                  ? "color-mix(in srgb, var(--ag-allow) 10%, transparent)"
+                  : "transparent",
             }}
-            title={status === "sse" ? "SSE connected to /v1/audit/stream" : "Polling /v1/audit"}
+            title={
+              status === "sse"
+                ? "SSE connected to /v1/audit/stream"
+                : "Polling /v1/audit"
+            }
           >
-            <span className="h-2 w-2 rounded-full" style={{ background: status === "sse" ? "var(--ag-allow)" : "var(--ag-ask)" }} />
-            {status === "sse" ? "live" : status === "polling" ? "polling" : "idle"}
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{
+                background:
+                  status === "sse" ? "var(--ag-allow)" : "var(--ag-ask)",
+              }}
+            />
+            {status === "sse"
+              ? "live"
+              : status === "polling"
+                ? "polling"
+                : "idle"}
           </span>
-          <span className="hidden sm:inline" style={{ color: "var(--ag-text-muted)" }}>
+          <span
+            className="hidden sm:inline"
+            style={{ color: "var(--ag-text-muted)" }}
+          >
             SSE {SSE_URL} → fallback poll {POLL_MS / 1000}s
           </span>
         </div>
       </div>
 
       {error && (
-        <div className="border-b px-4 py-2 text-xs" style={{ borderColor: "var(--ag-border)", color: "var(--ag-text-muted)", background: "var(--ag-bg)" }}>
+        <div
+          className="border-b px-4 py-2 text-xs"
+          style={{
+            borderColor: "var(--ag-border)",
+            color: "var(--ag-text-muted)",
+            background: "var(--ag-bg)",
+          }}
+        >
           {error}
         </div>
       )}
 
       {events.length === 0 ? (
-        <div className="p-6 text-center text-sm" style={{ color: "var(--ag-text-muted)" }}>
-          No live events yet — waiting for <code className="rounded bg-[var(--ag-bg)] px-1 py-0.5">/v1/audit/stream</code>. Static build shows
-          polling preview; live daemon will push decisions here.
+        <div
+          className="p-6 text-center text-sm"
+          style={{ color: "var(--ag-text-muted)" }}
+        >
+          No live events yet — waiting for{" "}
+          <code className="rounded bg-[var(--ag-bg)] px-1 py-0.5">
+            /v1/audit/stream
+          </code>
+          . Static build shows polling preview; live daemon will push decisions
+          here.
         </div>
       ) : (
-        <ul className="max-h-[320px] overflow-y-auto divide-y" style={{ borderColor: "var(--ag-border)" }}>
+        <ul
+          className="max-h-[320px] overflow-y-auto divide-y"
+          style={{ borderColor: "var(--ag-border)" }}
+        >
           {events.map((e) => (
             <li key={e.trace_id} className="flex items-start gap-3 px-4 py-2.5">
               <span className="mt-1.5">
@@ -173,30 +228,41 @@ export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void 
                       color: e.action === Action.ACTION_ASK ? "black" : "white",
                     }}
                   >
-                    {e.action === Action.ACTION_ALLOW ? "allow" : e.action === Action.ACTION_DENY ? "deny" : "ask"}
+                    {e.action === Action.ACTION_ALLOW
+                      ? "allow"
+                      : e.action === Action.ACTION_DENY
+                        ? "deny"
+                        : "ask"}
                   </span>
-                  <span className="truncate font-mono text-xs" title={e.redacted_payload}>
+                  <span
+                    className="truncate font-mono text-xs"
+                    title={e.redacted_payload}
+                  >
                     {e.redacted_payload}
                   </span>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-2 text-xs" style={{ color: "var(--ag-text-muted)" }}>
+                <div
+                  className="mt-1 flex flex-wrap gap-2 text-xs"
+                  style={{ color: "var(--ag-text-muted)" }}
+                >
                   <span>{fmtTs(e.timestamp)}</span>
                   <span>·</span>
                   <span>{e.reason}</span>
                   <span>·</span>
                   <span>{fmtLatency(e.latency_ms)}</span>
                   <span>·</span>
-                  <a
-                    href="#"
-                    onClick={(ev) => {
-                      ev.preventDefault();
-                      alert(`algo why ${e.trace_id}\n${e.reason} · conf ${e.confidence.toFixed(2)} · latency ${e.latency_ms}ms`);
+                  <button
+                    type="button"
+                    onClick={() => {
+                      alert(
+                        `algo why ${e.trace_id}\n${e.reason} · conf ${e.confidence.toFixed(2)} · latency ${e.latency_ms}ms`,
+                      );
                     }}
                     className="underline decoration-dotted"
                     style={{ color: "var(--ag-brand)" }}
                   >
                     why:{e.trace_id.slice(0, 8)}
-                  </a>
+                  </button>
                 </div>
               </div>
             </li>
@@ -204,8 +270,15 @@ export function LiveFeed({ onNewEntry }: { onNewEntry?: (e: AuditEntry) => void 
         </ul>
       )}
 
-      <div className="border-t px-4 py-2 text-xs" style={{ borderColor: "var(--ag-border)", color: "var(--ag-text-muted)" }}>
-        Shares query with TUI/status — same <code>/v1/audit</code> source. View full history below.
+      <div
+        className="border-t px-4 py-2 text-xs"
+        style={{
+          borderColor: "var(--ag-border)",
+          color: "var(--ag-text-muted)",
+        }}
+      >
+        Shares query with TUI/status — same <code>/v1/audit</code> source. View
+        full history below.
       </div>
     </div>
   );
