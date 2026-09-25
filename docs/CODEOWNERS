@@ -9,24 +9,7 @@
 # template checklist — track team creation in docs/github-org-plan.md §2.
 
 # Hard deny list + threshold logic (eval gate, allow/deny tuning)
-/docs/threat-model-v0.md            @algorithcoguard/security
-/docs/security-model.md             @algorithcoguard/security
 /docs/adr/                         @algorithcoguard/security @algorithcoguard/core
-/docs/decision-log.md               @algorithcoguard/security @algorithcoguard/core
-
-# Redaction rules + privacy dataflow (redact-before-network)
-/docs/privacy-dataflow.md           @algorithcoguard/security @algorithcoguard/privacy
-
-# Signature verification (releases, policy bundles, SBOM)
-/docs/security-model.md             @algorithcoguard/security @algorithcoguard/release
-
-# Install / uninstall paths (algo init, file mods, backups, restore)
-/docs/security-model.md             @algorithcoguard/agent @algorithcoguard/security
-/docs/privacy-dataflow.md           @algorithcoguard/agent @algorithcoguard/security
-
-# Auth (device flow, orgs, tokens, GitHub App) — backend scope stub in Phase 0
-/docs/threat-model-v0.md            @algorithcoguard/backend @algorithcoguard/security
-/docs/roadmap.md                    @algorithcoguard/backend @algorithcoguard/security
 
 # Product code — ownership per directory (AGENTS.md §0.9 human sign-off paths
 # are subsets of these; agent approval never sufficient on security lines)

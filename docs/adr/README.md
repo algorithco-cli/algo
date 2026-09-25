@@ -22,5 +22,3 @@
 
 - [0000-template](./0000-template.md)
 - [0002-naming](./0002-naming.md)
-- [0003-dataset-shape-alignment](./0003-dataset-shape-alignment.md) (draft 2026-09-20)
-- [0011-web-stack-pin](./0011-web-stack-pin.md) (web React 18 + Vite 5 pin + upgrade plan, draft 2026-09-22 — private MVP, dep-audit HIGH accepted loopback-only)
