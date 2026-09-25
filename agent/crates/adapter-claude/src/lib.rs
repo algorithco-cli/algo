@@ -8,7 +8,7 @@
 //!
 //! [VERIFY] Exact decision strings (`approve`/`block`/`ask`) and hook payload shapes must be
 //! verified against current Claude docs on each Claude release – see `render.rs` header.
-//! See `plans/phase-1-07-agent-claude-adapter-shell-only.md` for spec.
+//! See the adapter spec for the parse/render contract.
 
 pub mod parse;
 pub mod render;

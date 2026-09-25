@@ -2,8 +2,7 @@
 
 Maps a confidence cutoff to gate metrics so per-profile
 (strict/balanced/fast) cutoffs can be pinned from data instead of
-hard-coding (plans/phase-2-enforcement-verifier-loop-edit-web.md P2-02,
-docs/exit-gate-P0.md §1.1/§1.5).
+hard-coding.
 
 Semantics (fail-safe, rules-outrank-models):
 - ALLOW with confidence < threshold demotes to ASK (never promotes).

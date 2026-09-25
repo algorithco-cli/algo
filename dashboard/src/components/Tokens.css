@@ -1,5 +1,5 @@
 /* algorithco guard — Tokens.css (dashboard single source)
- * Canonical tokens from plans/design-tokens.md Variant 1 DECIDED (verified 2026-09-20).
+ * Canonical tokens from root design-tokens.css Variant 1 DECIDED (verified 2026-09-20).
  * Also available as ../../design-tokens.css static file (copy of ../design-tokens.css).
  * Do NOT introduce other hex — grep check: grep -ri '#[0-9a-f]\{6\}' dashboard/src web/src
  * must return only the 9 light + 9 dark values below (via vars, no strays).
@@ -43,7 +43,7 @@
   --color-deny: var(--ag-deny);
 }
 
-/* shadcn/ui mapping per design-tokens.md §3:
+/* shadcn/ui mapping:
  * primary → brand, background → bg, card → surface,
  * border → border, foreground → text, muted-foreground → text-muted,
  * success/warning/destructive → allow/ask/deny — no hex here */

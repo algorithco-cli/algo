@@ -1,4 +1,4 @@
-//! P1-01 spike ONLY (`plans/phase-1-01-adr-policy-language.md`).
+//! Policy-language spike ONLY (not product code).
 //! CEL (`cel` crate) vs minimal pest DSL over synthetic shell facts.
 //!
 //! NOT product code: `algo-policy` and all product crates must NOT depend

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "algorithco guard — docs site (Vite static, privacy text matches docs/privacy-dataflow.md)",
+  "description": "algorithco guard — docs site (Vite static, privacy text matches behavior)",
   "license": "UNLICENSED",
   "author": "algorithco guard",
   "repository": {

@@ -48,8 +48,7 @@ STATES = [
 def main() -> int:
     if not os.environ.get("ALGO_JEV_API_KEY"):
         print(
-            "ALGO_JEV_API_KEY is unset. Get a key (see docs/verify/jev-api.md §2), "
-            "export it, re-run. No live calls were made.",
+            "ALGO_JEV_API_KEY is unset. Export it, re-run. No live calls were made.",
             file=sys.stderr,
         )
         return 2

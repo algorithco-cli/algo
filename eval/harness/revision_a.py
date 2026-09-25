@@ -1,17 +1,17 @@
-"""Revision-A consistency check (labeling-guide.md §6, HUMAN-REVIEW.md §4-§5).
+"""Revision-A consistency check (labeling-guide.md §6).
 
-The human second-labels (B) for the 101-record blinded sample exist only in
-``datasets/v0.1/HUMAN-REVIEW.md`` §3 (the review form CSV is blank). This script
+The human second-labels (B) for the 101-record blinded sample are hardcoded
+below as a transcription (record_id -> B). This script
 transcribes them and checks the transcription against the published gate numbers
 (overall κ = 0.377, agreement 64/101, strata 0.670/0.000) — a wrong transcription
 cannot reproduce all four, so a match verifies the data.
 
-It then applies the §4 adjudication proposals (== Revision-A rules) and writes
+It then applies the adjudication proposals (== Revision-A rules) and writes
 ``datasets/v0.1/review/relabeled-r1.jsonl`` (record_id, seed_label, human_label,
 corrected_label, rule). ``seed.jsonl`` is NEVER mutated (tagged eval-data-v0.1).
 
 The corrected-vs-human κ is 1.0 by construction (consistency, not a gate pass):
-a fresh blinded human re-review is still required (DEFERRED 1.5).
+a fresh blinded human re-review is still required before any gate claim.
 
 Usage:
   python -m harness.revision_a --out datasets/v0.1/review/relabeled-r1.jsonl
@@ -29,7 +29,7 @@ from .agreement import cohen_kappa
 HERE = Path(__file__).resolve().parent.parent
 SEED_PATH = HERE / "datasets" / "v0.1" / "seed.jsonl"
 
-# B labels transcribed from datasets/v0.1/HUMAN-REVIEW.md §3 (record_id -> B).
+# Hardcoded B-label transcription for the 101-record blinded sample (record_id -> B).
 B_LABELS: dict[str, str] = {
     "rec-v01-002": "SAFE",
     "rec-v01-007": "SAFE",

@@ -1,7 +1,7 @@
 name: Latency
 
-# Latency-budget execution per AGENTS.md §2 (L0/L1 p50<3/<10ms; L3 report-only)
-# and plans/phase-1-09-quality-latency-eval.md. Required check:
+# Latency-budget execution per AGENTS.md §2 (L0/L1 p50<3/<10ms; L3 report-only).
+# Required check:
 # "Latency / benches".
 #
 # NOTE (follow-up, not a gate hole): scripts/latency-budget.sh assumes a

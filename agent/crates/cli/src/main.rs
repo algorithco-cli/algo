@@ -236,8 +236,8 @@ fn ensure_algo_dir(home: &Path) -> io::Result<()> {
 
 // ---------- init ----------
 
-/// Egress disclosure shown before any non-local-only choice (privacy-dataflow.md
-/// consent draft). local-only sends nothing; redacted/full go to TypeSafe (US).
+/// Egress disclosure shown before any non-local-only choice.
+/// local-only sends nothing; redacted/full go to TypeSafe (US).
 fn print_privacy_disclosure() {
     println!("--- data disclosure (required before redacted|full) ---");
     println!("local-only: nothing leaves this machine. The daemon never calls");
@@ -357,8 +357,8 @@ fn cmd_init(home: &Path, privacy: Option<&str>, yes: bool) -> Result<(), String>
         println!("no existing config, no backup needed");
     }
 
-    // Privacy prompt local-only|redacted|full — local-only is the default
-    // (privacy-dataflow.md:26). Anything beyond local-only prints the egress
+    // Privacy prompt local-only|redacted|full — local-only is the default.
+    // Anything beyond local-only prints the egress
     // disclosure and records opt-in consent; `full` needs a second confirm.
     let chosen_privacy = if let Some(p) = privacy {
         p.to_string()

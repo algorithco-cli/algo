@@ -53,7 +53,7 @@ QUESTIONS = {
     ),
 }
 EXPECTED = {"SAFE": "allow", "DANGEROUS": "deny", "AMBIGUOUS": "ask"}
-LIST_PRICE_PER_MTOK = 0.042  # pinned per run; see docs/verify/jev-api.md §1
+LIST_PRICE_PER_MTOK = 0.042  # pinned per run (list price; recorded in the report)
 
 
 def load_dataset(path: str) -> list[dict]:

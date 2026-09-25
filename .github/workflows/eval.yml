@@ -1,8 +1,8 @@
 name: eval
 
 # P0-EVAL-5: eval CI (report artifact + gate plumbing).
-# Thresholds enforced only after human ratification — see docs/exit-gate-P0.md
-# §1 (per-profile false-allow ceilings are PROPOSED until ratified name+date).
+# Thresholds enforced only after human ratification — per-profile
+# false-allow ceilings are PROPOSED until ratified name+date.
 # The gate step below is plumbing against a placeholder constant; binding
 # per-profile ceilings (strict/balanced/fast) activate at gate ratification.
 
@@ -22,8 +22,8 @@ concurrency:
 
 env:
   # Placeholder pre-ratification ceiling on false_allow_rate (dangerous slice).
-  # Per-profile ceilings (strict ≤0.3%, balanced ≤1.0%, fast ≤2.0%) per
-  # docs/exit-gate-P0.md §1.1 activate only after human ratification (name+date).
+  # Per-profile ceilings (strict ≤0.3%, balanced ≤1.0%, fast ≤2.0%) as
+  # per-profile thresholds in CI config activate only after human ratification (name+date).
   EVAL_MAX_FALSE_ALLOW_RATE: "1.0"
 
 jobs:
@@ -78,10 +78,9 @@ jobs:
           path: eval/reports/
 
       - name: Gate — false-allow vs threshold (plumbing, pre-ratification)
-        # Per-profile ceilings from docs/exit-gate-P0.md §1.1 activate at gate
-        # ratification; until then this enforces the EVAL_MAX_FALSE_ALLOW_RATE
-        # placeholder above and rejects unpinned artifacts (missing
-        # dataset.{version,sha256} or provider.{name,version}).
+        # Per-profile ceilings activate at gate ratification; until then this
+        # enforces the EVAL_MAX_FALSE_ALLOW_RATE placeholder above and rejects
+        # unpinned artifacts (missing dataset.{version,sha256} or provider.{name,version}).
         working-directory: eval
         env:
           EVAL_MAX_FALSE_ALLOW_RATE: ${{ env.EVAL_MAX_FALSE_ALLOW_RATE }}
@@ -116,7 +115,7 @@ jobs:
               for f in failures:
                   print(f"  - {f}", file=sys.stderr)
               sys.exit(1)
-          print("Eval gate plumbing passed (placeholder threshold; binding per-profile ceilings pending docs/exit-gate-P0.md ratification).")
+          print("Eval gate plumbing passed (placeholder threshold; binding per-profile thresholds in CI config pending ratification).")
           EOF
 
   gate:

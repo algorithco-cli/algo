@@ -9,7 +9,7 @@
 //! shapes must be verified against current Codex docs (P4-02 spike) – the current
 //! parse/render logic is Claude-shaped and must not be trusted for Codex until
 //! the spike lands. If interception cannot block, degrade to observe/advise via
-//! ADR, never guess-and-allow. See `plans/phase-4-adapters.md`.
+//! ADR, never guess-and-allow. See the adapter spec.
 
 pub mod parse;
 pub mod render;

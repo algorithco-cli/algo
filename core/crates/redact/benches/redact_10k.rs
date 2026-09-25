@@ -1,7 +1,7 @@
 //! Criterion bench for `algo-redact` Redactor::redact on 10KB payload with secrets
 //! `cargo bench -p algo-redact --bench redact_10k -- --save-baseline p1-exit`
 //! Group name: `redact_10k` per spec.
-//! Budget: crate spec <500us/10KB (docs/redact-crate-design.md), pipeline off-path aho-corasick only in redact.
+//! Budget: crate spec <500us/10KB, pipeline off-path aho-corasick only in redact.
 //! Enforced via scripts/latency-budget.* (+ proptest/fuzz elsewhere).
 //! Baselines: html_reports + json under target/criterion/redact_10k/*/new/estimates.json
 

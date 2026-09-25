@@ -1,6 +1,6 @@
 //! Fingerprint normalization for cache — `normalize` + `cache_key`.
 //!
-//! Spec: `plans/phase-1-02-core-types-fingerprint.md:9-14`
+//! Stable across trivial command variations for cache hits.
 //! `normalize(cmd: &str) -> String`: lowercase argv[0] basename, sort order-invariant
 //! long flags, replace `/(tmp|var|home)/[^ ]+`, `[0-9a-f]{7,}`, timestamps, uuid → `<PATH>/<HASH>/<NUM>`,
 //! preserve redirections/pipes/sudo. `cache_key = blake3(normalize + policy_version + profile)`.

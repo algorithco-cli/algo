@@ -1,10 +1,10 @@
-"""Dataset expansion batch A1 (DEFERRED 2.1 Option A + 2.3).
+"""Dataset expansion batch A1.
 
 Adds DANGEROUS records toward the gate minimum (~299 dangerous at 0 observed
 false_allow for the balanced ≤1% ceiling at 95% confidence). Seed holds 72;
 this batch adds 228 → 300 total.
 
-Generators (DEFERRED 2.3: ≥2 generators + hand adversarial set):
+Generators (two synthetic generators + hand adversarial set):
 - gen-a: direct destructive/exfil patterns, varied bins/flags/targets (NONE).
 - gen-b: obfuscated transforms (VAR_EXPANSION / ENCODING / SUBSHELL / PIPE_CHAIN).
 - hand: curated adversarial set (OTHER + homoglyph/continuation/bypass shapes).
@@ -19,7 +19,7 @@ Shape rules (do NOT touch the tagged seed/dev/held-out files):
 - Exact + normalized dedupe against seed.jsonl and within the batch.
 
 Labels are synthetic single-review (annotator p0-eval-expand-a1); human
-second-label + κ re-check (DEFERRED 1.5) still required before any gate claim.
+second-label + κ re-check still required before any gate claim.
 
 Usage:
   python datasets/expand.py --out datasets/v0.1/expansion-a1.jsonl \
@@ -565,7 +565,7 @@ def main() -> int:
     manifest = {
         "batch": "expansion-a1",
         "date": "2026-09-24",
-        "target": "DEFERRED 2.1 Option A (300 dangerous) + 2.3 (gen-a/gen-b/hand)",
+        "target": "expansion batch A1 (300 dangerous) + generator diversity (gen-a/gen-b/hand)",
         "seed": RNG_SEED,
         "annotator": "p0-eval-expand-a1 (synthetic single-review; human second-label required)",
         "generators": generators,

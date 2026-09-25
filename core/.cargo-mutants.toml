@@ -1,7 +1,6 @@
 # core/.cargo-mutants.toml — cargo-mutants config per P1-09 (P1-QUAL)
 # Gate: `cargo mutants --file deny_list.rs,engine.rs` ≥90% killed; survivors → new regression cases
-# in eval/regression-corpus/*.json. See plans/phase-1-09-quality-latency-eval.md:9 and
-# eval/regression-corpus/README.md.
+# in eval/regression-corpus/*.json. See eval/regression-corpus/README.md.
 
 # Mutants examine only the hard-deny surface; other crates are excluded for speed.
 # The `[[examine]]` table is the stable config key for cargo-mutants 0.7+ (see `cargo mutants --help`

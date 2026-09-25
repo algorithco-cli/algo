@@ -14,7 +14,7 @@
  *
  * Fail-safe: network / parse errors → mock fallback (static) or ASK semantics.
  * Privacy: all payloads redacted by default; no unredacted code leaves device
- * without explicit `full` consent (see docs/privacy-dataflow.md).
+ * without explicit `full` consent.
  *
  * TODO: replace with buf-generated TS client when proto tag P3-01 is published.
  * Consumers pin exact proto version per AGENTS.md contracts-first.

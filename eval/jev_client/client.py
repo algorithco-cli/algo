@@ -10,7 +10,7 @@ Contract implemented:
   POST {base}/v1/systemone  Authorization: Bearer <key>  Content-Type: application/json
   body: {"state": str|obj|array, "model": str, "questions": {id: Question}}
   ok:   {"model": str, "answers": {id: Answer}, "usage": {"input_tokens": n, "output_tokens": n}}
-  err:  401 / 422 / 429 / 529  (see docs/verify/jev-api.md §1)
+  err:  401 / 422 / 429 / 529
 
 Invariants:
   * Key comes from env ONLY (ALGO_JEV_API_KEY). Never a file, never argv, never logged.

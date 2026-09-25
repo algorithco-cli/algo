@@ -5,7 +5,7 @@
 #   pwsh -File scripts/mutants.ps1 -Smoke   # PR smoke 5min
 #
 # Spec: `cargo mutants --file deny_list.rs,engine.rs` ≥90% killed; survivors → new corpus cases
-# See plans/phase-1-09-quality-latency-eval.md:9, eval/regression-corpus/README.md, core/.cargo-mutants.toml
+# See eval/regression-corpus/README.md, core/.cargo-mutants.toml
 
 param(
     [switch]$CheckOnly,

@@ -5,7 +5,7 @@
 //!
 //! Wire shape mirrors `eval/jev_client/client.py`, which was built ONLY from the
 //! public spec (https://docs.typesafe.ai/api, https://docs.typesafe.ai/models,
-//! verified 2026-09-20; details in `docs/verify/jev-tos.md`, `docs/verify/jev-api.md`):
+//! verified 2026-09-20 against the public spec):
 //! ```text
 //! POST {base}/v1/systemone, Authorization: Bearer <key>
 //! body {"state", "model", "questions": {id: {"type","instructions","criteria"}}}

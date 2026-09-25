@@ -9,7 +9,7 @@
 //! click a row to inspect, scroll to move, ✕ to quit.
 //! Keyboard: Tab/1/2/Enter/Esc on login (masked API key input), q/j/k/g/G/r/p/1/2/Esc inside.
 //!
-//! Design tokens: `plans/design-tokens.md` Variant 1 — brand blue, allow green,
+//! Design tokens: root `design-tokens.css` Variant 1 — brand blue, allow green,
 //! ask yellow, deny red. See `ui.rs` for RGB values.
 
 mod app;

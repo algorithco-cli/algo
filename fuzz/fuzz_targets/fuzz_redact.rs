@@ -2,7 +2,7 @@
 use libfuzzer_sys::fuzz_target;
 
 // Fuzz `algo_redact::redact` on arbitrary &str.
-// Invariants (redact-crate-design.md:70, AGENTS.md:6):
+// Invariants (AGENTS.md:6):
 // - must never panic (no unwrap on input; regexes precompiled via OnceLock)
 // - idempotent: redact(redact(x)) == redact(x)
 // - no pattern survives: a second pass finds nothing

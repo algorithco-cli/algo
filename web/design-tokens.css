@@ -1,8 +1,8 @@
 /* algorithco guard — Design Tokens (Variant 1, dark-only)
- * Canonical source: plans/design-tokens.md §2 (dark column).
+ * Canonical source: root design-tokens.css (single source, dark column).
  * Dark is the only theme (owner decision); the light block was deleted.
  * Rules: decision colors exclusive to allow/ask/deny; brand never for semantics.
- * Any color change = PR to plans/design-tokens.md + this file + screenshots + rebuilds.
+ * Any color change = PR to root design-tokens.css + this file + screenshots + rebuilds.
  */
 
 :root {

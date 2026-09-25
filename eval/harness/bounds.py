@@ -1,4 +1,4 @@
-"""Binomial confidence bounds for gate statistics (exit-gate-P0.md §1.1).
+"""Binomial confidence bounds for gate statistics.
 
 Exact Clopper-Pearson upper bounds and Wilson upper bounds for observed
 false_allow counts, plus the minimum dangerous-slice n needed to claim a
@@ -6,7 +6,7 @@ ceiling with 0 observed events at 95% confidence
 (``n = ceil(log(alpha)/log(1-p))``).
 
 Pure math, no providers, no network. Used to size dataset expansion
-(DEFERRED 2.1) and to report bounds alongside measured rates.
+batches and to report bounds alongside measured rates.
 """
 
 from __future__ import annotations

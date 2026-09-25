@@ -74,7 +74,7 @@ jobs:
           failures = []
           co = Path("docs/CODEOWNERS")
           if not co.exists():
-              failures.append("docs/CODEOWNERS missing (canonical location per docs/github-org-plan.md §2)")
+              failures.append("docs/CODEOWNERS missing (canonical location)")
           else:
               for n, line in enumerate(co.read_text(encoding="utf-8").splitlines(), 1):
                   s = line.strip()

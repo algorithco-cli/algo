@@ -1,9 +1,9 @@
 //! `algo-redact` — redact secrets and PII before any egress.
 //!
-//! Design: `docs/redact-crate-design.md` (draft, human review required before real-data Jev).
-//! First Phase 1 task per ADR-0009 waiver — gates every real-data Jev call.
-//! Requirements: `docs/redact-consent-readiness.md:2` + `plans/phase-1-04-core-policy-redact.md:9-13`
-//! (patterns, <500µs/10KB, proptest idempotence, fuzz, one path for send and `--show-egress`).
+//! Design: redact secrets and PII before any egress (human review required
+//! before real-data Jev). Gates every real-data Jev call.
+//! Requirements: redact before any egress (patterns, <500µs/10KB,
+//! proptest idempotence, fuzz, one path for send and `--show-egress`).
 
 use aho_corasick::AhoCorasick;
 use regex::Regex;
@@ -161,8 +161,8 @@ impl Redactor {
             if re.is_match(&masked) {
                 let mut found = false;
                 // Replace all occurrences. The AWS documentation example key is
-                // never a real credential — it is preserved verbatim per
-                // redact-crate-design.md:20 (regex crate has no look-around).
+                // never a real credential — it is preserved verbatim
+                // (regex crate has no look-around).
                 let new_masked = if *kind == "aws_key" {
                     re.replace_all(&masked, |caps: &regex::Captures| {
                         if &caps[0] == AWS_DOCS_EXAMPLE_KEY {
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn docs_example_key_not_masked() {
-        // redact-crate-design.md:20 — the AWS documentation example is not a
+        // The AWS documentation example is not a
         // credential and must survive redaction (docs/tests carry it).
         let (masked, findings) = Redactor::new().redact("key=AKIAIOSFODNN7EXAMPLE more");
         assert!(!masked.contains("<REDACTED:AWS_KEY>"));

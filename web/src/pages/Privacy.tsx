@@ -18,7 +18,7 @@ export default function Privacy(): JSX.Element {
         id="privacy"
         kicker="Privacy"
         title="Your data, stated plainly"
-        lede="This text matches behavior (source: docs/privacy-dataflow.md, owner-confirmed 2026-09-20). Last reviewed 2026-09-20."
+        lede="This text matches behavior. Last reviewed 2026-09-20."
       >
         <div className="card">
           <h3>Modes — BYOK only, Jev off by default</h3>

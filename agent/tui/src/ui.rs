@@ -1,6 +1,6 @@
 //! UI rendering — design tokens Variant 1, closest terminal approximation.
 //!
-//! Tokens from `plans/design-tokens.md` §1:
+//! Tokens from root `design-tokens.css` §1:
 //!   brand  #6D4AFF  → `COLOR_BRAND`  (links, header)
 //!   allow  #1E9E63  → `COLOR_ALLOW`  (success)
 //!   ask    #D99A00  → `COLOR_ASK`    (warn)

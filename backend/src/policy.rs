@@ -17,7 +17,7 @@ use crate::verify::{
 /// provisioned via OpenBao / SOPS+age per Phase 3 stack). If unset, we fall back
 /// to the deterministic test seed so local MVP/tests keep working, but emit a
 /// loud warning — this fallback must never be used in production.
-/// See P3-02: key management is human-review-gated (docs/SECURITY-REVIEW-QUEUE.md).
+/// Key management is human-review-gated.
 fn load_signing_key() -> SigningKey {
     if let Ok(hex) = std::env::var("ALGO_POLICY_SIGNING_SEED_HEX") {
         let hex = hex.trim();

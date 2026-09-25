@@ -72,7 +72,7 @@ impl Engine {
 
     /// Tree-based evaluation — matches on parsed facts, never raw `contains`.
     ///
-    /// Spec: `plans/phase-1-03-core-shell-analysis.md` ("Rules match on tree").
+    /// Rules match on parsed tree facts, never raw text.
     /// String regexes can be dodged by spacing/quoting tricks; this closes the
     /// gap for pipe-to-shell, base64-pipe-shell, eval+codec, and nc -e.
     /// Deny wins; anything else is Abstain (caller maps to ASK).

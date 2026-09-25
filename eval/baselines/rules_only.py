@@ -1,10 +1,10 @@
 """Realistic L0 deny-list + shell-heuristics baseline (replaces 3-pattern stub).
 
-Design: hard deny-list derived from `docs/threat-model-v0.md` hard-deny inventory
-and `plans/phase-1-04-core-policy-redact.md` (rm -rf /, mkfs, dd of=/dev/*,
+Design: hard deny-list covering common destructive shell shapes
+(rm -rf /, mkfs, dd of=/dev/*,
 fork-bomb, curl|sh, chmod 777 /, eval+base64, StrictHostKeyChecking bypass, etc.)
 plus lightweight shell-syntax heuristics. Written independently of the dataset
-contents (patterns chosen from threat model, not tuned on seed records).
+contents (generic deny patterns, not tuned on seed records).
 
 This is the G2 comparison baseline for Jev: Jev must beat this at comparable
 ask_rate, not the prior near-empty 3-pattern stub.
@@ -17,7 +17,7 @@ from time import perf_counter
 
 from harness.provider import Decision, Provider, ProviderInput
 
-# Hard deny patterns (threat-model derived, not dataset-tuned).
+# Hard deny patterns (generic, not dataset-tuned).
 _DENY: tuple[re.Pattern[str], ...] = (
     # Destructive filesystem: rm -rf / or /*, rm -rf ~, rm -rf $HOME, unlink /
     re.compile(r"\brm\s+[^|;]*-rf\s+/(?:\s|$|;|&|\"|')"),

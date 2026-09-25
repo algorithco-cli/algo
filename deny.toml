@@ -1,5 +1,5 @@
 # deny.toml — cargo-deny config per P1-09 (fmt/lint/type + deny/audit/vet clean, fail on warn)
-# Gate: `cargo deny check` must be clean; see plans/phase-1-09-quality-latency-eval.md:5
+# Gate: `cargo deny check` must be clean (fail on warn).
 # This config is intentionally permissive on first private MVP and tightened before public release.
 # Ratify via ADR before adding bans.
 
@@ -37,7 +37,7 @@ ignore = [
 # cargo-deny ≥0.18: deny-by-default — every license must be in `allow`
 # (old unlicensed/deny/copyleft/allow-osi-fsf-free keys were removed).
 # Workspace crates use LicenseRef-TBD-legal-signoff until ADR-0001 legal
-# sign-off (see DEFERRED.md:5.2) — allowed explicitly below.
+# sign-off — allowed explicitly below.
 # SPDX allowlist for dependencies (covers regex, aho-corasick, smallvec, tree-sitter, prost, criterion, serde, etc.)
 allow = [
   "MIT",

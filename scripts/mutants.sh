@@ -6,8 +6,7 @@
 #   ./scripts/mutants.sh --smoke          # quick smoke: --in-place (5 min) hint for PR CI
 #
 # Spec: `cargo mutants --file deny_list.rs,engine.rs` ≥90% killed; survivors → new regression cases
-# in eval/regression-corpus/*.json. See plans/phase-1-09-quality-latency-eval.md:9 and
-# eval/regression-corpus/README.md + core/.cargo-mutants.toml.
+# in eval/regression-corpus/*.json. See eval/regression-corpus/README.md + core/.cargo-mutants.toml.
 #
 # CI: nightly 1h, PR smoke 60s (via cargo-mutants + `timeout` + `shard`). This script is the
 # single source of truth for the 90% threshold; CI calls it and fails if threshold not met.

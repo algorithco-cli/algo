@@ -1,7 +1,7 @@
 {
   "batch": "expansion-a1",
   "date": "2026-09-24",
-  "target": "DEFERRED 2.1 Option A (300 dangerous) + 2.3 (gen-a/gen-b/hand)",
+  "target": "expansion batch A1 (300 dangerous) + generator diversity",
   "seed": 7,
   "annotator": "p0-eval-expand-a1 (synthetic single-review; human second-label required)",
   "generators": {

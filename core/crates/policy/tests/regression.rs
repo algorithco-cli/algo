@@ -1,5 +1,5 @@
 //! Regression corpus integration test — loads `eval/regression-corpus/*.json`
-//! and asserts hard-deny behavior per `plans/phase-1-09-quality-latency-eval.md:10`
+//! and asserts hard-deny behavior
 //! and `eval/regression-corpus/README.md`.
 //!
 //! - `safe.json` → NOT Deny (Abstain → caller maps to ASK, fail-safe). `Allow` also ok

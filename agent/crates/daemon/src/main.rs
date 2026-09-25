@@ -109,7 +109,7 @@ fn read_shadow_mode() -> bool {
 }
 
 fn read_privacy_mode() -> i32 {
-    // Privacy default is local-only (privacy-dataflow.md:26): nothing leaves
+    // Privacy default is local-only: nothing leaves
     // the machine unless the user opted into redacted/full in `algo init`.
     // Precedence: ALGO_PRIVACY > config.json > default local-only.
     // Any I/O/parse error or unknown value => local-only (fail-safe: no network).

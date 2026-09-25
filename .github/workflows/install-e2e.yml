@@ -1,6 +1,6 @@
 name: Install E2E
 
-# Fresh-OS install matrix per plans/phase-1-10-exit-gate-runbook.md step 3:
+# Fresh-OS install matrix:
 # `algo init → algo doctor → algo uninstall` byte-identical + `algo pause`
 # daemon-dead. Unit coverage exists
 # (agent/crates/cli/src/main.rs init_doctor_uninstall_byte_identical,

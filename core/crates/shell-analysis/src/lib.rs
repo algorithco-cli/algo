@@ -1,5 +1,5 @@
 //! Shell analysis — tree-sitter-bash → ParsedCmd + facts + obfuscation
-//! Spec: `plans/phase-1-03-core-shell-analysis.md`
+//! flags for policy matching.
 
 pub mod facts;
 pub mod obfuscation;
