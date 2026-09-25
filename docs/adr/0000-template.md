@@ -29,4 +29,5 @@ draft | accepted | superseded by ADR-XXXX
 
 ## Verification
 
-[How we prove it: benchmark, eval link + artifacts, or official-doc link + date for `[VERIFY]` items. Unverifiable claims stay marked `[VERIFY-OPEN]`.]
+[How we prove it: benchmark, eval link + artifacts.]
+

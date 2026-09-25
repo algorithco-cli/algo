@@ -33,4 +33,4 @@ Repos, crates, proto paths, and home dir depend on stable names (D-10 / D-C, DEC
 
 ## Verification
 
-- This ADR merged; [decision-log](../decision-log.md) D-10 / D-C marked accepted 2026-09-20.
+- This ADR merged 2026-09-20.

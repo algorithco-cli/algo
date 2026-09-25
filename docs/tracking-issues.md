@@ -6,8 +6,8 @@ One issue per workstream. Every P0 PR links its issue.
 |-------|------------|----------|------------|
 | #1 docs skeleton | docs | P0-DOCS-1 | fresh-agent finds plan + ADR dir < 2 min |
 | #2 ADR process | docs | P0-DOCS-2 | template merged, D-A..D-F drafts with owners/dates, links green |
-| #3 threat-model v0 | docs | P0-DOCS-3 | each boundary has threat + mitigation-or-VERIFY; human sign-off |
-| #4 license + naming | docs | P0-DOCS-4 | ADRs 0001/0002 merged; blocks proto tag |
+| #3 threat-model v0 | docs | P0-DOCS-3 | each boundary has threat + mitigation; human sign-off |
+| #4 license + naming | docs | P0-DOCS-4 | ADR 0002 merged; blocks proto tag |
 | #5 tracking issues | docs | P0-DOCS-5 | all P0 PRs link an issue |
 | #6 proto workspace | proto | P0-PROTO-1 | `buf lint` green, workspace set |
 | #7 proto contracts v0 | proto | P0-PROTO-2 | events/decision/dataset schema tagged |

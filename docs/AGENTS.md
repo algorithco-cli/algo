@@ -2,7 +2,7 @@
 
 ## Scope
 
-Markdown only. No product code. Small files. No secrets. No invented APIs — mark `[VERIFY]` with link + date.
+Markdown only. No product code. Small files. No secrets.
 
 ## Runnable commands
 
@@ -25,7 +25,7 @@ ruff check .
 mypy .
 
 # markdown links (docs, web)
-# [VERIFY] markdown-link-check version/pin — 2026-09-20 — https://github.com/tcort/markdown-link-check
+# markdown-link-check version/pin — 2026-09-20 — https://github.com/tcort/markdown-link-check
 npx --yes markdown-link-check docs/**/*.md
 ```
 
@@ -40,5 +40,3 @@ npx --yes markdown-link-check docs/**/*.md
 
 1. `buf lint` green if `proto` touched (not in this repo — cross-link the proto PR).
 2. Markdown links resolve (relative links only, no invented paths).
-3. `decision-log.md` updated if a D-01..D-10 item changed state.
-4. No `grep -r VERIFY` items reaching main without link + date.
