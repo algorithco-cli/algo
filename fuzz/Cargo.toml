@@ -5,7 +5,7 @@ publish = false
 edition = "2021"
 description = "Fuzz targets for algorithco guard (P1-09) - cargo fuzz shell/adapter/policy"
 license = "LicenseRef-TBD-legal-signoff"
-repository = "https://github.com/algorithcoguard/algorithco-guard"
+repository = "https://github.com/algorithco-cli/algo"
 rust-version = "1.75"
 
 [package.metadata]
