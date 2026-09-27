@@ -12,6 +12,6 @@ Contracts SDK for algorithco guard (`algorithco_guard.v0`).
 
 Publish checklist (all required before `npm publish`):
 - [ ] ADR-0013 accepted (scope `@algorithco`, version policy)
-- [ ] License SPDX + `LICENSE` file (replaces `UNLICENSED`)
-- [ ] Provenance + Trusted Publisher wired in CI
-- [ ] `npm pack --dry-run` + `npm publish --dry-run` green
+- [x] License SPDX + `LICENSE` file (GPL-3.0-only, owner decision 2026-09-27; ADR-0001 pending)
+- [x] Provenance + Trusted Publisher wired in CI
+- [x] `npm pack --dry-run` + `npm publish --dry-run` green (`import_extension=js` for Node ESM)

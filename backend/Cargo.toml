@@ -2,7 +2,7 @@
 name = "algo-backend"
 version = "0.1.0"
 edition = "2021"
-license = "LicenseRef-TBD-legal-signoff"
+license = "GPL-3.0-only"
 repository = "https://github.com/algorithco-cli/algo"
 rust-version = "1.75"
 description = "algorithco guard backend: Auth(device flow), Org/Team/Role, Policy sync, Audit ingest, Stats (P3-01..P3-05 MVP, in-memory scaffold)"

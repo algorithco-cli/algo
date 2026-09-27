@@ -9,8 +9,11 @@ plugins:
     out: gen/rust
     opt:
       - compile_well_known_types=true
-  # TypeScript codegen via protobuf-es.
+  # TypeScript codegen via protobuf-es. `import_extension=js` is required so
+  # the emitted imports resolve under Node.js ESM (extensionless imports
+  # fail with ERR_MODULE_NOT_FOUND at runtime).
   - local: protoc-gen-es
     out: gen/ts
     opt:
       - target=ts
+      - import_extension=js

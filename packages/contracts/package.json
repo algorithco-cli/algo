@@ -1,9 +1,9 @@
 {
   "name": "@algorithco/guard-contracts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "algorithco guard contracts SDK (protobuf-es output from algorithco_guard.v0). Generated at build from pinned proto tag — never hand-edit.",
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-only",
   "author": "algorithco guard",
   "repository": {
     "type": "git",
@@ -32,7 +32,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {

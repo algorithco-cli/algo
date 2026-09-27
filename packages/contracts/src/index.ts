@@ -8,4 +8,4 @@ export * from "./gen/algorithco_guard/v0/backend_pb.js";
 export * from "./gen/algorithco_guard/v0/hook_daemon_pb.js";
 export * from "./gen/algorithco_guard/v0/daemon_backend_pb.js";
 
-export const GUARD_CONTRACTS_SCAFFOLD = "0.1.0";
+export const GUARD_CONTRACTS_SCAFFOLD = "0.1.1";

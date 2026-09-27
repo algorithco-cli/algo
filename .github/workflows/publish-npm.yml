@@ -132,6 +132,10 @@ jobs:
           fi
           npm publish --provenance --access public
 
+      - name: Pack tarball for attestation
+        working-directory: packages/contracts
+        run: npm pack --pack-destination .
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Phase-0 eval dataset + harness skeleton for algorithco guard (CLI algo). No product code."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "LicenseRef-TBD-legal-signoff"
+license = "GPL-3.0-only"
 authors = [{ name = "algorithco guard" }]
 keywords = ["security", "evaluation", "guardrails", "ai-safety"]
 classifiers = [
