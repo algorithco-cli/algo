@@ -130,13 +130,9 @@ jobs:
             echo "Missing secret NPM_TOKEN (see repo docs)." >&2
             exit 1
           fi
+          # Provenance is handled by `npm publish --provenance` (sigstore).
+          # NOTE: actions/attest-build-provenance was removed — it fails on
+          # this repo with "Resource not accessible by integration"; re-add
+          # with `attestations: write` permission if GitHub attestations are
+          # ever needed in addition to npm provenance.
           npm publish --provenance --access public
-
-      - name: Pack tarball for attestation
-        working-directory: packages/contracts
-        run: npm pack --pack-destination .
-
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: packages/contracts/*.tgz
