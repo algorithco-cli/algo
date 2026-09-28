@@ -37,7 +37,7 @@
     "@tanstack/react-table": "^8.20.5",
     "uplot": "^1.6.31",
     "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.4",
+    "tailwind-merge": "^3.7.0",
     "class-variance-authority": "^0.7.0"
   },
   "devDependencies": {
