@@ -1,12 +1,7 @@
 //! UI rendering — design tokens Variant 1, closest terminal approximation.
 //!
-//! Tokens from root `design-tokens.css` §1:
-//!   brand  #6D4AFF  → `COLOR_BRAND`  (links, header)
-//!   allow  #1E9E63  → `COLOR_ALLOW`  (success)
-//!   ask    #D99A00  → `COLOR_ASK`    (warn)
-//!   deny   #E5484D  → `COLOR_DENY`   (danger)
-//! Exact hex where truecolor is available; otherwise nearest ANSI fallback
-//! (green/yellow/red/blue) carries the same semantics per spec §92.
+//! Truecolor values are generated from root `design-tokens.css`; terminal
+//! indexed fallbacks preserve the same brand/allow/ask/deny semantics.
 //!
 //! Professional layout:
 //!   header (title + version + LIVE/OFFLINE/SHADOW/ENFORCING/PAUSED + stats)
@@ -20,6 +15,9 @@ use crate::app::{
 };
 use crate::dog::{CELLS_H, CELLS_W};
 use crate::theme::Theme;
+#[cfg(test)]
+use crate::tokens::COLOR_BG_DARK;
+use crate::tokens::{COLOR_ALLOW, COLOR_ASK, COLOR_BORDER, COLOR_BRAND, COLOR_DENY, COLOR_MUTED};
 use chrono::{DateTime, Utc};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -29,21 +27,12 @@ use ratatui::{
     Frame,
 };
 
-// ---- Design tokens (Variant 1, light column) --------------------------------
-// Using truecolor RGB; terminals without truecolor degrade to nearest 256 color.
-const COLOR_BRAND: Color = Color::Rgb(109, 74, 255); // #6D4AFF --ag-brand
-const COLOR_ALLOW: Color = Color::Rgb(30, 158, 99); // #1E9E63 --ag-allow
-const COLOR_ASK: Color = Color::Rgb(217, 154, 0); // #D99A00 --ag-ask
-const COLOR_DENY: Color = Color::Rgb(229, 72, 77); // #E5484D --ag-deny
-const COLOR_MUTED: Color = Color::Rgb(107, 106, 123); // #6B6A7B --ag-text-muted
-const COLOR_BORDER: Color = Color::Rgb(230, 229, 238); // #E6E5EE --ag-border
-
 // Hand-tuned 256-color fallbacks (research: never auto-dither, quantize at
 // startup against the XTERM table). Used when COLORTERM lacks truecolor.
-const COLOR_BRAND_256: Color = Color::Indexed(99); // ~#875FFF
-const COLOR_ALLOW_256: Color = Color::Indexed(35); // ~#00AF5F
-const COLOR_ASK_256: Color = Color::Indexed(172); // ~#D78700
-const COLOR_DENY_256: Color = Color::Indexed(167); // ~#D75F5F
+const COLOR_BRAND_256: Color = Color::Indexed(99);
+const COLOR_ALLOW_256: Color = Color::Indexed(35);
+const COLOR_ASK_256: Color = Color::Indexed(172);
+const COLOR_DENY_256: Color = Color::Indexed(167);
 
 /// True when the terminal advertises truecolor (`COLORTERM=truecolor|24bit`).
 /// Research: `supports-color` precedence — NO_COLOR/TERM=dumb handled
@@ -693,11 +682,14 @@ fn browser_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static
     };
     let dest = match app.oauth_url.as_deref() {
         Some(url) => fit_row(url, width.saturating_sub(2)),
-        None => "Not configured in this build".to_string(),
+        None => "Not available in this build".to_string(),
     };
     vec![
         action,
-        Line::from(Span::styled("  Opens OAuth at", t.muted())),
+        Line::from(Span::styled(
+            "  Authentication is handled by algo login",
+            t.muted(),
+        )),
         Line::from(Span::styled(format!("  {dest}"), t.muted())),
     ]
 }
@@ -719,10 +711,9 @@ fn api_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static>> {
     }
     match &app.login_status {
         LoginStatus::ApiKeyValidating => {
-            let dots = "•".repeat(app.login_api_input.chars().count().min(width));
             vec![
-                Line::from(Span::styled(format!("  {dots}"), t.fg())),
-                Line::from(Span::styled("  Storing key locally…", t.muted())),
+                Line::from(Span::styled("  Authentication unavailable", t.err())),
+                Line::from(Span::styled("  No key was stored", t.muted())),
                 Line::from(""),
             ]
         }
@@ -748,9 +739,12 @@ fn api_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static>> {
             };
             vec![
                 input,
-                Line::from(Span::styled("  Enter verifies · Esc collapses", t.muted())),
                 Line::from(Span::styled(
-                    "  Stored locally · masked for security",
+                    "  TUI authentication is unavailable",
+                    t.muted(),
+                )),
+                Line::from(Span::styled(
+                    "  Keys are never stored by this screen",
                     t.muted(),
                 )),
             ]
@@ -2064,9 +2058,8 @@ mod tests {
         let mut app = App::new(None);
         app.show_login();
         app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
-        // Browser pending past the grace period: spinner + wait line + URL.
+        // Browser authentication fails closed; no fake wait or device flow.
         app.start_browser_signin();
-        app.browser_since = Some(std::time::Instant::now() - std::time::Duration::from_millis(500));
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -2077,29 +2070,14 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s.contains("Waiting for browser"), "wait line missing: {s}");
+        assert!(s.contains("not implem"), "unavailable message missing: {s}");
         assert!(
             s.contains("127.0.0.1"),
             "destination URL must be shown: {s}"
         );
-        assert!(s.contains("Esc to cancel"), "cancel hint missing: {s}");
         assert!(
             !s.contains("WD-4829-XK") && !s.contains("Device code"),
             "fabricated device code must be gone: {s}"
-        );
-        // Before the grace period: static opening line, no spinner yet.
-        app.browser_since = Some(std::time::Instant::now());
-        terminal.draw(|f| render(f, &mut app)).unwrap();
-        let early: String = terminal
-            .backend()
-            .buffer()
-            .content()
-            .iter()
-            .map(|c| c.symbol().to_string())
-            .collect();
-        assert!(
-            early.contains("Opening browser"),
-            "grace line missing: {early}"
         );
         // API key editing: empty entry invites paste, typed entry masks.
         app.show_login();
@@ -2144,7 +2122,7 @@ mod tests {
             "specific error missing: {s3}"
         );
         assert!(!s3.to_lowercase().contains("sorry"), "no apologies: {s3}");
-        // Success state names the key suffix.
+        // Plausible keys still fail closed and are not retained.
         app.login_api_input = "ag-valid-key-12345".to_string();
         app.submit_api_key();
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -2156,10 +2134,10 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s4.contains("✓ Signed in as key ••••2345"),
-            "success identity missing: {s4}"
+            s4.contains("not implem") && s4.contains("No key was stored"),
+            "fail-closed message missing: {s4}"
         );
-        // Legacy validating state resolves honestly (no fake network check).
+        // Legacy validating state does not claim validation or persistence.
         app.login_status = LoginStatus::ApiKeyValidating;
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let s5: String = terminal
@@ -2170,8 +2148,8 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s5.contains("Storing key locally"),
-            "honest validating missing: {s5}"
+            s5.contains("Authentication unavailable") && s5.contains("No key was stored"),
+            "fail-closed validating message missing: {s5}"
         );
         assert!(
             !s5.contains("Validating API key"),
@@ -2347,10 +2325,9 @@ mod tests {
             }
             clicked.login_apikey = Some(card);
             assert!(!clicked.handle_click(card.x + 2, card.y + 2));
-            assert_eq!(
-                clicked.login_status,
-                crate::app::LoginStatus::Success,
-                "card click must activate like Enter"
+            assert!(
+                matches!(clicked.login_status, crate::app::LoginStatus::Error(_)),
+                "card click must fail closed like Enter"
             );
         }
     }
@@ -2358,7 +2335,7 @@ mod tests {
     #[test]
     fn login_has_no_near_black_text() {
         // Regression: Rgb(23,22,31) on a default (dark) terminal is unreadable.
-        let invisible = Color::Rgb(23, 22, 31);
+        let invisible = COLOR_BG_DARK;
         let mut app = App::new(None);
         app.show_login();
         // Idle
@@ -2592,8 +2569,12 @@ mod tests {
     #[test]
     fn feed_actions_are_triple_encoded() {
         // Research §2.3: color+glyph+word so red/green stay distinct.
-        assert_eq!(action_glyph("allow"), "✓");
-        assert_eq!(action_glyph("deny"), "✗");
+        let (allow_glyph, deny_glyph) = match icon_set() {
+            IconSet::Ascii => ("*", "x"),
+            IconSet::Unicode => ("✓", "✗"),
+        };
+        assert_eq!(action_glyph("allow"), allow_glyph);
+        assert_eq!(action_glyph("deny"), deny_glyph);
         assert_eq!(action_glyph("ask"), "?");
         // Feed rows render the glyph next to the word.
         let mut app = many_entry_app(2);
@@ -2610,9 +2591,12 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s.contains("✗ deny"), "deny row must be triple-encoded: {s}");
         assert!(
-            s.contains("✓ allow"),
+            s.contains(&format!("{deny_glyph} deny")),
+            "deny row must be triple-encoded: {s}"
+        );
+        assert!(
+            s.contains(&format!("{allow_glyph} allow")),
             "allow row must be triple-encoded: {s}"
         );
     }
@@ -2812,7 +2796,7 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s.contains("Waiting for browser"), "wait line missing: {s}");
+        assert!(s.contains("not implem"), "unavailable message missing: {s}");
         // Clicking the dog barks.
         let r = app.login_dog.expect("dog rect");
         let cx = r.x + r.width / 2;

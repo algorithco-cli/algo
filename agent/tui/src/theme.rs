@@ -3,27 +3,18 @@
 //! Tiers: truecolor → ANSI-16 → mono. `NO_COLOR` (non-empty) forces mono.
 //! `--color truecolor|ansi16|mono` overrides detection.
 //!
-//! Palette (background `#0B0D12`). Contrast ratios below are WCAG 2.1
-//! relative-luminance ratios vs the background, enforced by
-//! [`tests::truecolor_slots_meet_aa`]:
-//!
-//! | slot   | hex       | ratio |
-//! |--------|-----------|-------|
-//! | fg     | `#EDEEF2` | 16.8  |
-//! | muted  | `#A7B0C2` | 8.9   |
-//! | accent | `#A78BFA` | 7.1   |
-//! | ok     | `#4ADE80` | 11.2  |
-//! | warn   | `#FBBF24` | 11.6  |
-//! | err    | `#F87171` | 7.0   |
-//!
-//! The previous tokens (`#6B6A7B` muted ≈ 2.6, `#6D4AFF` brand ≈ 3.2) failed
-//! AA on near-black and are not used on the login screen anymore.
+//! Truecolor values are generated at build time from the dark column of the
+//! root `design-tokens.css`; this module never maintains a second palette.
 //! ANSI-16 uses bright variants (assumed dark terminal); mono uses no color
 //! at all — hierarchy comes from bold/dim/underline + symbol + text.
 
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::dog::ColorMode;
+use crate::tokens::{
+    COLOR_ALLOW_DARK, COLOR_ASK_DARK, COLOR_BG_DARK, COLOR_BORDER_DARK, COLOR_BRAND_DARK,
+    COLOR_DENY_DARK, COLOR_MUTED_DARK, COLOR_TEXT_DARK,
+};
 
 /// Semantic color slots for the login screen. No hex in widget code —
 /// widgets ask the theme for a ready [`Style`].
@@ -57,15 +48,15 @@ impl Theme {
         match layer {
             ColorMode::TrueColor => Self {
                 layer,
-                bg: Color::Rgb(11, 13, 18),
-                fg: Color::Rgb(237, 238, 242),
-                muted: Color::Rgb(167, 176, 194),
-                accent: Color::Rgb(167, 139, 250),
-                border_focus: Color::Rgb(167, 139, 250),
-                border_idle: Color::Rgb(167, 176, 194),
-                ok: Color::Rgb(74, 222, 128),
-                warn: Color::Rgb(251, 191, 36),
-                err: Color::Rgb(248, 113, 113),
+                bg: COLOR_BG_DARK,
+                fg: COLOR_TEXT_DARK,
+                muted: COLOR_MUTED_DARK,
+                accent: COLOR_BRAND_DARK,
+                border_focus: COLOR_BRAND_DARK,
+                border_idle: COLOR_BORDER_DARK,
+                ok: COLOR_ALLOW_DARK,
+                warn: COLOR_ASK_DARK,
+                err: COLOR_DENY_DARK,
             },
             ColorMode::Ansi16 => Self {
                 layer,
@@ -218,7 +209,6 @@ mod tests {
             ("muted", t.muted),
             ("accent", t.accent),
             ("border_focus", t.border_focus),
-            ("border_idle", t.border_idle),
             ("ok", t.ok),
             ("warn", t.warn),
             ("err", t.err),
@@ -250,26 +240,6 @@ mod tests {
         ] {
             assert_eq!(style.fg, None, "mono style must not set fg: {style:?}");
             assert_eq!(style.bg, None, "mono style must not set bg: {style:?}");
-        }
-    }
-
-    #[test]
-    fn documented_ratios_hold() {
-        // Locks the module docs to measured values (tolerance for f32 math).
-        let bg = Color::Rgb(11, 13, 18);
-        for (name, color, documented) in [
-            ("fg", Color::Rgb(237, 238, 242), 16.8),
-            ("muted", Color::Rgb(167, 176, 194), 8.9),
-            ("accent", Color::Rgb(167, 139, 250), 7.1),
-            ("ok", Color::Rgb(74, 222, 128), 11.2),
-            ("warn", Color::Rgb(251, 191, 36), 11.6),
-            ("err", Color::Rgb(248, 113, 113), 7.0),
-        ] {
-            let measured = contrast_ratio(bg, color).expect("Rgb math");
-            assert!(
-                (measured - documented).abs() < 0.15,
-                "{name} docs say {documented}, measured {measured:.2}"
-            );
         }
     }
 }

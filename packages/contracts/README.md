@@ -5,10 +5,11 @@ Contracts SDK for algorithco guard (`algorithco_guard.v0`).
 > **Status: scaffold only — DO NOT PUBLISH until ADR-0013 accepted + license
 > sign-off (ADR-0001) + proto tag pinned.** Repo stays private per ADR-0009 waiver.
 
-- Source: `../../proto/algorithco_guard/v0/*.proto`
+- Source: exact Git tag `v0.0.1-alpha` (override only with `ALGO_PROTO_TAG`)
 - Generated output (`src/gen`, `dist`) is build output — never hand-edit, never commit.
 - Consumers pin exact proto tag (`v0.0.1-alpha`): see `../../proto/VERSIONING.md`.
-- Build: `npm run build` runs `buf generate` against the pinned tag, then `tsc`.
+- Build: `npm run build` exports the pinned tag into an isolated temporary tree,
+  runs `buf generate` there, then runs `tsc`.
 
 Publish checklist (all required before `npm publish`):
 - [ ] ADR-0013 accepted (scope `@algorithco`, version policy)

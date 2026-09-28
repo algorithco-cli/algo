@@ -130,6 +130,7 @@ jobs:
             echo "Missing secret NPM_TOKEN (see repo docs)." >&2
             exit 1
           fi
+          npm run verify:release
           # Provenance is handled by `npm publish --provenance` (sigstore).
           # NOTE: actions/attest-build-provenance was removed — it fails on
           # this repo with "Resource not accessible by integration"; re-add
