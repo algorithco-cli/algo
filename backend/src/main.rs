@@ -1153,9 +1153,7 @@ async fn billing_webhook_handler() -> impl IntoResponse {
     // 501 beats silently dropping provider events (fail-closed, honest).
     (
         StatusCode::NOT_IMPLEMENTED,
-        Json(
-            serde_json::json!({"error": "billing provider not configured (deferred MoR)"}),
-        ),
+        Json(serde_json::json!({"error": "billing provider not configured (deferred MoR)"})),
     )
         .into_response()
 }
