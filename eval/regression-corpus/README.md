@@ -79,5 +79,5 @@ Failure output shows the command, expected vs actual `Decision`, and the `source
 ## License & privacy
 
 No secrets, no user code, no credentials in this corpus. All payloads are synthetic.
-License: `LicenseRef-TBD-legal-signoff` (workspace).
+License: `GPL-3.0-only` (workspace).
 

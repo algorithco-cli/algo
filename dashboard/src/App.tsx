@@ -190,9 +190,7 @@ function RootLayout(): JSX.Element {
           </p>
           <p className="mt-1">
             Tokens: Variant 1 single source{" "}
-            <code style={{ color: "var(--ag-brand)" }}>
-              design-tokens.css
-            </code>{" "}
+            <code style={{ color: "var(--ag-brand)" }}>design-tokens.css</code>{" "}
             · Colors mapped via <code>design-tokens.css</code> →{" "}
             <code>Tokens.css</code> → Tailwind/shadcn. Decision badges use only{" "}
             <span style={{ color: "var(--ag-allow)" }}>allow</span> /{" "}

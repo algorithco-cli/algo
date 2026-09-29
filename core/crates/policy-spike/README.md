@@ -33,7 +33,7 @@ this crate.
 
 Both clear the latency budget with wide headroom (CEL ~20×, DSL ~500×).
 The decision therefore turns on maturity/auditability/supply-chain, not speed —
-see ADR-0012 (bias per plan: CEL if maturity OK).
+see owner decision (bias per plan: CEL if maturity OK).
 
 ## CEL maturity notes ([VERIFY] 2026-09-23)
 
@@ -52,4 +52,4 @@ see ADR-0012 (bias per plan: CEL if maturity OK).
   not by reading docs alone.
 - MSRV note: `cel` 0.12+ declares MSRV 1.82; workspace is 1.75
   (`core/Cargo.toml:9`). Adopting CEL as a product dep raises MSRV —
-  recorded in ADR-0012 alternatives/consequences.
+  recorded in owner decision alternatives/consequences.

@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn cel_matches_support_probe() {
-        // Datum for the ADR expressiveness row: does this `cel` version
+        // Datum for the owner-decision expressiveness row: does this `cel` version
         // support the standard `matches()` macro? Record, don't gate.
         let r = Program::compile(r#"raw.matches("mkfs")"#);
         eprintln!("PROBE cel matches() supported: {}", r.is_ok());

@@ -8,7 +8,13 @@
   <url><loc>http://127.0.0.1:3007/roadmap</loc></url>
   <url><loc>http://127.0.0.1:3007/faq</loc></url>
   <url><loc>http://127.0.0.1:3007/privacy</loc></url>
+  <url><loc>http://127.0.0.1:3007/terms</loc></url>
+  <url><loc>http://127.0.0.1:3007/security</loc></url>
   <url><loc>http://127.0.0.1:3007/docs</loc></url>
   <url><loc>http://127.0.0.1:3007/docs/install</loc></url>
   <url><loc>http://127.0.0.1:3007/docs/cli</loc></url>
+  <url><loc>http://127.0.0.1:3007/docs/configuration</loc></url>
+  <url><loc>http://127.0.0.1:3007/docs/architecture</loc></url>
+  <url><loc>http://127.0.0.1:3007/docs/privacy-security</loc></url>
+  <url><loc>http://127.0.0.1:3007/docs/troubleshooting</loc></url>
 </urlset>

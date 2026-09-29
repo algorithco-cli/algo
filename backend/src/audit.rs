@@ -10,13 +10,38 @@ use serde::{Deserialize, Serialize};
 /// Allowed decisions (mirrors proto Action). Unknown → ask downstream, but ingest validates.
 const ALLOWED_DECISIONS: &[&str] = &["allow", "deny", "ask", "ALLOW", "DENY", "ASK"];
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Allowed tool kinds (mirrors proto ToolKind names, lowercase on the wire).
+const ALLOWED_TOOL_KINDS: &[&str] = &["shell", "edit", "write", "read", "net", "other"];
+
+/// Allowed source levels (mirrors proto SourceLevel names, lowercase).
+const ALLOWED_SOURCES: &[&str] = &["rule", "cache", "local_model", "jev", "fallback"];
+
+/// Max lengths for optional dashboard explanation fields.
+pub const MAX_REASON_LEN: usize = 512;
+pub const MAX_POLICY_VERSION_LEN: usize = 64;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuditRecord {
     pub redacted_event: String,
     pub decision: String,
     pub latency_ms: i64,
     pub trace_id: String,
     pub org_id: Option<String>,
+    /// Server-set ingest time, RFC3339 (UTC, millis). Basis for from/to
+    /// filters and stats buckets; string-compare safe (fixed format).
+    pub ingested_at: String,
+    /// Client event id (validated) or server-generated UUID.
+    pub event_id: String,
+    /// Lowercase tool kind (shell|edit|write|read|net|other), if supplied.
+    pub tool_kind: Option<String>,
+    /// Client user id (validated opaque string), if supplied. Basis for
+    /// per_user stats; absent until agents send it.
+    pub user_id: Option<String>,
+    /// Optional explanation fields for dashboard rows (all validated).
+    pub reason: Option<String>,
+    pub confidence_0_1: Option<f64>,
+    pub source_level: Option<String>,
+    pub policy_version: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +50,8 @@ pub enum AuditError {
     MissingField(String),
     InvalidDecision(String),
     InvalidLatency(String),
+    InvalidToolKind(String),
+    InvalidMeta(String),
 }
 
 impl std::fmt::Display for AuditError {
@@ -34,6 +61,8 @@ impl std::fmt::Display for AuditError {
             Self::MissingField(s) => write!(f, "missing field: {s}"),
             Self::InvalidDecision(s) => write!(f, "invalid decision: {s}"),
             Self::InvalidLatency(s) => write!(f, "invalid latency: {s}"),
+            Self::InvalidToolKind(s) => write!(f, "invalid tool_kind: {s}"),
+            Self::InvalidMeta(s) => write!(f, "invalid field: {s}"),
         }
     }
 }
@@ -255,12 +284,99 @@ pub fn ingest_audit(mut raw: serde_json::Value) -> Result<AuditRecord, AuditErro
         None => None,
     };
 
+    // Optional dashboard attribution (all fail-closed on invalid).
+    let event_id = match obj.get("event_id").and_then(|v| v.as_str()) {
+        Some(s) => {
+            if s.len() > MAX_ID_LEN || s.trim().is_empty() || s.chars().any(|c| c.is_control()) {
+                return Err(AuditError::MissingField("event_id invalid".to_string()));
+            }
+            s.to_string()
+        }
+        None => uuid::Uuid::new_v4().to_string(),
+    };
+    let tool_kind = match obj.get("tool_kind").and_then(|v| v.as_str()) {
+        Some(s) => {
+            let lower = s.to_ascii_lowercase();
+            if !ALLOWED_TOOL_KINDS.contains(&lower.as_str()) {
+                return Err(AuditError::InvalidToolKind(s.to_string()));
+            }
+            Some(lower)
+        }
+        None => None,
+    };
+    let user_id = match obj.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => {
+            if s.len() > MAX_ID_LEN || s.trim().is_empty() || s.chars().any(|c| c.is_control()) {
+                return Err(AuditError::MissingField("user_id invalid".to_string()));
+            }
+            Some(s.to_string())
+        }
+        None => None,
+    };
+    let reason = match obj.get("reason").and_then(|v| v.as_str()) {
+        Some(s) => {
+            if s.len() > MAX_REASON_LEN || s.chars().any(|c| c.is_control()) {
+                return Err(AuditError::InvalidMeta("reason invalid".to_string()));
+            }
+            Some(s.to_string())
+        }
+        None => None,
+    };
+    let confidence_0_1 = match obj.get("confidence_0_1") {
+        Some(v) => {
+            let c = v.as_f64().ok_or_else(|| {
+                AuditError::InvalidMeta("confidence_0_1 must be a number".to_string())
+            })?;
+            if !c.is_finite() || !(0.0..=1.0).contains(&c) {
+                return Err(AuditError::InvalidMeta(
+                    "confidence_0_1 must be in [0, 1]".to_string(),
+                ));
+            }
+            Some(c)
+        }
+        None => None,
+    };
+    let source_level = match obj.get("source_level").and_then(|v| v.as_str()) {
+        Some(s) => {
+            let lower = s.to_ascii_lowercase();
+            if !ALLOWED_SOURCES.contains(&lower.as_str()) {
+                return Err(AuditError::InvalidMeta(format!(
+                    "source_level invalid: {s}"
+                )));
+            }
+            Some(lower)
+        }
+        None => None,
+    };
+    let policy_version = match obj.get("policy_version").and_then(|v| v.as_str()) {
+        Some(s) => {
+            if s.len() > MAX_POLICY_VERSION_LEN
+                || s.trim().is_empty()
+                || s.chars().any(|c| c.is_control())
+            {
+                return Err(AuditError::InvalidMeta(
+                    "policy_version invalid".to_string(),
+                ));
+            }
+            Some(s.to_string())
+        }
+        None => None,
+    };
+
     let record = AuditRecord {
         redacted_event,
         decision,
         latency_ms,
         trace_id,
         org_id,
+        ingested_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        event_id,
+        tool_kind,
+        user_id,
+        reason,
+        confidence_0_1,
+        source_level,
+        policy_version,
     };
 
     // Append to store + WAL queue (in-memory scaffold for MVP).
@@ -284,7 +400,89 @@ pub fn all_records() -> Vec<AuditRecord> {
     lock_audit_store().clone()
 }
 
+/// Dashboard list query (mirrors proto ListAuditRequest).
+/// Bounds are parsed `DateTime<Utc>` (handler 400s on invalid RFC3339).
+/// Unknown decision/tool_kind filters match nothing (fail-safe contract).
+pub struct ListAuditQuery {
+    pub org_id: Option<String>,
+    pub limit: usize,
+    pub cursor: usize,
+    pub decision: Option<String>,
+    pub tool_kind: Option<String>,
+    pub from: Option<chrono::DateTime<chrono::Utc>>,
+    pub to: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub struct ListAuditPage {
+    pub records: Vec<AuditRecord>,
+    pub next_cursor: Option<String>,
+    pub total: i64,
+    pub truncated: bool,
+}
+
+/// Paginated audit history, newest first. Cursor is an offset into the
+/// filtered newest-first ordering (opaque; may shift as records ingest).
+pub fn list_audit(q: &ListAuditQuery) -> ListAuditPage {
+    let store = lock_audit_store();
+    let mut filtered: Vec<&AuditRecord> = store
+        .iter()
+        .filter(|r| {
+            if let Some(org) = q.org_id.as_deref() {
+                if r.org_id.as_deref() != Some(org) {
+                    return false;
+                }
+            }
+            if let Some(d) = q.decision.as_deref() {
+                if r.decision.to_ascii_lowercase() != d {
+                    return false;
+                }
+            }
+            if let Some(t) = q.tool_kind.as_deref() {
+                if r.tool_kind.as_deref() != Some(t) {
+                    return false;
+                }
+            }
+            if q.from.is_some() || q.to.is_some() {
+                let ts = chrono::DateTime::parse_from_rfc3339(&r.ingested_at)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .ok();
+                match ts {
+                    Some(ts) => {
+                        if q.from.is_some_and(|from| ts < from) {
+                            return false;
+                        }
+                        if q.to.is_some_and(|to| ts > to) {
+                            return false;
+                        }
+                    }
+                    // Server-set timestamps always parse; skip defensively.
+                    None => return false,
+                }
+            }
+            true
+        })
+        .collect();
+    // Newest first (ingested_at is monotonic per process).
+    filtered.sort_by(|a, b| b.ingested_at.cmp(&a.ingested_at));
+    let total = filtered.len();
+    let start = q.cursor.min(total);
+    let end = start.saturating_add(q.limit).min(total);
+    let records = filtered[start..end].iter().map(|r| (*r).clone()).collect();
+    let next_cursor = if end < total {
+        Some(end.to_string())
+    } else {
+        None
+    };
+    ListAuditPage {
+        records,
+        next_cursor,
+        total: total as i64,
+        truncated: end < total,
+    }
+}
+
 /// Drain WAL queue (simulates apalis/Postgres queue consumer).
+#[cfg(test)]
 pub fn drain_wal() -> Vec<AuditRecord> {
     lock_wal_queue().drain(..).collect()
 }

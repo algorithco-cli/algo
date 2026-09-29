@@ -1,4 +1,4 @@
-﻿# backend (Phase 0 — no product code yet)
+# backend (Phase 0 — no product code yet)
 
 > Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard`.
 > Real code lives in the monorepo subdirectory `backend/` starting its build phase. This dir is a scaffold stub.
@@ -34,16 +34,26 @@ Env:
 | `ALGO_GITHUB_CLIENT_ID` | GitHub App/OAuth App client ID (device flow must be enabled in app settings); unset → GitHub routes 503 |
 | `ALGO_GOOGLE_CLIENT_ID` | Google Cloud "Desktop app" OAuth client ID; unset → Google routes 503 |
 | `ALGO_GOOGLE_CLIENT_SECRET` | optional; without it the backend acts as a public client (PKCE only) |
-| `ALGO_SESSION_JWT_SECRET` | HS256 secret (min 16 chars); unset → ephemeral per-boot dev secret |
+| `ALGO_SESSION_JWT_SECRET` | required HS256 secret (minimum 32 bytes); missing or shorter values prevent startup |
 | `ALGO_GITHUB_DEVICE_CODE_URL` / `ALGO_GITHUB_ACCESS_TOKEN_URL` / `ALGO_GITHUB_API_BASE` | override for staging / GitHub Enterprise Server |
 | `ALGO_GOOGLE_AUTH_URL` / `ALGO_GOOGLE_TOKEN_URL` / `ALGO_GOOGLE_USERINFO_URL` / `ALGO_GOOGLE_JWKS_URL` | override for staging / offline dev |
-| `ALGO_POLICY_SIGNING_SEED_HEX` | 64-hex policy signing seed; unset → deterministic test key + warning |
+| `ALGO_POLICY_SIGNING_SEED_HEX` | required 64-hex policy signing seed; missing or malformed values prevent startup |
 
 Routes: `POST /v1/auth/signup|login` (email, open; login is oracle-free 401),
 `POST /v1/auth/github/device|poll|validate`,
 `POST /v1/auth/google/url|callback|verify`. All fail closed (400 invalid,
 401 unauthorized, 409 duplicate, 503 not-configured, 502 provider-down,
 429 slow-down).
+
+Dashboard shims (Phase 2 v1, dashboard plan proposed): `GET /v1/audit`
+(paginated newest-first list: `limit/cursor/decision/tool_kind/from/to/org_id`;
+unknown filters match nothing), `GET /v1/audit/stream` (bounded-burst SSE tail,
+`retry: 5000`, `Last-Event-ID` resume), `GET /v1/stats` (now honors
+`from/to` + `granularity=day|hour`, `limit`, `top_n`; returns
+`buckets/per_user/per_project/truncated`), `GET /v1/orgs` + `GET /v1/orgs/:id`
+(owner-scoped, no-oracle 404). All in-memory: restart wipes audit + orgs.
+Default CORS allows loopback `:3007` (web) and `:5173` (dashboard dev);
+extend via `ALGO_CORS_ORIGINS`.
 
 Billing enforcement (`plans.rs|subscriptions.rs`): subscriptions bind to the
 creator's caller identity (owner); org_id alone never spends a plan —

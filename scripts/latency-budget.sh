@@ -317,7 +317,7 @@ WARN=$(cat /tmp/latency_budget_warn 2>/dev/null || echo 0)
 echo ""
 echo "[latency-budget] Summary: FAIL=${FAIL} WARN=${WARN}"
 if [[ "${FAIL}" -gt 0 ]]; then
-  echo -e "${RED}[latency-budget] ❌ LATENCY BUDGET BREACH or REGRESSION >${REGRESSION_PCT}% — see above. Adjust only via ADR (phase-1-09).${NC}"
+  echo -e "${RED}[latency-budget] ❌ LATENCY BUDGET BREACH or REGRESSION >${REGRESSION_PCT}% — see above. Adjust only via owner decision (phase-1-09).${NC}"
   exit 1
 else
   echo -e "${GREEN}[latency-budget] ✅ budgets OK (L0/L1 p50<3ms p99<10ms, redact <500us, L3 report-only, regression <=${REGRESSION_PCT}%)${NC}"

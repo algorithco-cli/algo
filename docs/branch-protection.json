@@ -1,6 +1,6 @@
 {
   "_comment": "Branch protection for main — PUT body for PUT /repos/{owner}/{repo}/branches/main/protection. Applied by scripts/apply-branch-protection.{sh,ps1} (human act, needs admin). Preflight 2026-09-23: GET protection → 404 Branch not protected; GET rulesets → empty. GitHub docs gate protected branches to Pro/Team/Enterprise for private repos, so the apply run may return 403 plan-gated — the script reports it. Until enforcement lands, CI checks run visibly on every PR and merging is human-disciplined via the PR template.",
-  "_plan": "If the apply run 403s, flip to Pro (or public after license ADR-0001 + legal sign-off) and re-run.",
+  "_plan": "If the apply run 403s, flip to Pro (or public after license finalization) and re-run.",
   "required_status_checks": {
     "strict": true,
     "contexts": [

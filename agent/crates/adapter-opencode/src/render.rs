@@ -4,7 +4,7 @@
 //! against current OpenCode docs (plugin/config system, blockable events).
 //! Unknown schema version → always `ask` + `reason:unsupported_schema` (fail-safe).
 //! All outputs are version-gated with `adapter_version`. If interception cannot
-//! block, degrade to observe/advise via ADR, never guess-and-allow.
+//! block, degrade to observe/advise via owner decision, never guess-and-allow.
 //! The mapping below is behind the `is_supported_schema` gate so a future schema bump fails safe.
 
 use algo_types::{Action, Decision};

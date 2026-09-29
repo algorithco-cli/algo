@@ -52,7 +52,7 @@ pub struct Subscription {
     pub scheduled_tier: Option<String>,
     pub provider: String,
     pub provider_subscription_id: Option<String>,
-    /// Reserved per ADR-0006: inert tier snapshot label. Enforcement reads
+    /// Reserved per deferred MoR: inert tier snapshot label. Enforcement reads
     /// `resolve_entitlement`, never this string.
     pub entitlement: Option<String>,
 }

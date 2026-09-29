@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type BlurTextProps = {
@@ -45,6 +45,7 @@ export default function BlurText({
   onAnimationComplete,
   stepDuration = 0.35,
 }: BlurTextProps): JSX.Element {
+  const reduceMotion = useReducedMotion();
   const elements = animateBy === "words" ? text.split(" ") : text.split("");
   const [inView, setInView] = useState(false);
   const ref = useRef<HTMLParagraphElement>(null);
@@ -120,11 +121,17 @@ export default function BlurText({
           <motion.span
             className="inline-block will-change-[transform,filter,opacity]"
             key={`${segment}-${index}`}
-            initial={fromSnapshot as never}
+            initial={reduceMotion ? false : (fromSnapshot as never)}
             animate={
-              inView ? (animateKeyframes as never) : (fromSnapshot as never)
+              reduceMotion
+                ? ({ opacity: 1, filter: "none", y: 0 } as never)
+                : inView
+                  ? (animateKeyframes as never)
+                  : (fromSnapshot as never)
             }
-            transition={spanTransition as never}
+            transition={
+              reduceMotion ? { duration: 0 } : (spanTransition as never)
+            }
             onAnimationComplete={
               index === elements.length - 1 ? onAnimationComplete : undefined
             }

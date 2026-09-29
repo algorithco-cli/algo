@@ -1,6 +1,7 @@
 import ArrowRight from "lucide-react/icons/arrow-right.mjs";
 import Check from "lucide-react/icons/check.mjs";
 import X from "lucide-react/icons/x.mjs";
+import * as React from "react";
 import { Link } from "react-router-dom";
 import BlurText from "../components/BlurText";
 import { Counter } from "../components/Counter";
@@ -13,41 +14,58 @@ import { useRevealOnMount } from "../hooks/useRevealOnMount";
 
 const STAT_ICON = { zap: 0, shield: 1, flask: 2, check: 3 } as const;
 
+function useHeroColors(): [string, string, string] | null {
+  const [colors, setColors] = React.useState<[string, string, string] | null>(
+    null,
+  );
+  React.useEffect(() => {
+    const styles = getComputedStyle(document.documentElement);
+    const read = (name: string): string => styles.getPropertyValue(name).trim();
+    const next: [string, string, string] = [
+      read("--ag-brand-strong"),
+      read("--ag-brand"),
+      read("--ag-surface"),
+    ];
+    if (next.every((value) => /^#[0-9a-f]{6}$/i.test(value))) setColors(next);
+  }, []);
+  return colors;
+}
+
 export default function Home(): JSX.Element {
   useRevealOnMount();
-  // Grainient tuned to Variant 1 — screenshot settings + our brand palette:
-  // screenshot: ts 3.75 / cb 0.11 / wf 2.3 / ws 0.8 / wa 22 / blend 0/0.05 / rot 500 / noise 1 / grain 0.1/2 off / contrast 2.5 / gamma 0.7 / sat 0.75 / zoom 1.15
-  // brand-adapted: our --ag-brand #6D4AFF (light) / #8E77FF (dark) + mid #7258df-purple so dark hero tints purple, not pink.
+  const heroColors = useHeroColors();
   return (
     <>
       <Seo path="/" />
       <section className="hero" id="top">
         <div className="hero-grainient" aria-hidden>
-          <Grainient
-            className="hero-grainient"
-            color1="#d588d3"
-            color2="#7258df"
-            color3="#ad74e1"
-            timeSpeed={3.75}
-            colorBalance={0.11}
-            warpStrength={1}
-            warpFrequency={2.3}
-            warpSpeed={0.8}
-            warpAmplitude={22}
-            blendAngle={0}
-            blendSoftness={0.05}
-            rotationAmount={500}
-            noiseScale={1}
-            grainAmount={0.1}
-            grainScale={2}
-            grainAnimated={false}
-            contrast={2.5}
-            gamma={0.7}
-            saturation={0.75}
-            centerX={0}
-            centerY={0}
-            zoom={1.15}
-          />
+          {heroColors ? (
+            <Grainient
+              className="hero-grainient"
+              color1={heroColors[0]}
+              color2={heroColors[1]}
+              color3={heroColors[2]}
+              timeSpeed={3.75}
+              colorBalance={0.11}
+              warpStrength={1}
+              warpFrequency={2.3}
+              warpSpeed={0.8}
+              warpAmplitude={22}
+              blendAngle={0}
+              blendSoftness={0.05}
+              rotationAmount={500}
+              noiseScale={1}
+              grainAmount={0.1}
+              grainScale={2}
+              grainAnimated={false}
+              contrast={2.5}
+              gamma={0.7}
+              saturation={0.75}
+              centerX={0}
+              centerY={0}
+              zoom={1.15}
+            />
+          ) : null}
           <div className="hero-grainient-fade" aria-hidden />
         </div>
         <div className="wrap hero-grid hero-grid--single">

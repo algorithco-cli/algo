@@ -33,10 +33,10 @@ mod subscriptions;
 mod test_sync;
 mod verify;
 
-use audit::{ingest_audit, AuditError};
+use audit::{ingest_audit, list_audit, AuditError, ListAuditQuery};
 use auth::require_auth;
 use policy::PolicyStore;
-use stats::query_stats;
+use stats::{query_stats_series, Granularity, StatsSeriesQuery};
 use verify::PolicyBundle;
 
 // ── State & rate limit ──────────────────────────────────────────────
@@ -196,7 +196,9 @@ where
     }
 }
 
-// WAL-like queue is audit::WAL_QUEUE (VecDeque) — append on ingest, drain via /v1/wal/drain.
+// WAL-like queue is audit::WAL_QUEUE (VecDeque) — append on ingest. There is
+// intentionally no HTTP drain route (cross-org by construction, C2). A
+// durable worker replaces this in-memory scaffold in the durability phase.
 
 // ── Request / Response DTOs ─────────────────────────────────────────
 
@@ -245,12 +247,82 @@ struct PublishPolicyResponse {
     ok: bool,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct StatsQueryParams {
     org_id: Option<String>,
     from: Option<String>,
     to: Option<String>,
+    granularity: Option<String>,
+    limit: Option<usize>,
+    top_n: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListAuditParams {
+    org_id: Option<String>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    decision: Option<String>,
+    tool_kind: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+}
+
+/// In-memory org registry (session-lifetime; restart wipes it).
+/// Populated by POST /v1/orgs so GET /v1/orgs[/:id] can serve the dashboard.
+#[derive(Debug, Clone, Serialize)]
+struct StoredOrg {
+    org_id: String,
+    org_name: String,
+    owner_id: String,
+    created_at: String,
+}
+
+static ORG_STORE: OnceLock<Mutex<HashMap<String, StoredOrg>>> = OnceLock::new();
+
+fn org_store() -> &'static Mutex<HashMap<String, StoredOrg>> {
+    ORG_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lock_org_store() -> std::sync::MutexGuard<'static, HashMap<String, StoredOrg>> {
+    match org_store().lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!("org store mutex poisoned; recovering inner");
+            poisoned.into_inner()
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn clear_org_store() {
+    lock_org_store().clear();
+}
+
+/// Org membership gate (C2): the caller must own the org. Strangers and
+/// unknown ids are INDISTINGUISHABLE (`404 org not found`, no oracle) —
+/// same contract as `get_org_handler`. Callers validate `org_id` shape
+/// first (empty/oversize → 400); this function enforces membership.
+fn require_org_member(caller: &str, org_id: &str) -> Result<(), (StatusCode, serde_json::Value)> {
+    match lock_org_store().get(org_id) {
+        Some(org) if org.owner_id == caller => Ok(()),
+        _ => Err((
+            StatusCode::NOT_FOUND,
+            serde_json::json!({"error": "org not found"}),
+        )),
+    }
+}
+
+/// Require a non-empty, length-capped `org_id` (fail-closed 400).
+/// Removes cross-org aggregation: no handler may operate without an org.
+fn require_org_param(org_id: Option<&str>) -> Result<String, (StatusCode, serde_json::Value)> {
+    match org_id.map(str::trim) {
+        Some(org) if !org.is_empty() && org.len() <= MAX_ORG_ID_LEN => Ok(org.to_string()),
+        _ => Err((
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({"error": "org_id required"}),
+        )),
+    }
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -308,11 +380,67 @@ async fn create_org_handler(
     // (prevents owner spoofing, C2).
     let resp = CreateOrgResponse {
         org_id: org_id.clone(),
-        org_name: name,
-        owner_id: caller,
+        org_name: name.clone(),
+        owner_id: caller.clone(),
     };
-    // In-memory: we don't persist org beyond response for MVP; stats/policy keyed by org_id still works.
+    // Session-lifetime registry so GET /v1/orgs[/:id] can serve the dashboard.
+    // In-memory MVP: restart wipes it (documented in README).
+    lock_org_store().insert(
+        org_id.clone(),
+        StoredOrg {
+            org_id,
+            org_name: name,
+            owner_id: caller,
+            created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        },
+    );
     (StatusCode::CREATED, Json(resp)).into_response()
+}
+
+async fn get_org_handler(headers: HeaderMap, Path(org_id): Path<String>) -> impl IntoResponse {
+    let caller = match authed_caller(&headers) {
+        Ok(c) => c,
+        Err((s, b)) => return (s, b).into_response(),
+    };
+    if let Err(resp) =
+        check_rate_limit(&rate_key(&headers, "get_org")).map_err(|(s, b)| (s, Json(b)))
+    {
+        return resp.into_response();
+    }
+    // No-oracle 404: strangers and unknown ids are indistinguishable (same as
+    // subscriptions). Only the owner may read the org.
+    match lock_org_store().get(&org_id) {
+        Some(org) if org.owner_id == caller => {
+            (StatusCode::OK, Json(serde_json::json!({"org": org}))).into_response()
+        }
+        _ => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "org not found"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn list_orgs_handler(headers: HeaderMap) -> impl IntoResponse {
+    let caller = match authed_caller(&headers) {
+        Ok(c) => c,
+        Err((s, b)) => return (s, b).into_response(),
+    };
+    if let Err(resp) =
+        check_rate_limit(&rate_key(&headers, "list_orgs")).map_err(|(s, b)| (s, Json(b)))
+    {
+        return resp.into_response();
+    }
+    let orgs: Vec<StoredOrg> = lock_org_store()
+        .values()
+        .filter(|o| o.owner_id == caller)
+        .cloned()
+        .collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"orgs": orgs, "total": orgs.len()})),
+    )
+        .into_response()
 }
 
 async fn email_signup_handler(Json(payload): Json<EmailSignupPayload>) -> impl IntoResponse {
@@ -1021,12 +1149,12 @@ async fn entitlement_handler(
 }
 
 async fn billing_webhook_handler() -> impl IntoResponse {
-    // Reserved for the ADR-0006 MoR vendor. No fake processing: an explicit
+    // Reserved for the deferred MoR vendor. No fake processing: an explicit
     // 501 beats silently dropping provider events (fail-closed, honest).
     (
         StatusCode::NOT_IMPLEMENTED,
         Json(
-            serde_json::json!({"error": "billing provider not configured (ADR-0006 MoR deferred)"}),
+            serde_json::json!({"error": "billing provider not configured (deferred MoR)"}),
         ),
     )
         .into_response()
@@ -1078,23 +1206,26 @@ async fn publish_policy_handler(
     Json(payload): Json<PublishPolicyPayload>,
 ) -> impl IntoResponse {
     // Auth already checked via middleware; double-check for direct handler tests.
-    if require_auth(&headers).is_err() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
-    }
+    let caller = match require_auth(&headers) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    };
     if let Err((s, b)) = check_rate_limit(&rate_key(&headers, "policy_publish")) {
         return (s, Json(b)).into_response();
     }
-    let org_id = payload.org_id.unwrap_or_else(|| "default".to_string());
-    if org_id.len() > MAX_ORG_ID_LEN || org_id.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error":"org_id invalid"})),
-        )
-            .into_response();
+    // C2: org_id required (no silent "default" cross-org scope) + owner check.
+    let org_id = match require_org_param(payload.org_id.as_deref()) {
+        Ok(o) => o,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    if let Err((s, b)) = require_org_member(&caller, &org_id) {
+        return (s, Json(b)).into_response();
     }
     // If raw bundle provided, verify_and_apply directly; else create new bundle from content.
     if let (Some(version), Some(signed_b64), Some(sig_b64)) =
@@ -1189,13 +1320,16 @@ async fn get_policy_handler(
     Path(version): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    if require_auth(&headers).is_err() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
-    }
+    let caller = match require_auth(&headers) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    };
     if version.len() > MAX_VERSION_LEN {
         return (
             StatusCode::BAD_REQUEST,
@@ -1203,18 +1337,15 @@ async fn get_policy_handler(
         )
             .into_response();
     }
-    let org_id = params
-        .get("org_id")
-        .map(|s| s.as_str())
-        .unwrap_or("default");
-    if org_id.len() > MAX_ORG_ID_LEN {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error":"org_id invalid"})),
-        )
-            .into_response();
+    // C2: org_id required + owner check (no cross-org policy reads).
+    let org_id = match require_org_param(params.get("org_id").map(|s| s.as_str())) {
+        Ok(o) => o,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    if let Err((s, b)) = require_org_member(&caller, &org_id) {
+        return (s, Json(b)).into_response();
     }
-    match state.policy_store.get(org_id, &version) {
+    match state.policy_store.get(&org_id, &version) {
         Some(bundle) => {
             use base64::{engine::general_purpose::STANDARD as B64, Engine};
             let body = serde_json::json!({
@@ -1234,17 +1365,34 @@ async fn get_policy_handler(
 
 async fn ingest_audit_handler(
     headers: HeaderMap,
-    Json(payload): Json<serde_json::Value>,
+    Json(mut payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    if require_auth(&headers).is_err() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
-    }
+    let caller = match require_auth(&headers) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    };
     if let Err((s, b)) = check_rate_limit(&rate_key(&headers, "audit_ingest")) {
         return (s, Json(b)).into_response();
+    }
+    // C2: org_id required + owner check. The payload org binds the record;
+    // strangers/unknown orgs get 404 (no oracle, no cross-org writes).
+    let org_id = match require_org_param(payload.get("org_id").and_then(|v| v.as_str())) {
+        Ok(o) => o,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    if let Err((s, b)) = require_org_member(&caller, &org_id) {
+        return (s, Json(b)).into_response();
+    }
+    // Normalize: the gate above already validated org_id; stamp the
+    // canonical value so trailing-whitespace variants cannot fork an org.
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("org_id".to_string(), serde_json::Value::String(org_id));
     }
     match ingest_audit(payload) {
         Ok(rec) => (
@@ -1265,29 +1413,307 @@ async fn ingest_audit_handler(
     }
 }
 
+/// Parse an RFC3339 bound; 400 on invalid (fail-closed, explicit).
+fn parse_time_bound(
+    raw: Option<&str>,
+    name: &str,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, (StatusCode, serde_json::Value)> {
+    match raw {
+        None => Ok(None),
+        Some(s) => match chrono::DateTime::parse_from_rfc3339(s) {
+            Ok(dt) => Ok(Some(dt.with_timezone(&chrono::Utc))),
+            Err(_) => Err((
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({"error": format!("{name} must be RFC3339")}),
+            )),
+        },
+    }
+}
+
 async fn stats_handler(
     headers: HeaderMap,
     Query(params): Query<StatsQueryParams>,
 ) -> impl IntoResponse {
-    if require_auth(&headers).is_err() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
-    }
-    // Empty org_id fails closed with 400 (no silent all-org leak).
-    if let Some(org) = params.org_id.as_deref() {
-        if org.is_empty() || org.len() > MAX_ORG_ID_LEN {
+    let caller = match require_auth(&headers) {
+        Ok(c) => c,
+        Err(_) => {
             return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error":"org_id invalid"})),
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
             )
                 .into_response();
         }
+    };
+    // C2: org_id required (no all-org aggregation) + owner check.
+    let org_id = match require_org_param(params.org_id.as_deref()) {
+        Ok(o) => o,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    if let Err((s, b)) = require_org_member(&caller, &org_id) {
+        return (s, Json(b)).into_response();
     }
-    let s = query_stats(params.org_id.as_deref());
+    let from = match parse_time_bound(params.from.as_deref(), "from") {
+        Ok(v) => v,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    let to = match parse_time_bound(params.to.as_deref(), "to") {
+        Ok(v) => v,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    // Server caps: buckets ≤ 1000 (default 30), top_n ≤ 100 (default 10).
+    let limit = params.limit.unwrap_or(30).min(1000);
+    let top_n = params.top_n.unwrap_or(10).min(100);
+    let s = query_stats_series(&StatsSeriesQuery {
+        org_id: Some(org_id.as_str()),
+        from,
+        to,
+        granularity: Granularity::parse(params.granularity.as_deref()),
+        limit,
+        top_n,
+    });
     (StatusCode::OK, Json(s)).into_response()
+}
+
+/// Proto enum numbers (decision.proto / events.proto) for the REST shim.
+fn action_number(decision: &str) -> i32 {
+    match decision.to_ascii_lowercase().as_str() {
+        "allow" => 1,
+        "deny" => 2,
+        _ => 3, // ask + unknown → ASK failsafe
+    }
+}
+
+fn tool_kind_number(tool_kind: Option<&str>) -> i32 {
+    match tool_kind {
+        Some("shell") => 1,
+        Some("edit") => 2,
+        Some("write") => 3,
+        Some("read") => 4,
+        Some("net") => 5,
+        _ => 6, // other + absent → OTHER
+    }
+}
+
+fn source_level_number(source: Option<&str>) -> i32 {
+    match source {
+        Some("rule") => 1,
+        Some("cache") => 2,
+        Some("local_model") => 3,
+        Some("jev") => 4,
+        Some("fallback") => 5,
+        _ => 0, // absent → UNSPECIFIED (receiver maps to ASK)
+    }
+}
+
+/// Stored record → proto AuditRecord JSON view (REST shim).
+fn audit_record_view(r: &audit::AuditRecord) -> serde_json::Value {
+    let action = action_number(&r.decision);
+    serde_json::json!({
+        "trace_id": r.trace_id,
+        "event_id": r.event_id,
+        "timestamp": r.ingested_at,
+        "tool_kind": tool_kind_number(r.tool_kind.as_deref()),
+        "redacted_payload": r.redacted_event,
+        "decision": {
+            "action": action,
+            "reason": r.reason.clone().unwrap_or_default(),
+            "confidence_0_1": r.confidence_0_1.unwrap_or(0.0),
+            "source_level": source_level_number(r.source_level.as_deref()),
+            "latency_ms": r.latency_ms,
+            "policy_version": r.policy_version.clone().unwrap_or_default(),
+            "trace_id": r.trace_id,
+        },
+        "privacy_mode": 2,
+        "org_id": r.org_id.clone().unwrap_or_default(),
+    })
+}
+
+async fn list_audit_handler(
+    headers: HeaderMap,
+    Query(params): Query<ListAuditParams>,
+) -> impl IntoResponse {
+    let caller = match require_auth(&headers) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    };
+    if let Err((s, b)) = check_rate_limit(&rate_key(&headers, "audit_list")) {
+        return (s, Json(b)).into_response();
+    }
+    // C2: org_id required (no all-org reads) + owner check.
+    let org_id = match require_org_param(params.org_id.as_deref()) {
+        Ok(o) => o,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    if let Err((s, b)) = require_org_member(&caller, &org_id) {
+        return (s, Json(b)).into_response();
+    }
+    // Unknown decision values match nothing per contract (200 empty, not 400).
+    let decision = params.decision.as_deref().map(str::to_ascii_lowercase);
+    let decision = match decision.as_deref() {
+        None | Some("") => None,
+        Some("allow") | Some("deny") | Some("ask") => decision,
+        Some(_) => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({"records": [], "next_cursor": "", "total": 0, "truncated": false})),
+            )
+                .into_response();
+        }
+    };
+    let tool_kind = params.tool_kind.as_deref().map(str::to_ascii_lowercase);
+    let tool_kind = match tool_kind.as_deref() {
+        None | Some("") => None,
+        Some("shell") | Some("edit") | Some("write") | Some("read") | Some("net")
+        | Some("other") => tool_kind,
+        Some(_) => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({"records": [], "next_cursor": "", "total": 0, "truncated": false})),
+            )
+                .into_response();
+        }
+    };
+    let from = match parse_time_bound(params.from.as_deref(), "from") {
+        Ok(v) => v,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    let to = match parse_time_bound(params.to.as_deref(), "to") {
+        Ok(v) => v,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    // Opaque offset cursor; invalid → 400 (fail-closed, explicit).
+    let cursor = match params.cursor.as_deref() {
+        None | Some("") => 0,
+        Some(c) => match c.parse::<usize>() {
+            Ok(n) => n,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "cursor invalid"})),
+                )
+                    .into_response();
+            }
+        },
+    };
+    // Default 50, cap 1000 (matches export ceiling).
+    let limit = params.limit.unwrap_or(50).clamp(1, 1000);
+    let page = list_audit(&ListAuditQuery {
+        org_id: Some(org_id),
+        limit,
+        cursor,
+        decision,
+        tool_kind,
+        from,
+        to,
+    });
+    let records: Vec<_> = page.records.iter().map(audit_record_view).collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "records": records,
+            "next_cursor": page.next_cursor.unwrap_or_default(),
+            "total": page.total,
+            "truncated": page.truncated,
+        })),
+    )
+        .into_response()
+}
+
+/// Bounded-burst SSE tail (REST shim for SubscribeAudit).
+/// Emits up to `limit` records after `cursor` as `record` events with
+/// `id:` = resume cursor, then a `ready` event and closes; EventSource
+/// reconnects (honoring Last-Event-ID) after `retry: 5000`. No long-lived
+/// connection, no new deps — true streaming is a follow-up.
+async fn audit_stream_handler(
+    headers: HeaderMap,
+    Query(params): Query<ListAuditParams>,
+) -> impl IntoResponse {
+    let caller = match require_auth(&headers) {
+        Ok(c) => c,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    };
+    if let Err((s, b)) = check_rate_limit(&rate_key(&headers, "audit_stream")) {
+        return (s, Json(b)).into_response();
+    }
+    // C2: org_id required (no all-org stream) + owner check.
+    let org_id = match require_org_param(params.org_id.as_deref()) {
+        Ok(o) => o,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    if let Err((s, b)) = require_org_member(&caller, &org_id) {
+        return (s, Json(b)).into_response();
+    }
+    // Last-Event-ID resume: explicit cursor wins, else the SSE resume header.
+    let cursor_raw = params.cursor.clone().filter(|c| !c.is_empty()).or_else(|| {
+        headers
+            .get("last-event-id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    });
+    let cursor = match cursor_raw.as_deref() {
+        None | Some("") => 0,
+        Some(c) => match c.parse::<usize>() {
+            Ok(n) => n,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "cursor invalid"})),
+                )
+                    .into_response();
+            }
+        },
+    };
+    let from = match parse_time_bound(params.from.as_deref(), "from") {
+        Ok(v) => v,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    let to = match parse_time_bound(params.to.as_deref(), "to") {
+        Ok(v) => v,
+        Err((s, b)) => return (s, Json(b)).into_response(),
+    };
+    // Bounded burst: at most 200 events per connection.
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
+    let page = list_audit(&ListAuditQuery {
+        org_id: Some(org_id),
+        limit,
+        cursor,
+        decision: params.decision.as_deref().map(str::to_ascii_lowercase),
+        tool_kind: params.tool_kind.as_deref().map(str::to_ascii_lowercase),
+        from,
+        to,
+    });
+    let mut body = String::from("retry: 5000\n\n");
+    for (i, r) in page.records.iter().enumerate() {
+        let id = cursor + i + 1;
+        let data = serde_json::to_string(&audit_record_view(r))
+            .unwrap_or_else(|_| r#"{"error":"encode"}"#.to_string());
+        body.push_str(&format!("id: {id}\nevent: record\ndata: {data}\n\n"));
+    }
+    body.push_str("event: ready\ndata: {}\n\n");
+    (
+        StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/event-stream; charset=utf-8",
+            ),
+            (axum::http::header::CACHE_CONTROL, "no-cache"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 async fn dry_run_handler(
@@ -1388,27 +1814,12 @@ async fn dry_run_handler(
     (StatusCode::OK, Json(body)).into_response()
 }
 
-// ── WAL queue inspection (health/diagnostics) ───────────────────────
-
-async fn wal_drain_handler(headers: HeaderMap) -> impl IntoResponse {
-    if require_auth(&headers).is_err() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
-    }
-    if let Err((s, b)) = check_rate_limit(&rate_key(&headers, "wal_drain")) {
-        return (s, Json(b)).into_response();
-    }
-    let drained = audit::drain_wal();
-    tracing::warn!("wal drain called: {} records", drained.len());
-    (
-        StatusCode::OK,
-        Json(serde_json::json!({"drained": drained.len()})),
-    )
-        .into_response()
-}
+// ── WAL queue inspection ──────────────────────────────────────────
+// C2: the global `/v1/wal/drain` route is REMOVED. Draining the shared WAL
+// queue is cross-org by construction (any authed caller could wipe every
+// org's pending records) and has no org scope to gate on. Queue progress
+// is observable per-org via list/stats/stream. The in-memory WAL has no
+// externally callable drain; a durable worker replaces it later.
 
 // ── Router ──────────────────────────────────────────────────────────
 
@@ -1422,6 +1833,9 @@ fn app_router(state: AppState) -> Router {
     let mut origins = vec![
         HeaderValue::from_static("http://127.0.0.1:3007"),
         HeaderValue::from_static("http://localhost:3007"),
+        // Dashboard SPA dev server (reference until the web port lands).
+        HeaderValue::from_static("http://127.0.0.1:5173"),
+        HeaderValue::from_static("http://localhost:5173"),
     ];
     for raw in std::env::var("ALGO_CORS_ORIGINS")
         .unwrap_or_default()
@@ -1453,7 +1867,8 @@ fn app_router(state: AppState) -> Router {
         .route("/v1/auth/google/url", post(google_url_handler))
         .route("/v1/auth/google/callback", post(google_callback_handler))
         .route("/v1/auth/google/verify", post(google_verify_handler))
-        .route("/v1/orgs", post(create_org_handler))
+        .route("/v1/orgs", post(create_org_handler).get(list_orgs_handler))
+        .route("/v1/orgs/:id", get(get_org_handler))
         .route("/v1/policy/publish", post(publish_policy_handler))
         .route("/v1/policy/:version", get(get_policy_handler))
         .route("/v1/plans", get(plans_handler))
@@ -1467,9 +1882,10 @@ fn app_router(state: AppState) -> Router {
         .route("/v1/audit/export", get(export_handler))
         .route("/v1/billing/webhook", post(billing_webhook_handler))
         .route("/v1/audit/ingest", post(ingest_audit_handler))
+        .route("/v1/audit", get(list_audit_handler))
+        .route("/v1/audit/stream", get(audit_stream_handler))
         .route("/v1/stats", get(stats_handler))
         .route("/v1/policy/dry-run", post(dry_run_handler))
-        .route("/v1/wal/drain", post(wal_drain_handler))
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
         .layer(TimeoutLayer::new(std::time::Duration::from_secs(10)))
         .layer(RateLimitLayer)
@@ -1481,10 +1897,15 @@ fn app_router(state: AppState) -> Router {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    session::ensure_session_secret_at_startup()
+        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
+    policy::ensure_signing_key_at_startup()
+        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
 
     let state = AppState {
         policy_store: Arc::new(PolicyStore::new()),
@@ -1494,11 +1915,10 @@ async fn main() {
     let app = app_router(state);
 
     let addr = std::env::var("ALGO_BACKEND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .expect("bind failed");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("algo-backend listening on {}", addr);
-    axum::serve(listener, app).await.expect("serve failed");
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 // ── Tests for main router (auth, ingest, policy, stats) ────────────
@@ -1537,6 +1957,44 @@ mod tests {
             HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
         );
         m
+    }
+
+    /// Mint a real session JWT for tests (the legacy stub is denied by
+    /// default, so tests must authenticate like production callers).
+    /// Identity is the `sub`: distinct subs = distinct owners/strangers.
+    fn test_token(sub: &str) -> String {
+        crate::session::mint_session("test", sub, None, None)
+    }
+
+    /// Register a deterministic org for tests whose subject is already known.
+    /// Route-level ownership tests use `create_test_org`; focused audit/stats
+    /// tests use this helper to keep stable query ids.
+    fn register_test_org(org_id: &str, owner_sub: &str) {
+        lock_org_store().insert(
+            org_id.to_string(),
+            StoredOrg {
+                org_id: org_id.to_string(),
+                org_name: format!("test {org_id}"),
+                owner_id: owner_sub.to_string(),
+                created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            },
+        );
+    }
+
+    /// Create an org via the API and return its id (owner = token identity).
+    async fn create_test_org(token: &str, name: &str) -> String {
+        let (status, body) = post_json(
+            app_router(test_state()),
+            "/v1/orgs",
+            Some(token),
+            serde_json::json!({"org_name": name}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        body.get("org_id")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .to_string()
     }
 
     #[tokio::test]
@@ -1676,29 +2134,42 @@ mod tests {
             .unwrap();
         let resp4 = app4.oneshot(req4).await.unwrap();
         assert_eq!(resp4.status(), StatusCode::UNAUTHORIZED);
-        // The minted email session authorizes protected routes.
+        // The minted email session authorizes protected routes (org-scoped).
+        let org_id = create_test_org(token, "router-org").await;
         let app5 = app_router(test_state());
         let req5 = Request::builder()
-            .uri("/v1/stats?org_id=org_router")
+            .uri(format!("/v1/stats?org_id={org_id}"))
             .header("authorization", format!("Bearer {token}"))
             .body(Body::empty())
             .unwrap();
         let resp5 = app5.oneshot(req5).await.unwrap();
         assert_eq!(resp5.status(), StatusCode::OK);
+        // Stranger sessions cannot read another owner's org (404, no oracle).
+        let stranger = test_token("test:stranger-router");
+        let app6 = app_router(test_state());
+        let req6 = Request::builder()
+            .uri(format!("/v1/stats?org_id={org_id}"))
+            .header("authorization", format!("Bearer {stranger}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp6 = app6.oneshot(req6).await.unwrap();
+        assert_eq!(resp6.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn audit_ingest_drops_source_and_authed() {
         let _guard = test_sync::lock();
         audit::clear_audit_store();
-        let token = "valid-token-test123";
+        let token = test_token("test:alice");
+        let org_id = create_test_org(&token, "ingest-org").await;
         let app = app_router(test_state());
         let body = serde_json::json!({
             "redacted_event":"redacted ls -la",
             "decision":"allow",
             "latency_ms": 12,
             "source":"should be dropped",
-            "trace_id":"trace-1"
+            "trace_id":"trace-1",
+            "org_id": org_id,
         });
         let req = Request::builder()
             .uri("/v1/audit/ingest")
@@ -1719,12 +2190,14 @@ mod tests {
     async fn audit_ingest_rejects_secret_even_when_authed() {
         let _guard = test_sync::lock();
         audit::clear_audit_store();
-        let token = "valid-token-test123";
+        let token = test_token("test:alice");
+        let org_id = create_test_org(&token, "secret-org").await;
         let app = app_router(test_state());
         let body = serde_json::json!({
             "redacted_event":"leaked ghp_12345678901234567890",
             "decision":"allow",
-            "latency_ms": 5
+            "latency_ms": 5,
+            "org_id": org_id,
         });
         let req = Request::builder()
             .uri("/v1/audit/ingest")
@@ -1743,7 +2216,8 @@ mod tests {
         let _guard = test_sync::lock();
         verify::clear_version_store();
         let state = test_state();
-        let token = "valid-token-test123";
+        let token = test_token("test:alice");
+        let org_id = create_test_org(&token, "policy-org").await;
         let app = app_router(state.clone());
 
         // Publish
@@ -1752,7 +2226,9 @@ mod tests {
             .method("POST")
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {token}"))
-            .body(Body::from(r#"{"org_id":"org-1","content":"allow echo"}"#))
+            .body(Body::from(format!(
+                r#"{{"org_id":"{org_id}","content":"allow echo"}}"#
+            )))
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -1766,19 +2242,54 @@ mod tests {
         // Get
         let app2 = app_router(state);
         let req2 = Request::builder()
-            .uri(format!("/v1/policy/{version}?org_id=org-1"))
+            .uri(format!("/v1/policy/{version}?org_id={org_id}"))
             .header("authorization", format!("Bearer {token}"))
             .body(Body::empty())
             .unwrap();
         let resp2 = app2.oneshot(req2).await.unwrap();
         assert_eq!(resp2.status(), StatusCode::OK);
+
+        // Stranger cannot publish to or read another owner's org (404).
+        let stranger = test_token("test:stranger-policy");
+        let app3 = app_router(test_state());
+        let req3 = Request::builder()
+            .uri("/v1/policy/publish")
+            .method("POST")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {stranger}"))
+            .body(Body::from(format!(
+                r#"{{"org_id":"{org_id}","content":"allow evil"}}"#
+            )))
+            .unwrap();
+        let resp3 = app3.oneshot(req3).await.unwrap();
+        assert_eq!(resp3.status(), StatusCode::NOT_FOUND);
+        let app4 = app_router(test_state());
+        let req4 = Request::builder()
+            .uri(format!("/v1/policy/{version}?org_id={org_id}"))
+            .header("authorization", format!("Bearer {stranger}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp4 = app4.oneshot(req4).await.unwrap();
+        assert_eq!(resp4.status(), StatusCode::NOT_FOUND);
+        // Missing org_id fails closed with 400 (no default scope).
+        let app5 = app_router(test_state());
+        let req5 = Request::builder()
+            .uri("/v1/policy/publish")
+            .method("POST")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(r#"{"content":"allow *"}"#))
+            .unwrap();
+        let resp5 = app5.oneshot(req5).await.unwrap();
+        assert_eq!(resp5.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
     async fn stats_after_ingest() {
         let _guard = test_sync::lock();
         audit::clear_audit_store();
-        let token = "valid-token-test123";
+        let token = test_token("test:alice");
+        let org_id = create_test_org(&token, "stats-org").await;
         // Ingest two records
         for (decision, latency) in [("allow", 10), ("deny", 20)] {
             let app = app_router(test_state());
@@ -1786,7 +2297,7 @@ mod tests {
                 "redacted_event": format!("event {decision}"),
                 "decision": decision,
                 "latency_ms": latency,
-                "org_id":"org-stats"
+                "org_id": org_id,
             });
             let req = Request::builder()
                 .uri("/v1/audit/ingest")
@@ -1801,7 +2312,7 @@ mod tests {
         // Query stats
         let app = app_router(test_state());
         let req = Request::builder()
-            .uri("/v1/stats?org_id=org-stats")
+            .uri(format!("/v1/stats?org_id={org_id}"))
             .header("authorization", format!("Bearer {token}"))
             .body(Body::empty())
             .unwrap();
@@ -1812,6 +2323,15 @@ mod tests {
             .unwrap();
         let stats: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(stats.get("total").unwrap().as_i64().unwrap(), 2);
+        // Missing org_id fails closed with 400 (no cross-org aggregation).
+        let app2 = app_router(test_state());
+        let req2 = Request::builder()
+            .uri("/v1/stats")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp2 = app2.oneshot(req2).await.unwrap();
+        assert_eq!(resp2.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
@@ -1870,7 +2390,7 @@ mod tests {
     #[tokio::test]
     async fn proves_ask_on_empty_org_stats() {
         let _guard = test_sync::lock();
-        let token = "valid-token-test123";
+        let token = test_token("test:alice");
         let app = app_router(test_state());
         let req = Request::builder()
             .uri("/v1/stats?org_id=")
@@ -1888,9 +2408,8 @@ mod tests {
         verify::clear_version_store();
         subscriptions::clear_subscriptions();
         // dry-run is a pro+ feature: provision the org first (owner = caller).
-        subscriptions::create_subscription("org-dry", "pro", "monthly", 1, "valid-token-test123")
-            .unwrap();
-        let token = "valid-token-test123";
+        let token = test_token("test:dry-run");
+        subscriptions::create_subscription("org-dry", "pro", "monthly", 1, "test:dry-run").unwrap();
         // Publish a good bundle first to get valid base64 fields.
         let state = test_state();
         let bundle = state.policy_store.publish("org-dry", "allow echo");
@@ -2035,6 +2554,7 @@ mod tests {
             .unwrap()
             .to_string();
         assert_eq!(session.split('.').count(), 3);
+        register_test_org("org-github", "github:1");
         // Session JWT unlocks a protected route (identity = github:1).
         let app2 = app_router(state);
         let req2 = Request::builder()
@@ -2043,7 +2563,7 @@ mod tests {
             .header("content-type", "application/json")
             .header("authorization", format!("Bearer {session}"))
             .body(Body::from(
-                r#"{"redacted_event":"hello","decision":"allow","latency_ms":5}"#,
+                r#"{"redacted_event":"hello","decision":"allow","latency_ms":5,"org_id":"org-github"}"#,
             ))
             .unwrap();
         let resp2 = app2.oneshot(req2).await.unwrap();
@@ -2147,7 +2667,7 @@ mod tests {
     #[tokio::test]
     async fn proves_ask_on_oversize_dry_run() {
         let _guard = test_sync::lock();
-        let token = "valid-token-test123";
+        let token = test_token("test:oversize");
         let ids: Vec<String> = (0..(MAX_HISTORY_IDS + 1))
             .map(|i| format!("h{i}"))
             .collect();
@@ -2167,7 +2687,7 @@ mod tests {
     // ── Billing handler tests ────────────────────────────────────────
 
     fn billing_token() -> String {
-        "valid-token-billing".to_string()
+        test_token("test:billing")
     }
 
     async fn post_json(
@@ -2369,7 +2889,7 @@ mod tests {
         assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
         assert_eq!(body["upgrade"].get("tier").unwrap(), "pro");
         // Pro org dry-run → evaluates (bundle missing sig → 400 proves logic ran).
-        subscriptions::create_subscription("org-pro", "pro", "monthly", 1, &token).unwrap();
+        subscriptions::create_subscription("org-pro", "pro", "monthly", 1, "test:billing").unwrap();
         let (status, _) = post_json(
             app_router(test_state()),
             "/v1/policy/dry-run",
@@ -2388,7 +2908,9 @@ mod tests {
         assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
         assert_eq!(body["upgrade"].get("tier").unwrap(), "team");
         // Team org export → 200 with redacted records only.
-        subscriptions::create_subscription("org-team", "team", "monthly", 2, &token).unwrap();
+        subscriptions::create_subscription("org-team", "team", "monthly", 2, "test:billing")
+            .unwrap();
+        register_test_org("org-team", "test:billing");
         audit::clear_audit_store();
         let (status, _) = post_json(
             app_router(test_state()),
@@ -2418,13 +2940,13 @@ mod tests {
     async fn proves_no_cross_owner_spend_via_api() {
         let _guard = test_sync::lock();
         subscriptions::clear_subscriptions();
-        let victim = "valid-token-victim";
-        let attacker = "valid-token-attacker";
+        let victim = test_token("test:victim");
+        let attacker = test_token("test:attacker");
         // Victim owns a TEAM subscription on org-victim.
         let (status, body) = post_json(
             app_router(test_state()),
             "/v1/subscriptions",
-            Some(victim),
+            Some(&victim),
             serde_json::json!({"org_id":"org-victim","tier":"team","cycle":"monthly","seats":2}),
         )
         .await;
@@ -2434,7 +2956,7 @@ mod tests {
         let (status, body) = get_json(
             app_router(test_state()),
             "/v1/entitlement?org_id=org-victim",
-            Some(attacker),
+            Some(&attacker),
         )
         .await;
         assert_eq!(status, StatusCode::OK);
@@ -2444,7 +2966,7 @@ mod tests {
         let (status, body) = post_json(
             app_router(test_state()),
             "/v1/policy/dry-run",
-            Some(attacker),
+            Some(&attacker),
             serde_json::json!({"org_id":"org-victim","bundle":{"version":"1"},"history_ids":[]}),
         )
         .await;
@@ -2454,7 +2976,7 @@ mod tests {
         let (status, _) = get_json(
             app_router(test_state()),
             "/v1/audit/export?org_id=org-victim",
-            Some(attacker),
+            Some(&attacker),
         )
         .await;
         assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
@@ -2473,13 +2995,14 @@ mod tests {
                 serde_json::json!({"seats": 1}),
             ),
         ] {
-            let (status, _) = post_json(app_router(test_state()), &uri, Some(attacker), body).await;
+            let (status, _) =
+                post_json(app_router(test_state()), &uri, Some(&attacker), body).await;
             assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         }
         let (status, _) = post_json(
             app_router(test_state()),
             &format!("/v1/subscriptions/{id}/activate"),
-            Some(attacker),
+            Some(&attacker),
             serde_json::json!({}),
         )
         .await;
@@ -2489,7 +3012,7 @@ mod tests {
         let (status, _) = post_json(
             app_router(test_state()),
             "/v1/subscriptions",
-            Some(attacker),
+            Some(&attacker),
             serde_json::json!({"org_id":"org-victim","tier":"pro","cycle":"monthly","seats":1}),
         )
         .await;
@@ -2498,7 +3021,7 @@ mod tests {
         let (status, body) = get_json(
             app_router(test_state()),
             "/v1/entitlement?org_id=org-victim&feature=siem_export",
-            Some(victim),
+            Some(&victim),
         )
         .await;
         assert_eq!(status, StatusCode::OK);
@@ -2521,6 +3044,370 @@ mod tests {
             .unwrap()
             .as_str()
             .unwrap()
-            .contains("ADR-0006"));
+            .contains("deferred MoR"));
+    }
+
+    // ── Dashboard shims (Phase 2 v1) ─────────────────────────────
+
+    async fn ingest_dashboard_record(
+        token: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        post_json(
+            app_router(test_state()),
+            "/v1/audit/ingest",
+            Some(token),
+            body,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn audit_list_requires_auth_and_valid_org() {
+        let _guard = test_sync::lock();
+        audit::clear_audit_store();
+        let (status, _) = get_json(app_router(test_state()), "/v1/audit", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let token = test_token("test:audit-list-validation");
+        let (status, _) =
+            get_json(app_router(test_state()), "/v1/audit?org_id=", Some(&token)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = get_json(app_router(test_state()), "/v1/audit/stream", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn audit_list_roundtrip_newest_first_with_pagination() {
+        let _guard = test_sync::lock();
+        audit::clear_audit_store();
+        let token = test_token("test:audit-roundtrip");
+        register_test_org("org-dash", "test:audit-roundtrip");
+        for (decision, kind) in [("allow", "shell"), ("deny", "edit"), ("ask", "net")] {
+            let (status, _) = ingest_dashboard_record(
+                &token,
+                serde_json::json!({
+                    "redacted_event": format!("redacted {decision} {kind}"),
+                    "decision": decision,
+                    "latency_ms": 7,
+                    "org_id": "org-dash",
+                    "tool_kind": kind,
+                    "user_id": "u-1",
+                    "reason": format!("{decision} by rule"),
+                    "confidence_0_1": 0.9,
+                    "source_level": "rule",
+                    "policy_version": "3",
+                }),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        // Newest first: last ingested (ask) leads page 1 with limit=2.
+        let (status, body) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-dash&limit=2",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 3);
+        assert_eq!(body.get("truncated").unwrap(), true);
+        let records = body.get("records").unwrap().as_array().unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            records[0].get("decision").unwrap().get("action").unwrap(),
+            3 // ask
+        );
+        // Proto-shaped view fields.
+        assert_eq!(records[0].get("tool_kind").unwrap(), 5); // net
+        assert_eq!(
+            records[0]
+                .get("decision")
+                .unwrap()
+                .get("source_level")
+                .unwrap(),
+            1 // rule
+        );
+        assert_eq!(
+            records[0]
+                .get("decision")
+                .unwrap()
+                .get("confidence_0_1")
+                .unwrap()
+                .as_f64()
+                .unwrap(),
+            0.9
+        );
+        assert_eq!(records[0].get("privacy_mode").unwrap(), 2); // redacted
+        let cursor = body
+            .get("next_cursor")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(!cursor.is_empty());
+        // Follow the cursor to the tail.
+        let (status, body2) = get_json(
+            app_router(test_state()),
+            &format!("/v1/audit?org_id=org-dash&limit=2&cursor={cursor}"),
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let records2 = body2.get("records").unwrap().as_array().unwrap();
+        assert_eq!(records2.len(), 1);
+        assert_eq!(body2.get("truncated").unwrap(), false);
+        assert_eq!(body2.get("next_cursor").unwrap().as_str().unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn audit_list_filters_and_fail_closed_params() {
+        let _guard = test_sync::lock();
+        audit::clear_audit_store();
+        let token = test_token("test:audit-filters");
+        register_test_org("org-a", "test:audit-filters");
+        register_test_org("org-b", "test:audit-filters");
+        for (decision, org) in [("allow", "org-a"), ("deny", "org-a"), ("allow", "org-b")] {
+            let (status, _) = ingest_dashboard_record(
+                &token,
+                serde_json::json!({
+                    "redacted_event": format!("redacted {decision}"),
+                    "decision": decision,
+                    "latency_ms": 5,
+                    "org_id": org,
+                }),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        // Decision filter.
+        let (status, body) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-a&decision=deny",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 1);
+        // Org isolation: org-b sees only its own.
+        let (status, body) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-b",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 1);
+        // Unknown decision matches nothing (200 empty per contract, not 400).
+        let (status, body) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-a&decision=bogus",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 0);
+        // Invalid cursor / from fail closed with 400.
+        let (status, _) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-a&cursor=nope",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-a&from=not-a-time",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        // Valid from/to window round-trips (wide bounds keep everything).
+        let (status, body) = get_json(
+            app_router(test_state()),
+            "/v1/audit?org_id=org-a&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn ingest_rejects_invalid_dashboard_fields() {
+        let _guard = test_sync::lock();
+        audit::clear_audit_store();
+        let token = test_token("test:invalid-fields");
+        let base = serde_json::json!({
+            "redacted_event": "redacted ls",
+            "decision": "allow",
+            "latency_ms": 5,
+        });
+        // Bad tool_kind / source / confidence / reason all 400, nothing stored.
+        for patch in [
+            serde_json::json!({"tool_kind": "teleport"}),
+            serde_json::json!({"source_level": "oracle"}),
+            serde_json::json!({"confidence_0_1": 1.5}),
+            serde_json::json!({"confidence_0_1": "high"}),
+            serde_json::json!({"reason": "has\nnewline"}),
+        ] {
+            let mut body = base.clone();
+            for (k, v) in patch.as_object().unwrap() {
+                body[k] = v.clone();
+            }
+            let (status, _) = ingest_dashboard_record(&token, body).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{patch}");
+        }
+        assert!(audit::all_records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stats_series_buckets_and_per_user() {
+        let _guard = test_sync::lock();
+        audit::clear_audit_store();
+        let token = test_token("test:stats-series");
+        register_test_org("org-series", "test:stats-series");
+        for (decision, user) in [("allow", "u-1"), ("deny", "u-1"), ("ask", "u-2")] {
+            let (status, _) = ingest_dashboard_record(
+                &token,
+                serde_json::json!({
+                    "redacted_event": format!("redacted {decision}"),
+                    "decision": decision,
+                    "latency_ms": 10,
+                    "org_id": "org-series",
+                    "user_id": user,
+                }),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        let (status, body) = get_json(
+            app_router(test_state()),
+            "/v1/stats?org_id=org-series&granularity=day",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 3);
+        assert_eq!(body.get("allow").unwrap(), 1);
+        let buckets = body.get("buckets").unwrap().as_array().unwrap();
+        assert_eq!(buckets.len(), 1);
+        assert_eq!(buckets[0].get("total").unwrap(), 3);
+        assert!(buckets[0].get("bucket_start").unwrap().is_string());
+        let per_user = body.get("per_user").unwrap().as_array().unwrap();
+        assert_eq!(per_user.len(), 2);
+        assert_eq!(per_user[0].get("user_id").unwrap(), "u-1");
+        assert_eq!(per_user[0].get("total").unwrap(), 2);
+        // Unknown granularity falls back to day (200, not 400).
+        let (status, _) = get_json(
+            app_router(test_state()),
+            "/v1/stats?org_id=org-series&granularity=fortnight",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        // Invalid from is 400.
+        let (status, _) = get_json(
+            app_router(test_state()),
+            "/v1/stats?org_id=org-series&from=soon",
+            Some(&token),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn audit_stream_burst_shape() {
+        let _guard = test_sync::lock();
+        audit::clear_audit_store();
+        let token = test_token("test:audit-stream");
+        register_test_org("org-stream", "test:audit-stream");
+        let (status, _) = ingest_dashboard_record(
+            &token,
+            serde_json::json!({
+                "redacted_event": "redacted whoami",
+                "decision": "allow",
+                "latency_ms": 3,
+                "org_id": "org-stream",
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let req = Request::builder()
+            .uri("/v1/audit/stream?org_id=org-stream")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app_router(test_state()).oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ctype = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        assert!(ctype.contains("text/event-stream"), "got {ctype}");
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(text.contains("retry: 5000"), "{text}");
+        assert!(text.contains("event: record"), "{text}");
+        assert!(text.contains("event: ready"), "{text}");
+        assert!(text.contains("redacted whoami"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn org_reads_are_owner_scoped_no_oracle() {
+        let _guard = test_sync::lock();
+        clear_org_store();
+        let owner = test_token("test:owner1");
+        let stranger = test_token("test:stranger1");
+        let (status, body) = post_json(
+            app_router(test_state()),
+            "/v1/orgs",
+            Some(&owner),
+            serde_json::json!({"org_name": "dash-org"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let org_id = body.get("org_id").unwrap().as_str().unwrap().to_string();
+        // Owner reads fine.
+        let (status, body) = get_json(
+            app_router(test_state()),
+            &format!("/v1/orgs/{org_id}"),
+            Some(&owner),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body.get("org").unwrap().get("org_name").unwrap(),
+            "dash-org"
+        );
+        // Stranger gets the same 404 as an unknown id (no oracle).
+        let (status, _) = get_json(
+            app_router(test_state()),
+            &format!("/v1/orgs/{org_id}"),
+            Some(&stranger),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) =
+            get_json(app_router(test_state()), "/v1/orgs/org_nope", Some(&owner)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        // Owner list contains it; stranger list is empty.
+        let (status, body) = get_json(app_router(test_state()), "/v1/orgs", Some(&owner)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 1);
+        let (status, body) = get_json(app_router(test_state()), "/v1/orgs", Some(&stranger)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.get("total").unwrap(), 0);
+        // Unauthed reads rejected.
+        let (status, _) = get_json(
+            app_router(test_state()),
+            &format!("/v1/orgs/{org_id}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 }

@@ -1,6 +1,6 @@
 name: Publish npm
 
-# npm auto-publish for @algorithco/guard-contracts only (ADR-0013/0014).
+# npm auto-publish for @algorithco/guard-contracts only.
 # dashboard + web are private SPAs — asserted private here, never published.
 # Dry-run on PR/push to main (no secrets). Real publish only on tag
 # `release/*` or dispatch confirm=publish, env `release`.
@@ -123,7 +123,7 @@ jobs:
             if [ "$ALLOW_TBD" = "1" ]; then
               echo "WARNING: publishing contracts with UNLICENSED (override set)."
             else
-              echo "LICENSE GATE FAIL: packages/contracts is UNLICENSED. Complete ADR-0001 before real publish." >&2
+              echo "LICENSE GATE FAIL: packages/contracts is UNLICENSED. Set a license before real publish." >&2
               exit 1
             fi
           fi

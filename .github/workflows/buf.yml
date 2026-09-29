@@ -41,7 +41,7 @@ jobs:
         # "imported file does not exist" on a tree that lint/build/codegen
         # accept); extracting the tag tree and comparing dir-vs-dir is
         # deterministic on every runner. Verified locally: identical trees
-        # pass, a removed field fails (see ADR/commit message).
+        # pass, a removed field fails (see commit message).
         run: |
           LATEST="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo '')"
           if [ -z "$LATEST" ]; then

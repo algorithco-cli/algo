@@ -1,4 +1,9 @@
-﻿# dashboard — algorithco guard team SPA
+# dashboard — algorithco guard team SPA
+
+> **FROZEN — reference only (dashboard plan).** All views (History/Audit/Policy/Stats
+> + live feed) are ported to `web/` (`/dashboard/*`, dark-only Variant 1) and
+> live-verified against the backend shims. Do not add features here; docs-only
+> changes. Archive (delete) is a separate human-approved step.
 
 > **Stack:** React 18 + Vite 5 static SPA · TanStack Router / Query / Table · Tailwind 3 + shadcn/ui · uPlot · SSE live feed · API client stub from proto `algorithco_guard.v0`.
 > **No Node runtime in prod** — `dist/` is static and deploys to any static host.
@@ -53,13 +58,13 @@ Endpoints mapped for the static SPA (REST shim):
 
 | Method | Path | Proto RPC |
 |--------|------|-----------|
-| GET | `/v1/audit?limit=&org_id=` | list audit (daemon or backend) |
+| GET | `/v1/audit?limit=&cursor=&org_id=&decision=&tool_kind=&from=&to=` | `ListAudit` |
 | POST | `/v1/audit` | `IngestAudit` |
-| GET | `/v1/audit/stream` | SSE live feed (EventSource) |
+| GET | `/v1/audit/stream` | `SubscribeAudit` (SSE live feed, EventSource) |
 | GET | `/v1/policy?version=&org_id=` | `GetPolicy` |
 | POST | `/v1/policy` | `PublishPolicy` |
 | POST | `/v1/policy/dryRun` | `DryRun` |
-| GET | `/v1/stats?org_id=&from=&to=` | `QueryStats` |
+| GET | `/v1/stats?org_id=&from=&to=&granularity=&limit=&top_n=` | `QueryStats` (buckets/per_user/per_project) |
 
 All fetchers have `*WithFallback` variants that return mock data when the backend is absent — so `npm run build` + static host still renders a useful demo and Playwright can run without a live backend. Replace with the buf-generated TS client at the `P3-01` tag (consumers pin exact proto version per `AGENTS.md` contracts-first).
 

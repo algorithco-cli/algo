@@ -15,6 +15,7 @@ import {
 } from "./api";
 import type {
   AuditEntry,
+  AuditHistoryParams,
   DryRunRequest,
   DryRunResponse,
   GetPolicyRequest,
@@ -26,10 +27,9 @@ import type {
 } from "./api";
 import { mockAuditEntries, mockStats } from "./mock";
 
-export async function fetchAuditHistoryWithFallback(params?: {
-  limit?: number;
-  org_id?: string;
-}): Promise<AuditEntry[]> {
+export async function fetchAuditHistoryWithFallback(
+  params?: AuditHistoryParams,
+): Promise<AuditEntry[]> {
   try {
     const data = await fetchAuditHistory(params);
     if (Array.isArray(data) && data.length > 0) return data;

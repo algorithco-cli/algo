@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
+algo-adapter-claude = { version = "0.1.0", path = "../adapter-claude" }
 algo-policy = { version = "0.1.0", path = "../../../core/crates/policy" }
 algo-fingerprint = { version = "0.1.0", path = "../../../core/crates/fingerprint" }
 algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
@@ -42,6 +43,10 @@ criterion = { version = "0.8", features = ["html_reports"] }
 [features]
 # Real Jev client in the pool (default OFF — Mock only, Jev stays OFF per waiver).
 jev = ["algo-provider/jev"]
+
+[target.'cfg(unix)'.dependencies]
+# umask-gated socket bind (0600 with no bind-then-chmod window).
+libc = "0.2"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

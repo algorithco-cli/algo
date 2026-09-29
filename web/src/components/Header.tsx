@@ -2,6 +2,7 @@ import Menu from "lucide-react/icons/menu.mjs";
 import X from "lucide-react/icons/x.mjs";
 import * as React from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
+import { useGuardSession } from "../hooks/useGuardSession";
 import { useScrolled } from "../hooks/useScrolled";
 import { NAV_LINKS } from "../lib/routes";
 
@@ -9,6 +10,9 @@ export function Header(): JSX.Element {
   const scrolled = useScrolled();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const pathname = useLocation().pathname;
+  const { signedIn } = useGuardSession();
+  const accountPath = signedIn ? "/dashboard" : "/login";
+  const accountLabel = signedIn ? "Dashboard" : "Log in";
   // biome-ignore lint/correctness/useExhaustiveDependencies: close mobile menu on route change — effect intentionally keyed on pathname
   React.useEffect(() => {
     setMenuOpen(false);
@@ -50,8 +54,8 @@ export function Header(): JSX.Element {
           ))}
         </nav>
         <div className="header-cta">
-          <Link to="/login" className="btn btn-ghost cta-login">
-            Log in
+          <Link to={accountPath} className="btn btn-ghost cta-login">
+            {accountLabel}
           </Link>
           <Link to="/docs/install" className="btn btn-primary">
             Get started
@@ -79,8 +83,8 @@ export function Header(): JSX.Element {
             </NavLink>
           ))}
           <div className="mobile-actions">
-            <Link to="/login" className="btn btn-ghost" onClick={close}>
-              Log in
+            <Link to={accountPath} className="btn btn-ghost" onClick={close}>
+              {accountLabel}
             </Link>
             <Link
               to="/docs/install"

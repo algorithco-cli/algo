@@ -54,18 +54,6 @@
   --ag-deny: #ff6b6f;
 }
 
-@theme inline {
-  --color-brand: var(--ag-brand);
-  --color-bg: var(--ag-bg);
-  --color-surface: var(--ag-surface);
-  --color-border: var(--ag-border);
-  --color-text: var(--ag-text);
-  --color-muted: var(--ag-text-muted);
-  --color-allow: var(--ag-allow);
-  --color-ask: var(--ag-ask);
-  --color-deny: var(--ag-deny);
-}
-
 /* Shadcn/docs alias mapping — no hex beyond tokens */
 :root {
   --background: var(--ag-bg);

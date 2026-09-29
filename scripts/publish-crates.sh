@@ -26,7 +26,7 @@ while read -r pkg; do
   else
     # --no-verify: metadata + packaging check only (fast, no build).
     # Full --verify is covered by the real publish run; algo-types verify
-    # needs the proto-vendoring fix (ADR-0013) before it can pass.
+    # needs the proto-vendoring fix (owner decision) before it can pass.
     echo "==> dry-run $pkg"
     cargo publish --dry-run --no-verify --allow-dirty --manifest-path "$manifest" -p "$pkg"
   fi

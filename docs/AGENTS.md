@@ -32,7 +32,7 @@ npx --yes markdown-link-check docs/**/*.md
 ## Conventions
 
 - One repo per PR.
-- ADR before code for any `[DECISION]`. See [adr/](./adr/README.md).
+- Owner decision before code for any `[DECISION]` (record `Decision:` in PR description).
 - Fail-safe: any doubt resolves to `ask`, never `allow`.
 - Redact before network. Telemetry opt-in, never code.
 

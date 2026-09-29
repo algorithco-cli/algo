@@ -1,4 +1,4 @@
-# Topological publish order for algo-* crates (ADR-0013/0014).
+# Topological publish order for algo-* crates.
 # Lines starting with # are comments. Consumed by scripts/publish-crates.sh(.ps1).
 algo-types
 algo-redact

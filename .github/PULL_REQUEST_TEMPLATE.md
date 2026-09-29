@@ -7,7 +7,7 @@ Task ID:
 ## Checklist (all boxes or explicit N/A + reason)
 
 - [ ] Scope matches the linked task (or deviation explained below)
-- [ ] ADR linked if this touches a `[DECISION]` item (`docs/adr/NNNN-title.md` merged before code) — N/A if none
+- [ ] Owner decision recorded below if this touches a `[DECISION]` item — N/A if none
 - [ ] `buf lint` + `buf breaking` pass (proto changes) — N/A if no proto change
 - [ ] Latency / eval evidence linked (benchmark or harness JSON + artifacts) for any perf/accuracy claim — N/A if none
 - [ ] Fail-safe: new I/O / timeout / parse paths have `proves_ask_on_*` tests (error → `ask`, never `allow`) — N/A if none

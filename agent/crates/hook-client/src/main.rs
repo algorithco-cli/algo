@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports, unused_variables)]
-
 use clap::Parser;
 use std::path::PathBuf;
 use std::process::Command;
@@ -48,9 +46,16 @@ fn dirs_home() -> PathBuf {
 }
 
 fn fallback_ask_json() -> String {
-    // Must match spec: {"decision":"ask","reason":"daemon unreachable → ask (fail-safe)","source":"fallback"}
-    // Also include full Decision shape for daemon consumers
+    // C6: Claude PreToolUse shape per current docs
+    // ([VERIFY 2026-09-28](https://code.claude.com/docs/en/hooks)): exit 0 with
+    // hookSpecificOutput.permissionDecision=ask (escalate to user). Legacy
+    // decision/action/source aliases kept for daemon consumers.
     let v = serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": "daemon unreachable → ask (fail-safe)"
+        },
         "decision": "ask",
         "action": "ask",
         "reason": "daemon unreachable → ask (fail-safe)",
@@ -89,6 +94,11 @@ fn paused_allow_json() -> String {
     // P1-08: `algo pause` touches ~/.algo/paused — hook-client checks first,
     // instant bypass even daemon-dead. Intentional allow (not an error path).
     let v = serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "permissionDecisionReason": "paused → allow (bypass)"
+        },
         "decision": "allow",
         "action": "allow",
         "reason": "paused → allow (bypass)",
@@ -100,6 +110,49 @@ fn paused_allow_json() -> String {
         "trace_id": "paused"
     });
     v.to_string()
+}
+
+/// C6: normalize any daemon response (new hookSpecificOutput shape or legacy
+/// decision/action aliases) to canonical Claude PreToolUse JSON, and map the
+/// exit code per docs: deny → 2 (blocking error), allow/ask → 0.
+/// Ask stays exit 0 (non-blocking escalate-to-user); only deny blocks.
+fn to_claude_output(raw: &str) -> (String, i32) {
+    let v: serde_json::Value = match serde_json::from_str(raw.trim()) {
+        Ok(v) => v,
+        Err(_) => {
+            return (fallback_ask_json(), 0);
+        }
+    };
+    let decision = v
+        .get("hookSpecificOutput")
+        .and_then(|h| h.get("permissionDecision"))
+        .and_then(|d| d.as_str())
+        .or_else(|| v.get("decision").and_then(|d| d.as_str()))
+        .or_else(|| v.get("action").and_then(|d| d.as_str()))
+        .unwrap_or("ask");
+    let permission = match decision.trim().to_ascii_lowercase().as_str() {
+        "allow" | "approve" => "allow",
+        "deny" | "block" => "deny",
+        _ => "ask",
+    };
+    let reason = v
+        .get("hookSpecificOutput")
+        .and_then(|h| h.get("permissionDecisionReason"))
+        .and_then(|r| r.as_str())
+        .or_else(|| v.get("reason").and_then(|r| r.as_str()))
+        .unwrap_or("ask (fail-safe)");
+    let out = serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": permission,
+            "permissionDecisionReason": reason
+        },
+        "decision": permission,
+        "action": permission,
+        "reason": reason
+    });
+    let code = if permission == "deny" { 2 } else { 0 };
+    (out.to_string(), code)
 }
 
 #[tokio::main]
@@ -127,8 +180,9 @@ async fn main() {
     // First attempt
     match try_call(&socket_path, &payload_str).await {
         Ok(resp) => {
-            println!("{}", resp.trim());
-            std::process::exit(0);
+            let (out, code) = to_claude_output(&resp);
+            println!("{}", out.trim());
+            std::process::exit(code);
         }
         Err(_) => {
             // Try spawn daemon --oneshot once, wait 200ms, retry
@@ -136,8 +190,9 @@ async fn main() {
             tokio::time::sleep(Duration::from_millis(200)).await;
             match try_call(&socket_path, &payload_str).await {
                 Ok(resp) => {
-                    println!("{}", resp.trim());
-                    std::process::exit(0);
+                    let (out, code) = to_claude_output(&resp);
+                    println!("{}", out.trim());
+                    std::process::exit(code);
                 }
                 Err(_) => {
                     // Final fallback: print ask JSON + exit 0 (never ambiguous non-zero)
@@ -236,27 +291,48 @@ async fn try_call(socket_path: &str, payload: &str) -> Result<String, String> {
     }
 }
 
-fn try_spawn_daemon_oneshot(socket_path: &str) -> Result<(), String> {
-    // Try to spawn daemon --oneshot. Binary may be algo-daemon in PATH or sibling.
-    let candidates = [
-        "algo-daemon".to_string(),
-        format!(
-            "{}/algo-daemon",
-            dirs_home().join(".algo").join("bin").to_string_lossy()
-        ),
-        // For dev: cargo run's binary nearby
-        "./target/debug/algo-daemon".to_string(),
-        "./target/release/algo-daemon".to_string(),
-    ];
-
-    // Allow override via env
-    let mut bins: Vec<String> = Vec::new();
+fn daemon_bin_candidates() -> Vec<PathBuf> {
+    // C10: spawn ONLY absolute paths — the installed
+    // ~/.algo/bin/algo-daemon, or an explicit ALGO_DAEMON_BIN override that
+    // must itself be absolute (canonicalized below). Never ./target/*, never
+    // a bare-PATH lookup (PATH/CWD injection).
+    let mut bins: Vec<PathBuf> = Vec::new();
     if let Ok(env_bin) = std::env::var("ALGO_DAEMON_BIN") {
-        bins.push(env_bin);
+        let trimmed = env_bin.trim();
+        if !trimmed.is_empty() {
+            let p = PathBuf::from(trimmed);
+            if p.is_absolute() {
+                // Canonicalize to resolve symlinks; keep the raw absolute path
+                // if the binary does not exist yet (spawn will fail closed).
+                match std::fs::canonicalize(&p) {
+                    Ok(c) => bins.push(c),
+                    Err(_) => bins.push(p),
+                }
+            } else {
+                eprintln!("hook-client: ignoring non-absolute ALGO_DAEMON_BIN (C10)");
+            }
+        }
     }
-    bins.extend(candidates);
+    let installed = dirs_home().join(".algo").join("bin").join(bin_name());
+    bins.push(installed);
+    bins
+}
 
-    for bin in bins {
+#[cfg(windows)]
+fn bin_name() -> &'static str {
+    "algo-daemon.exe"
+}
+
+#[cfg(not(windows))]
+fn bin_name() -> &'static str {
+    "algo-daemon"
+}
+
+fn try_spawn_daemon_oneshot(socket_path: &str) -> Result<(), String> {
+    for bin in daemon_bin_candidates() {
+        if !bin.is_absolute() {
+            continue;
+        }
         let res = Command::new(&bin)
             .arg("--oneshot")
             .arg("--socket")
@@ -315,6 +391,8 @@ mod tests {
         assert_eq!(v["decision"], "allow");
         assert_eq!(v["action"], "allow");
         assert_eq!(v["source"], "paused");
+        assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "allow");
+        assert_eq!(v["hookSpecificOutput"]["hookEventName"], "PreToolUse");
     }
 
     #[test]

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  CLI: <code>algo</code> · Naming: <a href="docs/adr/0002-naming.md">ADR-0002</a>
+  CLI: <code>algo</code>
 </p>
 
 ## Contents
@@ -102,14 +102,13 @@ Per-crate details live in each package's `README.md`; working agreement in [`AGE
 
 1. Fail-safe → `ask`, never `allow` on error/timeout/crash/parse-fail.
 2. Deterministic rules outrank models.
-3. Latency budgets in CI — over-budget = no merge (or ADR).
+3. Latency budgets in CI — over-budget = no merge (or owner waiver).
 4. Local-first, privacy-by-default (redact before egress, `local-only/redacted/full`), explainable (`algo why`), reversible install, provider abstraction, no invented APIs (`[VERIFY]`).
 
 ## Docs
 
 - Working agreement: [`AGENTS.md`](AGENTS.md)
 - Contributing: [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)
-- Decisions: [`docs/adr/`](docs/adr/README.md) (naming: [`0002-naming`](docs/adr/0002-naming.md))
 - Brand tokens: [`design-tokens.css`](design-tokens.css) (Variant 1, single source — no hard-coded hex)
 
 ## Status (Phase 0)

@@ -1,9 +1,9 @@
 //! Backend session tokens: short-lived HS256 JWTs minted after a successful
-//! GitHub/Google OAuth login. These replace the `valid-token-*` stub on
-//! authenticated paths — `require_auth` accepts both during migration.
+//! GitHub/Google OAuth login. These are the accepted credential on
+//! authenticated paths — legacy `valid-token-*` credentials are never valid.
 //!
-//! Key: `ALGO_SESSION_JWT_SECRET` (min 16 chars). Unset → ephemeral per-boot
-//! secret + loud warning (dev only, sessions die on restart).
+//! Key: `ALGO_SESSION_JWT_SECRET` (minimum 32 bytes). Production startup
+//! refuses missing or weak secrets; tests use a compile-time test-only key.
 
 use std::sync::OnceLock;
 
@@ -51,24 +51,34 @@ impl std::error::Error for SessionError {}
 
 static SESSION_SECRET: OnceLock<Vec<u8>> = OnceLock::new();
 
+fn load_secret() -> Result<Vec<u8>, String> {
+    match std::env::var("ALGO_SESSION_JWT_SECRET") {
+        Ok(value) if value.len() >= 32 => Ok(value.into_bytes()),
+        Ok(_) => Err("ALGO_SESSION_JWT_SECRET must be at least 32 bytes".to_string()),
+        Err(_) => {
+            #[cfg(test)]
+            {
+                return Ok(vec![b'x'; 32]);
+            }
+            #[cfg(not(test))]
+            {
+                Err("ALGO_SESSION_JWT_SECRET is required".to_string())
+            }
+        }
+    }
+}
+
 fn secret() -> &'static [u8] {
     SESSION_SECRET.get_or_init(|| {
-        if let Ok(s) = std::env::var("ALGO_SESSION_JWT_SECRET") {
-            if s.len() >= 16 {
-                return s.into_bytes();
-            }
-            tracing::warn!("ALGO_SESSION_JWT_SECRET too short; using ephemeral dev secret");
-        } else {
-            tracing::warn!("ALGO_SESSION_JWT_SECRET unset; using ephemeral dev secret (sessions die on restart)");
-        }
-        format!(
-            "dev-ephemeral-{}-{}-{}",
-            uuid::Uuid::new_v4(),
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
-        )
-        .into_bytes()
+        load_secret().unwrap_or_else(|error| panic!("session secret misconfigured: {error}"))
     })
+}
+
+/// Validate and cache the session secret before binding the listener.
+pub fn ensure_session_secret_at_startup() -> Result<(), String> {
+    let loaded = load_secret()?;
+    let _ = SESSION_SECRET.get_or_init(|| loaded);
+    Ok(())
 }
 
 /// Mint a session token with the default TTL.

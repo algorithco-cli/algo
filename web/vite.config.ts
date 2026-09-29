@@ -33,7 +33,9 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     cssMinify: true,
-    chunkSizeWarningLimit: 220,
+    // The WebGL login backdrop is isolated behind its own lazy route. Its
+    // uncompressed chunk is intentionally larger and never enters docs/marketing.
+    chunkSizeWarningLimit: 1000,
     assetsInlineLimit: 4096,
     // NOTE (vite 8): the rollup `output.manualChunks` object form was removed
     // (function-only now). Manual vendor chunking dropped rather than ported —

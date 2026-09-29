@@ -2,6 +2,9 @@
 //
 // P3-01: Auth (device tokens), Org/Team/Role, PolicyBundle{version,signed_bytes,sig},
 // PolicyDryRun, AuditIngest{redacted_event,decision,latency} (no source field), StatsQuery.
+// Phase 1 dashboard: ListAudit (paginated/filterable), QueryStats series
+// (buckets/per_user/per_project, additive fields only), SubscribeAudit
+// (server-streaming; REST shim is SSE GET /v1/audit/stream).
 // ConnectRPC service defs. Tag; Rust+TS clients compile.
 //
 // Privacy: AuditIngest carries REDACTED payloads only. No source field.
@@ -9,6 +12,10 @@
 syntax = "proto3";
 
 package algorithco_guard.v0;
+
+import "algorithco_guard/v0/decision.proto";
+import "algorithco_guard/v0/events.proto";
+import "google/protobuf/timestamp.proto";
 
 // --- Auth: device flow ---
 
@@ -141,11 +148,47 @@ message IngestAuditResponse {
 
 // --- StatsQuery: aggregates over redacted audit ---
 // Buf lint requires RPC+Request naming, so canonical name is QueryStats*.
+// Phase 1 dashboard extension (additive): `from`/`to` are RFC3339 timestamps;
+// `granularity` selects bucketing for `buckets` ("day" default, "hour"
+// supported; unknown values → server falls back to "day", never an error).
+// `per_user` is empty until user attribution lands in audit ingest (Phase 2).
 
 message QueryStatsRequest {
   string org_id = 1;
   string from = 2;
   string to = 3;
+  string granularity = 4;
+  // Max buckets returned; 0 = server default. Server caps and sets truncated.
+  int32 limit = 5;
+  // Max per-user/per-project rows each; 0 = server default.
+  int32 top_n = 6;
+}
+
+message StatsBucket {
+  // Bucket start, RFC3339.
+  string bucket_start = 1;
+  int64 total = 2;
+  int64 allow = 3;
+  int64 deny = 4;
+  int64 ask = 5;
+  double avg_latency_ms = 6;
+}
+
+message PerUserStats {
+  string user_id = 1;
+  int64 total = 2;
+  int64 allow = 3;
+  int64 deny = 4;
+  int64 ask = 5;
+}
+
+message PerProjectStats {
+  // Project key (working_dir digest or configured name; redacted).
+  string project = 1;
+  int64 total = 2;
+  int64 allow = 3;
+  int64 deny = 4;
+  int64 ask = 5;
 }
 
 message QueryStatsResponse {
@@ -154,13 +197,76 @@ message QueryStatsResponse {
   int64 deny = 3;
   int64 ask = 4;
   double avg_latency_ms = 5;
+  repeated StatsBucket buckets = 6;
+  repeated PerUserStats per_user = 7;
+  repeated PerProjectStats per_project = 8;
+  // True when buckets/per_user/per_project were capped by limit/top_n.
+  bool truncated = 9;
+}
+
+// --- Dashboard: audit history (paginated, filterable) ---
+//
+// Fail-safe: unknown `decision` filter values match nothing (empty page,
+// never an error); receivers map missing/unknown decisions to ASK.
+// Privacy: AuditRecord carries REDACTED payloads only (no source field).
+
+message AuditRecord {
+  string trace_id = 1;
+  string event_id = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  ToolKind tool_kind = 4;
+  string redacted_payload = 5;
+  Decision decision = 6;
+  PrivacyMode privacy_mode = 7;
+  string org_id = 8;
+}
+
+message ListAuditRequest {
+  string org_id = 1;
+  // Max records returned; 0 = server default. Server caps (e.g. <=1000).
+  int32 limit = 2;
+  // Opaque cursor; empty = first page.
+  string cursor = 3;
+  // "allow"|"deny"|"ask"; empty = all. Unknown values match nothing.
+  string decision = 4;
+  // TOOL_KIND_UNSPECIFIED (0) = all tool kinds.
+  ToolKind tool_kind = 5;
+  // RFC3339 bounds; empty = unbounded.
+  string from = 6;
+  string to = 7;
+}
+
+message ListAuditResponse {
+  repeated AuditRecord records = 1;
+  // Opaque cursor for the next page; empty = end.
+  string next_cursor = 2;
+  int64 total = 3;
+  bool truncated = 4;
+}
+
+// --- Dashboard: live feed ---
+//
+// REST shim: GET /v1/audit/stream (SSE, JSON frames of
+// SubscribeAuditResponse). Transport errors/timeouts → receivers fall back
+// to polling ListAudit and map unresolvable states to ASK, never ALLOW.
+
+message SubscribeAuditRequest {
+  string org_id = 1;
+  // Resume cursor; empty = live tail.
+  string cursor = 2;
+}
+
+message SubscribeAuditResponse {
+  AuditRecord record = 1;
+  // Resume cursor for reconnects.
+  string cursor = 2;
 }
 
 // --- Plans & subscriptions (self-managed; no MoR/payment secrets) ---
 //
 // Tiers pro/max/team mirror the web Pricing page (per seat). Enforcement
 // reads GetEntitlement; plans are bundles of entitlements, never bare
-// `plan_id ==` checks. Billing provider integration (ADR-0006 MoR) is
+// `plan_id ==` checks. Billing provider integration (deferred MoR) is
 // deferred: `provider` is "manual" until a vendor lands, and
 // BillingWebhook is reserved (unimplemented) so no fake processing exists.
 
@@ -229,10 +335,10 @@ message Subscription {
   bool cancel_at_period_end = 11;
   // Pending downgrade applied at period end; UNSPECIFIED = none.
   PlanTier scheduled_tier = 12;
-  // Billing provider: "manual" until ADR-0006 MoR vendor lands.
+  // Billing provider: "manual" until deferred MoR vendor lands.
   string provider = 13;
   string provider_subscription_id = 14;
-  // Reserved per ADR-0006: inert tier snapshot label. Enforcement MUST read
+  // Reserved per deferred MoR: inert tier snapshot label. Enforcement MUST read
   // GetEntitlement; unknown values prove ask downstream, never allow.
   optional string entitlement = 15;
 }
@@ -337,6 +443,10 @@ service GuardService {
   rpc DryRun(DryRunRequest) returns (DryRunResponse);
   // Audit ingest (redacted only, no source).
   rpc IngestAudit(IngestAuditRequest) returns (IngestAuditResponse);
+  // Dashboard: paginated audit history (redacted only).
+  rpc ListAudit(ListAuditRequest) returns (ListAuditResponse);
+  // Dashboard: live audit tail (server-streaming; REST shim is SSE).
+  rpc SubscribeAudit(SubscribeAuditRequest) returns (stream SubscribeAuditResponse);
   // Stats aggregates.
   rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse);
   // Plans & subscriptions (self-managed billing; MoR webhook reserved).

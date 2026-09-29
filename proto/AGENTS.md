@@ -26,7 +26,7 @@
 ## 4. Workflow
 
 - `buf lint` + `buf breaking --against '.git#tag=<latest>'` before every push.
-- ADR-before-code for any `[DECISION]` item; no `D-*` implementation without merged ADR.
+- Owner decision before code for any `[DECISION]` item; record `Decision:` in the PR description.
 - Small PRs, conventional commits, `Assumptions:` section in PR description.
 
 ## Assumptions (fill per-PR)

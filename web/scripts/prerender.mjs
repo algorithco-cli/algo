@@ -59,9 +59,24 @@ const PAGES = [
   },
   {
     path: "/privacy",
-    title:
-      "Privacy — local-only by default, BYOK redacted opt-in | Algorithco Guard",
-    desc: "local-only sends nothing. BYOK redacted/full sends to TypeSafe US infra, no training on Input, as-long-as-necessary retention. Inspect with algo log.",
+    title: "Privacy policy — local-first data controls | Algorithco Guard",
+    desc: "How algorithco guard handles local audit data, optional network processing, website activity, and user controls.",
+  },
+  {
+    path: "/terms",
+    title: "Terms of use | Algorithco Guard",
+    desc: "Terms for the algorithco guard private preview, local software, and website.",
+  },
+  {
+    path: "/security",
+    title: "Security and responsible disclosure | Algorithco Guard",
+    desc: "Fail-safe design, local-first boundaries, release controls, and vulnerability reporting for algorithco guard.",
+  },
+  {
+    path: "/billing",
+    title: "Billing preview | Algorithco Guard",
+    desc: "Preview subscription and seat-management interface for future hosted plans.",
+    noindex: true,
   },
   {
     path: "/docs",
@@ -78,6 +93,26 @@ const PAGES = [
     title:
       "CLI reference — algo init/doctor/status/why/log/enforce | Algorithco Guard",
     desc: "Nine commands: init, doctor, status, why (action+reason+confidence+source+latency), log --show-egress, enforce, pause, login, policy.",
+  },
+  {
+    path: "/docs/configuration",
+    title: "Configuration — profiles and local policy | Algorithco Guard",
+    desc: "Configure strict, balanced, and fast profiles without weakening hard-deny safeguards.",
+  },
+  {
+    path: "/docs/architecture",
+    title: "Architecture — local decision path | Algorithco Guard",
+    desc: "How adapters, parsing, redaction, policy decisions, and local audit records fit together.",
+  },
+  {
+    path: "/docs/privacy-security",
+    title: "Privacy and security guide | Algorithco Guard",
+    desc: "Operate algorithco guard locally and inspect optional network egress safely.",
+  },
+  {
+    path: "/docs/troubleshooting",
+    title: "Troubleshooting | Algorithco Guard",
+    desc: "Diagnose installation, daemon, and decision issues without bypassing guardrails.",
   },
 ];
 
