@@ -38,6 +38,10 @@ jobs:
       PROTOC_GEN_ES_VERSION: 2.2.0
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Contract generation verifies and reads the pinned proto release tag.
+          # The default shallow checkout does not include repository tags.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -87,6 +91,9 @@ jobs:
       PROTOC_GEN_ES_VERSION: 2.2.0
     steps:
       - uses: actions/checkout@v7
+        with:
+          # npm publish runs prepack, which regenerates from the pinned tag.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:

@@ -114,16 +114,45 @@ jobs:
           "$BIN/algo" --home "$TEST_HOME" uninstall
           echo "install E2E OK on macos-14 (informational)"
 
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent -> target
+          shared-key: install-e2e-windows-2025
+
+      - name: Build and install agent release through PATH
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path agent/Cargo.toml
+          $install = Join-Path $env:RUNNER_TEMP "algo-bin"
+          .\scripts\install.ps1 -SourceDir .\agent\target\release -InstallDir $install -SkipPath
+          $env:Path = "$install;$env:Path"
+          $home = Join-Path $env:RUNNER_TEMP "algo-home"
+          New-Item -ItemType Directory -Force -Path $home | Out-Null
+          algo --version
+          algo --home $home init --yes
+          algo --home $home doctor
+          algo --home $home uninstall
+          .\scripts\uninstall.ps1 -InstallDir $install -KeepPath
+          if (Test-Path (Join-Path $install "algo.exe")) { throw "algo.exe remains after uninstall" }
+
   gate:
-    needs: [e2e]
+    needs: [e2e, windows]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Install E2E gate verdict
         run: |
-          if [ "${{ needs.e2e.result }}" != "success" ]; then
-            echo "INSTALL E2E FAIL: e2e=${{ needs.e2e.result }}" >&2
+          if [ "${{ needs.e2e.result }}" != "success" ] || [ "${{ needs.windows.result }}" != "success" ]; then
+            echo "INSTALL E2E FAIL: linux=${{ needs.e2e.result }} windows=${{ needs.windows.result }}" >&2
             exit 1
           fi
-          echo "Install E2E gate passed (ubuntu matrix)"
+          echo "Install E2E gate passed (ubuntu matrix + Windows)"

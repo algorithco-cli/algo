@@ -30,6 +30,15 @@
 algo init | doctor | status | why | log | enforce | pause | login | policy
 ```
 
+Build and install the CLI plus its daemon and hook client on Windows:
+
+```powershell
+cargo build --release --manifest-path agent/Cargo.toml
+.\scripts\install.ps1
+```
+
+The installer copies the three executables to `%USERPROFILE%\.algo\bin` and adds that directory to the user `PATH` once. Open a new terminal and run `algo --help`. To remove the installed binaries and the PATH entry, run `.\scripts\uninstall.ps1` after `algo uninstall`.
+
 | Command | Purpose |
 |---|---|
 | `algo init` | Detect agents → show diff → per-agent consent → backup + additive hook install → privacy prompt → `algo doctor`. ~30s target. |
