@@ -134,12 +134,12 @@ jobs:
           $install = Join-Path $env:RUNNER_TEMP "algo-bin"
           .\scripts\install.ps1 -SourceDir .\agent\target\release -InstallDir $install -SkipPath
           $env:Path = "$install;$env:Path"
-          $home = Join-Path $env:RUNNER_TEMP "algo-home"
-          New-Item -ItemType Directory -Force -Path $home | Out-Null
+          $testHome = Join-Path $env:RUNNER_TEMP "algo-home"
+          New-Item -ItemType Directory -Force -Path $testHome | Out-Null
           algo --version
-          algo --home $home init --yes
-          algo --home $home doctor
-          algo --home $home uninstall
+          algo --home $testHome init --yes
+          algo --home $testHome doctor
+          algo --home $testHome uninstall
           .\scripts\uninstall.ps1 -InstallDir $install -KeepPath
           if (Test-Path (Join-Path $install "algo.exe")) { throw "algo.exe remains after uninstall" }
 
