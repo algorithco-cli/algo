@@ -5,7 +5,7 @@
 - Semantic versioning (`MAJOR.MINOR.PATCH`) on git tags, e.g. `v0.0.1-alpha`.
 - Phase 0 recommendation: **`v0.0.1-alpha`** (first alpha tag; see `CHANGELOG.md`).
 - Proto package stays `algorithco_guard.v0` until an approved major bump.
-  A `v1` package requires an ADR + migration note — never rename silently.
+  A `v1` package requires an owner decision + migration note — never rename silently.
 
 ## Generate at build, never hand-edit
 

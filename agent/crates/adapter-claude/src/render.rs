@@ -11,7 +11,7 @@
 //! [VERIFY 2026-09-20] Claude Code hook docs for PreToolUse decision response shapes
 //! (`approve`/`block`/`ask`) and version negotiation. Source: check
 //! https://docs.claude.com/en/docs/claude-code/hooks and the hook JSON schema bundled with
-//! the Claude Code release used in CI. If docs change, update this mapping and the ADR.
+//! the Claude Code release used in CI. If docs change, update this mapping and the owner decision.
 //! The mapping below is behind the `is_supported_schema` gate so a future schema bump fails safe.
 
 use algo_types::{Action, Decision};

@@ -54,12 +54,20 @@ impl Transport for UnixTransport {
             let p = PathBuf::from(path);
             if let Some(parent) = p.parent() {
                 tokio::fs::create_dir_all(parent).await?;
+                // Parent holds socket + audit.db: 0700 pre-create.
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
             }
             // Remove stale socket
             let _ = tokio::fs::remove_file(path).await;
-            let listener = tokio::net::UnixListener::bind(path)?;
-            // Enforce 0600 perms
-            #[cfg(unix)]
+            // C10/perms: umask-gated bind so the socket is created 0600 with
+            // NO bind-then-chmod window (a post-bind chmod alone leaves a
+            // world-visible instant). The chmod below is belt-and-braces only.
+            let old_mask = unsafe { libc::umask(0o077) };
+            let bound = tokio::net::UnixListener::bind(path);
+            unsafe { libc::umask(old_mask) };
+            let listener = bound?;
+            // Enforce 0600 perms (defense in depth; umask already guarantees it)
             {
                 use std::os::unix::fs::PermissionsExt;
                 let perms = std::fs::Permissions::from_mode(0o600);

@@ -1,7 +1,7 @@
 //! Jev `DecisionProvider` over the documented TypeSafe HTTP contract.
 //!
 //! Compiled only with `--features jev` (OFF by default — the daemon keeps using
-//! `MockProvider` until the redact + consent + shadow gates clear per ADR-0009).
+//! `MockProvider` until the redact + consent + shadow gates clear per waiver).
 //!
 //! Wire shape mirrors `eval/jev_client/client.py`, which was built ONLY from the
 //! public spec (https://docs.typesafe.ai/api, https://docs.typesafe.ai/models,

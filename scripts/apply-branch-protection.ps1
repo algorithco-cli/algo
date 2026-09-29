@@ -3,7 +3,7 @@
 # Branch not protected; GET rulesets → empty. GitHub docs gate protected
 # branches to Pro/Team/Enterprise for private repos, so a 403 "Upgrade to
 # GitHub Pro" at apply time is the expected plan-gate (flip to Pro, or public
-# after license ADR-0001 + legal sign-off, then re-run).
+# after license finalization, then re-run).
 # Usage: ./scripts/apply-branch-protection.ps1 [-CheckOnly]
 
 param([switch]$CheckOnly)
@@ -27,7 +27,7 @@ try {
   $err = $_.Exception.Message + ($_ | Out-String)
   if ($err -match "Upgrade to GitHub Pro") {
     Write-Host "[protect] EXPECTED-BLOCKED (exit 2): plan-gated — private Free-plan repos cannot use branch protection." -ForegroundColor Yellow
-    Write-Host "[protect] Flip to Pro (or public after license ADR-0001 + legal sign-off), then re-run."
+    Write-Host "[protect] Flip to Pro (or public after license finalization), then re-run."
     exit 2
   }
   Write-Host "[protect] no protection yet (or other error): $err" -ForegroundColor Yellow

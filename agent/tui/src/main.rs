@@ -5,9 +5,9 @@
 //! hooks). Offline-capable: if the daemon is down or DB missing we show a
 //! read-only banner and render whatever cached data is available.
 //!
-//! Mouse-first flow: click Sign in / Continue offline, click Feed/Policy tabs,
-//! click a row to inspect, scroll to move, ✕ to quit.
-//! Keyboard: Tab/1/2/Enter/Esc on login (masked API key input), q/j/k/g/G/r/p/1/2/Esc inside.
+//! Mouse-first flow: click Feed/Policy tabs, click a row to inspect, scroll to
+//! move, ✕ to quit. Authentication is intentionally outside this read-only UI.
+//! Keyboard: q/j/k/g/G/r/p/1/2/Esc.
 //!
 //! Design tokens: root `design-tokens.css` Variant 1 — brand blue, allow green,
 //! ask yellow, deny red. See `ui.rs` for RGB values.
@@ -15,10 +15,12 @@
 mod app;
 mod dog;
 mod theme;
+mod tokens;
 mod ui;
 
 use app::{App, LoginFocus, LoginStatus, ViewMode};
 use crossterm::{
+    cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -112,13 +114,13 @@ OPTIONS:
     --color <mode>  Pin the color tier. `auto` (default) detects:
                     NO_COLOR -> mono, COLORTERM=truecolor/24bit -> truecolor,
                     otherwise ansi16. An explicit tier wins over detection.
-    --debug         Show tier/tick diagnostics on the login footer.
+    --debug         Enable additional UI diagnostics.
     -h, --help      Show this help.
 
-KEYS (login):
-    Up/Down, Tab   Move between cards        1/2/o   Shortcuts
-    Enter          Activate focused card     ?       Help overlay
-    Esc            Cancel, collapse, or quit"
+KEYS:
+    j/k, Up/Down   Move selection             1/2     Feed/Policy
+    r              Refresh                    ?       Help overlay
+    q, Esc         Quit"
     );
 }
 /// Default audit DB path: `$ALGO_HOME/.algo/audit.db` else `~/.algo/audit.db`.
@@ -139,10 +141,8 @@ fn build_app() -> App {
     let path = default_audit_path();
     let mut app = if path.exists() {
         // Try to open; on any error fall back to offline mode — still render.
-        match algo_audit::AuditStore::open(&path) {
+        match algo_audit::AuditStore::open_read_only(&path) {
             Ok(store) => {
-                // `init` is idempotent; ignore error — DB may already be valid.
-                let _ = store.init();
                 let mut app = App::new(Some(store));
                 app.refresh();
                 app
@@ -158,21 +158,41 @@ fn build_app() -> App {
         let mut app = App::new(None);
         app.is_offline = true;
         app.error = Some(format!("audit.db not found at {}", path.display()));
-        // Still attempt to create a store handle pointing at the path so that
-        // a later `r` refresh after daemon creates the DB can succeed without restart.
-        if let Ok(store) = algo_audit::AuditStore::open(&path) {
-            app.store = Some(store);
-            // Do not clear offline flag — until refresh succeeds we remain offline.
-        }
         app
     };
-    // Login gate first (two-path auth). Tests use App::new directly (Feed).
-    app.show_login();
+    app.set_mode(ViewMode::Feed);
     app
 }
 
+/// Owns terminal modes from acquisition to restoration, including setup
+/// failures and unwinding panics.
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn enter() -> io::Result<Self> {
+        enable_raw_mode()?;
+        let guard = Self;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, crossterm::event::EnableMouseCapture)?;
+        Ok(guard)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(
+            io::stdout(),
+            crossterm::event::DisableMouseCapture,
+            LeaveAlternateScreen,
+            Show
+        );
+    }
+}
+
 fn run_tui(mut app: App) -> io::Result<()> {
-    enable_raw_mode()?;
+    let terminal_guard = TerminalGuard::enter()?;
     // Panic hook: restore raw mode before the default hook prints, so a
     // panic never leaves the terminal hijacked (research: ratatui init recipe).
     // LeaveAlternateScreen is handled on the normal/error paths below; raw
@@ -180,14 +200,15 @@ fn run_tui(mut app: App) -> io::Result<()> {
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
+        let _ = execute!(
+            io::stdout(),
+            crossterm::event::DisableMouseCapture,
+            LeaveAlternateScreen,
+            Show
+        );
         orig_hook(info);
     }));
-    let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture
-    )?;
+    let stdout = io::stdout();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -519,15 +540,8 @@ fn run_tui(mut app: App) -> io::Result<()> {
         Ok(())
     })();
 
-    // Restore terminal even if inner loop errored.
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
+    drop(terminal);
+    drop(terminal_guard);
     result
 }
 

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- `backend.proto` Phase 1 dashboard (additive, non-breaking): `AuditRecord`,
+  `ListAudit` + `SubscribeAudit` (server-streaming; REST shim SSE
+  `GET /v1/audit/stream`), `QueryStats` series (`granularity`/`limit`/`top_n`
+  request fields; `buckets`/`per_user`/`per_project`/`truncated` response
+  fields). `per_user` stays empty until user attribution lands in audit
+  ingest (Phase 2). Unknown `decision` filters match nothing (fail-safe);
+  unknown `granularity` falls back to `"day"`.
+
 - `backend.proto` (P3 cloud API: `GuardService` AuthDevice/Org/Policy/DryRun/
   IngestAudit/QueryStats, redacted-only) added as a new file post-tag
   (non-breaking under `FILE` policy; P3 scope, not P0).
@@ -10,7 +18,7 @@
 - 2026-09-20: `dataset.proto`: `redaction_cert` (field 8) becomes
   `RedactionCert { bool redacted = 1; string scanner = 2; string notes = 3; }`,
   documented REQUIRED (eval enforces absence → reject). Aligns proto with the
-  eval object shape per ADR-0003; eval JSON adopts `canonical` naming
+  eval object shape per dashboard plan; eval JSON adopts `canonical` naming
   (eval side, no proto field rename).
 
 ## v0.0.1-alpha (cut 2026-09-20 — P0-PROTO-6 baseline)

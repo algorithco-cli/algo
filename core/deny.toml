@@ -1,7 +1,7 @@
 # deny.toml — cargo-deny config per P1-09 (fmt/lint/type + deny/audit/vet clean, fail on warn)
 # Gate: `cargo deny check` must be clean (fail on warn).
 # This config is intentionally permissive on first private MVP and tightened before public release.
-# Ratify via ADR before adding bans.
+# Ratify via owner decision before adding bans.
 
 [graph]
 targets = [
@@ -29,7 +29,7 @@ ignore = []
 [licenses]
 # cargo-deny ≥0.18: deny-by-default — every license must be in `allow`
 # (old unlicensed/deny/copyleft/allow-osi-fsf-free keys were removed).
-# Workspace crates are GPL-3.0-only (owner decision 2026-09-27, ADR-0001 pending).
+# Workspace crates are GPL-3.0-only (owner decision 2026-09-27, final).
 # SPDX allowlist for dependencies (covers regex, aho-corasick, smallvec, tree-sitter, prost, criterion, serde, etc.)
 allow = [
   "MIT",
@@ -46,7 +46,6 @@ allow = [
   "OpenSSL",
   "Zlib",
   "GPL-3.0-only",
-  "LicenseRef-TBD-legal-signoff",
 ]
 # Use `cargo deny list` to see actual license strings if this needs tightening
 exceptions = []
@@ -58,8 +57,8 @@ highlight = "all"
 allow-wildcard-paths = false
 # cargo-deny ≥0.20: `allow-build-scripts` moved to [bans.build] as a
 # package-spec array; omitted here = all build scripts allowed (same intent
-# as the old `= true`). Tighten via ADR when needed.
-# No banned crates yet; add via ADR when needed (e.g., copyleft at public release)
+# as the old `= true`). Tighten via owner decision when needed.
+# No banned crates yet; add via owner decision when needed (e.g., copyleft at public release)
 deny = []
 skip = []
 skip-tree = []

@@ -30,19 +30,6 @@
   --ag-deny: #ff6b6f;
 }
 
-/* Tailwind v4 compat @theme inline mapping */
-@theme inline {
-  --color-brand: var(--ag-brand);
-  --color-bg: var(--ag-bg);
-  --color-surface: var(--ag-surface);
-  --color-border: var(--ag-border);
-  --color-text: var(--ag-text);
-  --color-muted: var(--ag-text-muted);
-  --color-allow: var(--ag-allow);
-  --color-ask: var(--ag-ask);
-  --color-deny: var(--ag-deny);
-}
-
 /* shadcn/ui mapping:
  * primary → brand, background → bg, card → surface,
  * border → border, foreground → text, muted-foreground → text-muted,

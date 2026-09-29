@@ -1,7 +1,8 @@
 //! Auth: Bearer validation + require_auth middleware.
 //!
-//! Accepts backend session JWTs (email/GitHub/Google) and, during migration,
-//! the legacy `valid-token-<id>` stub (dev/tests only).
+//! Accepts backend session JWTs (email/GitHub/Google). Legacy
+//! `valid-token-<id>` credentials are always rejected, including in local
+//! development. Tests mint real signed sessions through `session`.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -27,13 +28,10 @@ impl std::fmt::Display for AuthError {
 impl std::error::Error for AuthError {}
 
 /// Validate Bearer token.
-/// Accepts (in order):
-///
-/// 1. Legacy stub `valid-token-<id>` (dev/tests, migration path).
-/// 2. Backend session JWT (HS256, minted by GitHub/Google login).
+/// Accepts ONLY backend session JWTs (HS256, minted by login).
 ///
 /// Bare tokens (no `Bearer ` scheme) and the loose `valid-` prefix are
-/// rejected (fail-closed).
+/// always rejected.
 pub fn validate_bearer_token(header_value: Option<&str>) -> Result<String, AuthError> {
     let header = header_value.ok_or(AuthError::MissingToken)?;
     // Require explicit Bearer scheme — bare tokens rejected.
@@ -42,10 +40,6 @@ pub fn validate_bearer_token(header_value: Option<&str>) -> Result<String, AuthE
     };
     if token.is_empty() || token.len() > 4096 {
         return Err(AuthError::MissingToken);
-    }
-    // Legacy stub prefix + non-empty suffix. No bare-token fallback.
-    if token.starts_with("valid-token-") && token.len() > "valid-token-".len() {
-        return Ok(token.to_string());
     }
     // Session JWT: return the stable subject as caller identity.
     match crate::session::verify_session(token) {
@@ -72,14 +66,40 @@ mod tests {
     #[test]
     fn validate_bearer_ok_and_rejected() {
         let _guard = test_sync::lock();
-        assert!(validate_bearer_token(Some("Bearer valid-token-12345")).is_ok());
+        // Real session JWT authenticates (identity = stable sub).
+        let token = crate::session::mint_session("test", "test:alice", None, None);
+        let header = format!("Bearer {token}");
+        assert_eq!(validate_bearer_token(Some(&header)).unwrap(), "test:alice");
+        // Legacy stub is DENIED by default (fail-closed, C1).
+        assert!(validate_bearer_token(Some("Bearer valid-token-12345")).is_err());
         // Bare token without Bearer scheme is rejected (fail-closed).
-        assert!(validate_bearer_token(Some("valid-token-12345")).is_err());
+        assert!(validate_bearer_token(Some(&token)).is_err());
         // Loose prefix bypass rejected.
         assert!(validate_bearer_token(Some("Bearer valid-xyz")).is_err());
         assert!(validate_bearer_token(Some("Bearer invalid")).is_err());
         assert!(validate_bearer_token(None).is_err());
         assert!(validate_bearer_token(Some("")).is_err());
+    }
+
+    #[test]
+    fn legacy_stub_is_unconditionally_rejected() {
+        let _guard = test_sync::lock();
+        assert!(validate_bearer_token(Some("Bearer valid-token-12345")).is_err());
+        // A runtime environment variable must never re-enable the bypass.
+        std::env::set_var("ALGO_ALLOW_LEGACY_STUB", "1");
+        assert!(validate_bearer_token(Some("Bearer valid-token-12345")).is_err());
+        std::env::remove_var("ALGO_ALLOW_LEGACY_STUB");
+    }
+
+    #[test]
+    fn proves_forged_token_denied_on_production_path() {
+        let _guard = test_sync::lock();
+        // Forged stub, tampered JWT, and foreign-signed JWT all fail.
+        assert!(validate_bearer_token(Some("Bearer valid-token-evil")).is_err());
+        let mut forged = crate::session::mint_session("test", "test:alice", None, None);
+        forged.push('x');
+        assert!(validate_bearer_token(Some(&format!("Bearer {forged}"))).is_err());
+        assert!(validate_bearer_token(Some("Bearer not-a-jwt")).is_err());
     }
 
     #[test]
@@ -105,12 +125,21 @@ mod tests {
         );
         assert!(require_auth(&headers2).is_err());
 
+        // Real session authenticates; legacy stub denied by default.
+        let token = crate::session::mint_session("test", "test:bob", None, None);
         let mut headers3 = HeaderMap::new();
         headers3.insert(
             axum::http::header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        assert_eq!(require_auth(&headers3).unwrap(), "test:bob");
+
+        let mut headers4 = HeaderMap::new();
+        headers4.insert(
+            axum::http::header::AUTHORIZATION,
             HeaderValue::from_static("Bearer valid-token-xyz"),
         );
-        assert!(require_auth(&headers3).is_ok());
+        assert!(require_auth(&headers4).is_err());
     }
 
     #[test]

@@ -48,8 +48,26 @@ impl std::error::Error for VerifyError {}
 /// Spec requires HashMap; MVP uses single key "global".
 static VERSION_STORE: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 
+/// Full semver strings per scope for precise rollback checks
+/// (the u64 store above tracks only the major line for back-compat).
+static FULL_VERSION_STORE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
 fn store() -> &'static Mutex<HashMap<String, u64>> {
     VERSION_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn full_store() -> &'static Mutex<HashMap<String, String>> {
+    FULL_VERSION_STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn lock_full_store() -> std::sync::MutexGuard<'static, HashMap<String, String>> {
+    match full_store().lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!("full version store mutex poisoned; recovering inner");
+            poisoned.into_inner()
+        }
+    }
 }
 
 fn lock_store() -> std::sync::MutexGuard<'static, HashMap<String, u64>> {
@@ -111,14 +129,99 @@ pub fn current_version() -> u64 {
 }
 
 /// Set current version for scope (test helper + post-verify advance).
+/// Syncs both the legacy major store and the full-string store.
 #[allow(dead_code)]
 pub fn set_current_version_for(scope: &str, v: u64) {
     lock_store().insert(scope.to_string(), v);
+    // Keep semver store consistent for integer lines (idempotent advance).
+    advance_version_str_for(scope, &v.to_string());
 }
 
 #[allow(dead_code)]
 pub fn set_current_version(v: u64) {
     set_current_version_for("global", v);
+}
+
+/// Parse a strict dotted-numeric version into all components.
+/// Same acceptance as [`parse_version`] (`^[vV]?\d+(\.\d+)*$`, ≤64 chars),
+/// but returns every component for full semver ordering.
+pub fn parse_semver(v: &str) -> Result<Vec<u64>, VerifyError> {
+    // Reuse strict validation; BadVersion propagates.
+    parse_version(v)?;
+    let trimmed = v.trim();
+    let stripped = trimmed.trim_start_matches(['v', 'V']);
+    stripped
+        .split('.')
+        .map(|p| {
+            p.parse::<u64>()
+                .map_err(|e| VerifyError::BadVersion(format!("{v}: {e}")))
+        })
+        .collect()
+}
+
+/// Compare two strict versions component-wise (missing trailing = 0, so
+/// `1.0 == 1.0.0`). `Err(BadVersion)` when either side is malformed.
+pub fn cmp_semver(a: &str, b: &str) -> Result<std::cmp::Ordering, VerifyError> {
+    let av = parse_semver(a)?;
+    let bv = parse_semver(b)?;
+    let len = av.len().max(bv.len());
+    for i in 0..len {
+        let x = av.get(i).copied().unwrap_or(0);
+        let y = bv.get(i).copied().unwrap_or(0);
+        match x.cmp(&y) {
+            std::cmp::Ordering::Equal => continue,
+            ord => return Ok(ord),
+        }
+    }
+    Ok(std::cmp::Ordering::Equal)
+}
+
+/// Current full version string for a scope (precise rollback source).
+pub fn current_version_str_for(scope: &str) -> Option<String> {
+    lock_full_store().get(scope).cloned()
+}
+
+/// Set full version string for a scope (test helper + post-verify advance).
+/// Keeps the legacy u64 major store in sync for back-compat readers.
+#[cfg(test)]
+pub fn set_current_version_str_for(scope: &str, v: &str) {
+    if parse_semver(v).is_err() {
+        return;
+    }
+    lock_full_store().insert(scope.to_string(), v.trim().to_string());
+    if let Ok(major) = parse_version(v) {
+        lock_store().insert(scope.to_string(), major);
+    }
+}
+
+/// Advance scoped full version iff `new_version` is strictly greater by
+/// semver ordering. Also advances the legacy major store when the major
+/// line moves forward.
+pub fn advance_version_str_for(scope: &str, new_version: &str) {
+    let Ok(parsed_new) = parse_semver(new_version) else {
+        return;
+    };
+    let _ = parsed_new;
+    let mut full = lock_full_store();
+    let dominated = match full.get(scope) {
+        Some(cur) => match cmp_semver(new_version, cur) {
+            Ok(ord) => ord != std::cmp::Ordering::Greater,
+            Err(_) => true,
+        },
+        None => false,
+    };
+    if dominated {
+        return;
+    }
+    full.insert(scope.to_string(), new_version.trim().to_string());
+    drop(full);
+    if let Ok(major) = parse_version(new_version) {
+        let mut g = lock_store();
+        let cur = g.get(scope).copied().unwrap_or(0);
+        if major > cur {
+            g.insert(scope.to_string(), major);
+        }
+    }
 }
 
 /// Advance scoped version if `new_version` > current (called after successful verify+apply).
@@ -128,12 +231,27 @@ pub fn advance_version_for(scope: &str, new_version: u64) {
     if new_version > cur {
         g.insert(scope.to_string(), new_version);
     }
+    drop(g);
+    // Keep the full-string store in sync for integer-line versions.
+    let s = new_version.to_string();
+    let mut full = lock_full_store();
+    let dominated = match full.get(scope) {
+        Some(cur) => matches!(
+            cmp_semver(&s, cur),
+            Ok(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) | Err(_)
+        ),
+        None => false,
+    };
+    if !dominated {
+        full.insert(scope.to_string(), s);
+    }
 }
 
 /// Clear store (tests).
 #[allow(dead_code)]
 pub fn clear_version_store() {
     lock_store().clear();
+    lock_full_store().clear();
 }
 
 /// Advance global version if `new_version` > current (called after successful verify+apply).
@@ -148,10 +266,15 @@ pub fn advance_version_if_newer(new_version: u64) {
 /// Steps:
 /// 1. Validate pubkey (32 bytes) + sig (64 bytes) shape.
 /// 2. `VerifyingKey::verify(signed_bytes, sig)` — tampered if fails.
-/// 3. Parse `signed_bytes` as JSON: if it is a JSON object, `expires_at`/`exp`
-///    (unix seconds) is REQUIRED and must be in the future; missing/unparseable
-///    expiry on a JSON payload fails closed. Opaque non-JSON payloads skip expiry.
-/// 4. Version ordering: reject if `bundle.version < current_version` (rollback).
+/// 3. `signed_bytes` MUST be a JSON object carrying a valid `expires_at`/`exp`
+///    (unix seconds) in the future and within 30d TTL — missing/unparseable
+///    expiry or non-JSON payloads fail closed (mandatory expiry, no opaque
+///    bypass). For non-`global` scopes the object MUST carry
+///    `org_id == scope`, and its `version` (when scopes are per-org, REQUIRED;
+///    on `global`, required-when-present) MUST equal `bundle.version`.
+/// 4. Version ordering: full semver compare against the stored per-scope
+///    version (plus the legacy major-line check) — older releases reject as
+///    rollback; equal allows idempotent re-apply.
 #[allow(dead_code)]
 pub fn verify_bundle(bundle: &PolicyBundle, pubkey: &[u8]) -> Result<(), VerifyError> {
     verify_bundle_scoped(bundle, pubkey, "global")
@@ -195,64 +318,117 @@ pub fn verify_bundle_scoped(
     vk.verify(&bundle.signed_bytes, &sig)
         .map_err(|e| VerifyError::Tampered(format!("ed25519 verify failed: {e}")))?;
 
-    // 3. Expiry check — fail-closed for JSON objects.
-    if let Ok(val) = serde_json::from_slice::<Value>(&bundle.signed_bytes) {
-        if val.is_object() {
-            let exp_val = val.get("expires_at").or_else(|| val.get("exp"));
-            let exp_opt: Option<i64> = match exp_val {
-                Some(v) => {
-                    if let Some(i) = v.as_i64() {
-                        Some(i)
-                    } else if let Some(u) = v.as_u64() {
-                        i64::try_from(u).ok()
-                    } else if let Some(f) = v.as_f64() {
-                        // Accept float epoch only if integral and in range.
-                        if f.is_finite() && f.fract() == 0.0 && f >= 0.0 && f <= i64::MAX as f64 {
-                            Some(f as i64)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }
-                None => None,
-            };
-            let exp = match exp_opt {
-                Some(e) => e,
-                None => {
-                    return Err(VerifyError::Tampered(
-                        "JSON bundle missing valid expires_at/exp".to_string(),
-                    ))
-                }
-            };
-            if exp <= 0 {
-                return Err(VerifyError::Tampered(format!("invalid expiry {exp}")));
-            }
-            let now = chrono::Utc::now().timestamp();
-            // Bound TTL to 30 days to catch clock/issuer bugs; longer-lived
-            // bundles must be re-issued.
-            const MAX_TTL_SECS: i64 = 30 * 24 * 3600;
-            if exp > now.saturating_add(MAX_TTL_SECS) {
+    // 3. Inner payload MUST be a JSON object (mandatory expiry — no opaque
+    // bypass) with tenant/version binding.
+    let val: Value = serde_json::from_slice(&bundle.signed_bytes).map_err(|_| {
+        VerifyError::Tampered("bundle payload must be a JSON object with expires_at".to_string())
+    })?;
+    let obj = val.as_object().ok_or_else(|| {
+        VerifyError::Tampered("bundle payload must be a JSON object with expires_at".to_string())
+    })?;
+
+    // 3a. Tenant binding: per-org scopes require inner org_id == scope.
+    // `global` is the legacy wildcard and does not enforce (per-org callers
+    // must use the scoped entry point with org_id as scope).
+    if scope != "global" {
+        match obj.get("org_id").and_then(|v| v.as_str()) {
+            Some(inner) if inner == scope => {}
+            _ => {
                 return Err(VerifyError::Tampered(format!(
-                    "expiry too far in future {exp}"
-                )));
-            }
-            if now > exp {
-                return Err(VerifyError::Expired {
-                    expires_at: exp,
-                    now,
-                });
+                    "org binding mismatch: inner org_id must equal scope {scope}"
+                )))
             }
         }
     }
 
-    // 4. Version ordering / rollback protection (scoped).
+    // 3b. Version binding: inner version MUST equal the outer envelope
+    // version (prevents version-swapping a valid signature onto another
+    // release line). Required for per-org scopes; enforced when present on
+    // `global` for back-compat with legacy test vectors.
+    match obj.get("version").and_then(|v| v.as_str()) {
+        Some(inner_v) => {
+            if inner_v != bundle.version {
+                return Err(VerifyError::Tampered(format!(
+                    "version binding mismatch: inner {inner_v} != outer {}",
+                    bundle.version
+                )));
+            }
+        }
+        None => {
+            if scope != "global" {
+                return Err(VerifyError::Tampered(
+                    "bundle payload missing version binding".to_string(),
+                ));
+            }
+        }
+    }
+
+    // 3c. Expiry check — mandatory for ALL bundles.
+    {
+        let exp_val = obj.get("expires_at").or_else(|| obj.get("exp"));
+        let exp_opt: Option<i64> = match exp_val {
+            Some(v) => {
+                if let Some(i) = v.as_i64() {
+                    Some(i)
+                } else if let Some(u) = v.as_u64() {
+                    i64::try_from(u).ok()
+                } else if let Some(f) = v.as_f64() {
+                    // Accept float epoch only if integral and in range.
+                    if f.is_finite() && f.fract() == 0.0 && f >= 0.0 && f <= i64::MAX as f64 {
+                        Some(f as i64)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+        let exp = match exp_opt {
+            Some(e) => e,
+            None => {
+                return Err(VerifyError::Tampered(
+                    "bundle missing valid expires_at/exp".to_string(),
+                ))
+            }
+        };
+        if exp <= 0 {
+            return Err(VerifyError::Tampered(format!("invalid expiry {exp}")));
+        }
+        let now = chrono::Utc::now().timestamp();
+        // Bound TTL to 30 days to catch clock/issuer bugs; longer-lived
+        // bundles must be re-issued.
+        const MAX_TTL_SECS: i64 = 30 * 24 * 3600;
+        if exp > now.saturating_add(MAX_TTL_SECS) {
+            return Err(VerifyError::Tampered(format!(
+                "expiry too far in future {exp}"
+            )));
+        }
+        if now > exp {
+            return Err(VerifyError::Expired {
+                expires_at: exp,
+                now,
+            });
+        }
+    }
+
+    // 4. Version ordering / rollback protection (scoped): legacy major-line
+    // check plus full semver ordering against the stored release string.
     let got = parse_version(&bundle.version)?;
     let current = current_version_for(scope);
     // Rollback if got < current. Equal is allowed for idempotent apply.
     if got < current {
         return Err(VerifyError::Rollback { current, got });
+    }
+    if let Some(stored) = current_version_str_for(scope) {
+        match cmp_semver(&bundle.version, &stored) {
+            Ok(std::cmp::Ordering::Less) => {
+                return Err(VerifyError::Rollback { current, got });
+            }
+            Err(e) => return Err(e),
+            Ok(_) => {}
+        }
     }
 
     Ok(())
@@ -283,7 +459,21 @@ mod tests {
     }
 
     fn payload_with_exp(exp: i64) -> Vec<u8> {
-        json!({"content":"hello policy","expires_at": exp, "version":"test"})
+        payload_with_exp_ver(exp, "1")
+    }
+
+    /// Version-bound payload: inner `version` MUST equal the outer envelope
+    /// version (see §3b). Tests must use this with the matching outer version.
+    fn payload_with_exp_ver(exp: i64, version: &str) -> Vec<u8> {
+        json!({"content":"hello policy","expires_at": exp, "version": version})
+            .to_string()
+            .into_bytes()
+    }
+
+    /// Per-org scoped payload: inner `org_id` + `version` bound to the scope
+    /// and outer version (see §3a–3b).
+    fn scoped_payload(scope: &str, version: &str, exp: i64) -> Vec<u8> {
+        json!({"org_id": scope, "content":"hello policy","expires_at": exp, "version": version})
             .to_string()
             .into_bytes()
     }
@@ -294,7 +484,7 @@ mod tests {
         clear_version_store();
         let (sk, vk) = test_keypair();
         let exp = chrono::Utc::now().timestamp() + 3600;
-        let payload = payload_with_exp(exp);
+        let payload = payload_with_exp_ver(exp, "1");
         let bundle = sign_bundle("1", &payload, &sk);
         let pubkey = vk.to_bytes().to_vec();
         assert!(verify_bundle(&bundle, &pubkey).is_ok());
@@ -306,7 +496,7 @@ mod tests {
         clear_version_store();
         let (sk, vk) = test_keypair();
         let exp = chrono::Utc::now().timestamp() + 3600;
-        let payload = payload_with_exp(exp);
+        let payload = payload_with_exp_ver(exp, "2");
         let mut bundle = sign_bundle("2", &payload, &sk);
         // Tamper after signing.
         bundle.signed_bytes[0] ^= 0xFF;
@@ -320,7 +510,7 @@ mod tests {
         let _guard = test_sync::lock();
         clear_version_store();
         let (sk, vk) = test_keypair();
-        let payload = payload_with_exp(chrono::Utc::now().timestamp() + 3600);
+        let payload = payload_with_exp_ver(chrono::Utc::now().timestamp() + 3600, "3");
         let mut bundle = sign_bundle("3", &payload, &sk);
         bundle.sig[0] ^= 0xAA;
         let pubkey = vk.to_bytes().to_vec();
@@ -335,7 +525,7 @@ mod tests {
         clear_version_store();
         let (sk, vk) = test_keypair();
         let exp = chrono::Utc::now().timestamp() - 10; // already expired
-        let payload = payload_with_exp(exp);
+        let payload = payload_with_exp_ver(exp, "4");
         let bundle = sign_bundle("4", &payload, &sk);
         let pubkey = vk.to_bytes().to_vec();
         let err = verify_bundle(&bundle, &pubkey).unwrap_err();
@@ -348,7 +538,7 @@ mod tests {
         clear_version_store();
         let (sk, vk) = test_keypair();
         let exp = chrono::Utc::now().timestamp() + 3600;
-        let payload = payload_with_exp(exp);
+        let payload = payload_with_exp_ver(exp, "3");
         // Set current to 5.
         set_current_version(5);
         let bundle = sign_bundle("3", &payload, &sk); // older
@@ -364,7 +554,7 @@ mod tests {
         clear_version_store();
         set_current_version(5);
         let (sk, vk) = test_keypair();
-        let payload = payload_with_exp(chrono::Utc::now().timestamp() + 3600);
+        let payload = payload_with_exp_ver(chrono::Utc::now().timestamp() + 3600, "5");
         let bundle = sign_bundle("5", &payload, &sk);
         let pubkey = vk.to_bytes().to_vec();
         assert!(verify_bundle(&bundle, &pubkey).is_ok());
@@ -377,7 +567,7 @@ mod tests {
         clear_version_store();
         set_current_version(5);
         let (sk, vk) = test_keypair();
-        let payload = payload_with_exp(chrono::Utc::now().timestamp() + 3600);
+        let payload = payload_with_exp_ver(chrono::Utc::now().timestamp() + 3600, "6");
         let bundle = sign_bundle("6", &payload, &sk);
         let pubkey = vk.to_bytes().to_vec();
         assert!(verify_bundle(&bundle, &pubkey).is_ok());
@@ -389,7 +579,7 @@ mod tests {
         let _guard = test_sync::lock();
         clear_version_store();
         let (sk, _) = test_keypair();
-        let payload = payload_with_exp(chrono::Utc::now().timestamp() + 3600);
+        let payload = payload_with_exp_ver(chrono::Utc::now().timestamp() + 3600, "1");
         let bundle = sign_bundle("1", &payload, &sk);
         let bad_pubkey = vec![0u8; 16];
         let err = verify_bundle(&bundle, &bad_pubkey).unwrap_err();
@@ -401,7 +591,7 @@ mod tests {
         let _guard = test_sync::lock();
         clear_version_store();
         let (sk, vk) = test_keypair();
-        let payload = payload_with_exp(chrono::Utc::now().timestamp() + 3600);
+        let payload = payload_with_exp_ver(chrono::Utc::now().timestamp() + 3600, "1");
         let mut bundle = sign_bundle("1", &payload, &sk);
         bundle.sig = vec![0u8; 10];
         let pubkey = vk.to_bytes().to_vec();
@@ -414,7 +604,7 @@ mod tests {
         let _guard = test_sync::lock();
         clear_version_store();
         let (sk, vk) = test_keypair();
-        let payload = payload_with_exp(chrono::Utc::now().timestamp() + 3600);
+        let payload = payload_with_exp_ver(chrono::Utc::now().timestamp() + 3600, "not-a-version");
         let bundle = sign_bundle("not-a-version", &payload, &sk);
         let pubkey = vk.to_bytes().to_vec();
         let err = verify_bundle(&bundle, &pubkey).unwrap_err();
@@ -472,17 +662,91 @@ mod tests {
         let pubkey = vk.to_bytes().to_vec();
         let exp = chrono::Utc::now().timestamp() + 3600;
         // Org-A at v100 must not block org-B at v2.
-        let payload_a = payload_with_exp(exp);
+        let payload_a = scoped_payload("org-a", "100", exp);
         let bundle_a = sign_bundle("100", &payload_a, &sk);
         verify_bundle_scoped(&bundle_a, &pubkey, "org-a").expect("org-a v100 ok");
         set_current_version_for("org-a", 100);
-        let payload_b = payload_with_exp(exp);
+        let payload_b = scoped_payload("org-b", "2", exp);
         let bundle_b = sign_bundle("2", &payload_b, &sk);
         assert!(verify_bundle_scoped(&bundle_b, &pubkey, "org-b").is_ok());
         // But org-A rollback to v3 is rejected.
-        let bundle_old = sign_bundle("3", &payload_a, &sk);
+        let payload_old = scoped_payload("org-a", "3", exp);
+        let bundle_old = sign_bundle("3", &payload_old, &sk);
         let err = verify_bundle_scoped(&bundle_old, &pubkey, "org-a").unwrap_err();
         assert!(matches!(err, VerifyError::Rollback { .. }));
+    }
+
+    #[test]
+    fn proves_ask_on_org_binding_mismatch() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let (sk, vk) = test_keypair();
+        let pubkey = vk.to_bytes().to_vec();
+        let exp = chrono::Utc::now().timestamp() + 3600;
+        // Inner org-a presented to scope org-b → Tampered.
+        let payload = scoped_payload("org-a", "7", exp);
+        let bundle = sign_bundle("7", &payload, &sk);
+        let err = verify_bundle_scoped(&bundle, &pubkey, "org-b").unwrap_err();
+        assert!(matches!(err, VerifyError::Tampered(_)));
+        // Missing org_id on a per-org scope → Tampered.
+        let payload_no_org = payload_with_exp_ver(exp, "7");
+        let bundle_no_org = sign_bundle("7", &payload_no_org, &sk);
+        let err2 = verify_bundle_scoped(&bundle_no_org, &pubkey, "org-b").unwrap_err();
+        assert!(matches!(err2, VerifyError::Tampered(_)));
+    }
+
+    #[test]
+    fn proves_ask_on_version_binding_mismatch() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let (sk, vk) = test_keypair();
+        let pubkey = vk.to_bytes().to_vec();
+        let exp = chrono::Utc::now().timestamp() + 3600;
+        // Inner 8 vs outer 9 (global, present) → Tampered.
+        let payload = payload_with_exp_ver(exp, "8");
+        let bundle = sign_bundle("9", &payload, &sk);
+        let err = verify_bundle(&bundle, &pubkey).unwrap_err();
+        assert!(matches!(err, VerifyError::Tampered(_)));
+        // Scoped with mismatched binding → Tampered.
+        let scoped = scoped_payload("org-v", "8", exp);
+        let bundle2 = sign_bundle("9", &scoped, &sk);
+        let err2 = verify_bundle_scoped(&bundle2, &pubkey, "org-v").unwrap_err();
+        assert!(matches!(err2, VerifyError::Tampered(_)));
+    }
+
+    #[test]
+    fn proves_ask_on_non_json_mandatory_expiry() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let (sk, vk) = test_keypair();
+        let pubkey = vk.to_bytes().to_vec();
+        // Opaque non-JSON payloads no longer skip expiry — fail closed.
+        let bundle = sign_bundle("1", b"opaque-bytes-not-json", &sk);
+        let err = verify_bundle(&bundle, &pubkey).unwrap_err();
+        assert!(matches!(err, VerifyError::Tampered(_)));
+        // JSON array (not object) also fails closed.
+        let bundle2 = sign_bundle("1", b"[1,2,3]", &sk);
+        let err2 = verify_bundle(&bundle2, &pubkey).unwrap_err();
+        assert!(matches!(err2, VerifyError::Tampered(_)));
+    }
+
+    #[test]
+    fn semver_rollback_minor_rejected() {
+        let _guard = test_sync::lock();
+        clear_version_store();
+        let (sk, vk) = test_keypair();
+        let pubkey = vk.to_bytes().to_vec();
+        let exp = chrono::Utc::now().timestamp() + 3600;
+        // Store 1.10 (same major line as 1.9 — legacy major check passes).
+        set_current_version_str_for("org-s", "1.10");
+        let payload = scoped_payload("org-s", "1.9", exp);
+        let bundle = sign_bundle("1.9", &payload, &sk);
+        let err = verify_bundle_scoped(&bundle, &pubkey, "org-s").unwrap_err();
+        assert!(matches!(err, VerifyError::Rollback { .. }));
+        // 1.10.1 over 1.10 is allowed.
+        let payload_new = scoped_payload("org-s", "1.10.1", exp);
+        let bundle_new = sign_bundle("1.10.1", &payload_new, &sk);
+        assert!(verify_bundle_scoped(&bundle_new, &pubkey, "org-s").is_ok());
     }
 
     #[test]

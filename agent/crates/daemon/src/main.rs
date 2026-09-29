@@ -1,9 +1,9 @@
-#![allow(dead_code, unused_imports, unused_variables)]
-
 mod cache;
 mod jev_pool;
 mod pipeline;
 mod transport;
+
+use algo_adapter_claude::parse::{ParseError, parse_hook};
 
 use cache::Cache;
 use jev_pool::JevPool;
@@ -144,7 +144,67 @@ fn ensure_algo_dir() -> std::io::Result<PathBuf> {
     let home = dirs_home();
     let dir = home.join(".algo");
     std::fs::create_dir_all(&dir)?;
+    // 0700 pre-create: no world/group-visible window for socket/db.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    }
     Ok(dir)
+}
+
+/// 0600 enforcement for the audit DB (created by rusqlite with the process
+/// umask, so chmod after open; called after every open path).
+fn enforce_0600(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            if meta.permissions().mode() & 0o777 != 0o600 {
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+}
+
+/// C6: wire real Jev vs MockProvider. Default is Mock (local-only, no egress).
+/// With `--features jev` + `ALGO_JEV_API_KEY` set, the real `JevProvider`
+/// (built on a fresh OS thread — never inside the async runtime) is used.
+/// Any build/config error falls back to Mock (fail-safe: pipeline maps
+/// provider errors to ask, never allow).
+fn build_provider() -> Arc<dyn algo_provider::DecisionProvider> {
+    #[cfg(feature = "jev")]
+    {
+        let has_key = std::env::var("ALGO_JEV_API_KEY")
+            .map(|k| !k.trim().is_empty())
+            .unwrap_or(false);
+        if has_key {
+            let res = std::thread::spawn(algo_provider::JevProvider::from_env).join();
+            match res {
+                Ok(Ok(p)) => {
+                    eprintln!("daemon: provider=jev (real, ALGO_JEV_API_KEY set)");
+                    return Arc::new(p);
+                }
+                Ok(Err(e)) => {
+                    eprintln!("daemon: jev provider build failed ({e}) → MockProvider (ask on error)");
+                }
+                Err(_) => {
+                    eprintln!("daemon: jev provider thread panicked → MockProvider (ask on error)");
+                }
+            }
+        } else {
+            eprintln!("daemon: provider=mock (ALGO_JEV_API_KEY unset; local-only, no egress)");
+        }
+    }
+    #[cfg(not(feature = "jev"))]
+    {
+        eprintln!("daemon: provider=mock (build without --features jev; no egress)");
+    }
+    Arc::new(MockProvider::new())
 }
 
 #[tokio::main]
@@ -162,9 +222,12 @@ async fn main() -> std::io::Result<()> {
 
     // Setup pipeline components — shadow default P1 (P2-04 enforce to disable).
     // Requires daemon restart after `algo enforce on|off` (documented private-MVP limit).
+    // RISK (C6): shadow default observes only and NEVER blocks — a would-be deny
+    // is returned as allow with `shadow:true` + `would_have`. Run
+    // `algo enforce on` + restart the daemon to actually block.
     let engine = Arc::new(algo_policy::Engine::new());
     let cache = Arc::new(Cache::new());
-    let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));
+    let pool = Arc::new(JevPool::new(build_provider()));
     pool.warm();
     let shadow = read_shadow_mode();
     // Privacy stamps every event; local-only default means no L3 network path.
@@ -204,6 +267,12 @@ async fn main() -> std::io::Result<()> {
             if shadow { "off" } else { "on" },
             privacy_mode,
         );
+        if shadow {
+            eprintln!(
+                "WARNING: shadow mode (default) — guard observes only, never blocks. \
+                 `would_have` counts real verdicts; run `algo enforce on` + restart daemon to block."
+            );
+        }
 
         if args.oneshot {
             // Single request then exit
@@ -290,6 +359,58 @@ async fn handle_stream(
 }
 
 fn parse_tool_before(json_str: &str, privacy_mode: i32) -> Result<algo_types::ToolBefore, String> {
+    // C6: route Claude PreToolUse hook JSON through adapter-claude parse_hook
+    // first (extracts tool_input.command / file_path per tool). Legacy
+    // daemon-shape payloads (event_id/redacted_payload) fall through below.
+    match parse_hook(json_str) {
+        Ok(ev) => {
+            let session_id = if ev.session_id.is_empty() {
+                "sess-unknown".to_string()
+            } else {
+                ev.session_id.clone()
+            };
+            let working_dir = if ev.cwd.is_empty() {
+                "/tmp".to_string()
+            } else {
+                ev.cwd.clone()
+            };
+            let event_id = format!("evt-{session_id}");
+            let shell_argv = if ev.is_shell() {
+                ev.command
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+            } else {
+                Vec::new()
+            };
+            let privacy_mode = normalize_privacy_mode(privacy_mode);
+            return Ok(algo_types::ToolBefore {
+                event_id,
+                timestamp: None,
+                agent: Some(algo_types::AgentIdentity {
+                    agent_type: Some("claude-code".to_string()),
+                    agent_version: None,
+                    session_id,
+                    working_dir,
+                }),
+                tool_kind: ev.tool_kind as i32,
+                redacted_payload: ev.command,
+                privacy_mode,
+                shell_argv,
+                file_path: ev.file_path,
+            });
+        }
+        Err(ParseError::SkippedUnsupportedTool) => {
+            // Unknown tool: fail-safe ask (never allow). Keep the P1 log signal
+            // in the reason so audits can record `skipped:unsupported_tool`.
+            return Err("skipped:unsupported_tool".to_string());
+        }
+        Err(_) => {
+            // Not Claude-hook-shaped (or missing tool_name/command) — try the
+            // legacy lenient daemon shape below (tests, hook-client minimal).
+        }
+    }
+
     // Try structured JSON with ToolBefore fields first
     let v: serde_json::Value =
         serde_json::from_str(json_str).map_err(|e| format!("json parse: {e}"))?;
@@ -369,12 +490,7 @@ fn parse_tool_before(json_str: &str, privacy_mode: i32) -> Result<algo_types::To
 
     // Privacy comes from daemon config (local-only default), never hardcoded.
     // Unknown/invalid values are normalized to local-only (fail-safe: no network).
-    let privacy_mode = match privacy_mode {
-        x if x == algo_types::PrivacyMode::LocalOnly as i32 => x,
-        x if x == algo_types::PrivacyMode::Redacted as i32 => x,
-        x if x == algo_types::PrivacyMode::Full as i32 => x,
-        _ => algo_types::PrivacyMode::LocalOnly as i32,
-    };
+    let privacy_mode = normalize_privacy_mode(privacy_mode);
 
     Ok(algo_types::ToolBefore {
         event_id,
@@ -399,6 +515,33 @@ fn parse_tool_before(json_str: &str, privacy_mode: i32) -> Result<algo_types::To
     })
 }
 
+/// Normalize daemon-config privacy to a known mode; unknown/invalid values
+/// become local-only (fail-safe: no network path).
+fn normalize_privacy_mode(privacy_mode: i32) -> i32 {
+    match privacy_mode {
+        x if x == algo_types::PrivacyMode::LocalOnly as i32 => x,
+        x if x == algo_types::PrivacyMode::Redacted as i32 => x,
+        x if x == algo_types::PrivacyMode::Full as i32 => x,
+        _ => algo_types::PrivacyMode::LocalOnly as i32,
+    }
+}
+
+/// C6: Claude PreToolUse hook output shape per current Claude Code docs
+/// ([VERIFY 2026-09-28](https://code.claude.com/docs/en/hooks)): exit 0 with
+/// `hookSpecificOutput.{hookEventName,permissionDecision,permissionDecisionReason}`
+/// where permissionDecision is allow|deny|ask. Exit 2 also blocks (hook-client
+/// uses it for deny); legacy `decision`/`action` aliases are kept for
+/// hook-client fallback compatibility.
+#[derive(serde::Serialize)]
+struct HookSpecificOutput {
+    #[serde(rename = "hookEventName")]
+    hook_event_name: String,
+    #[serde(rename = "permissionDecision")]
+    permission_decision: String,
+    #[serde(rename = "permissionDecisionReason")]
+    permission_decision_reason: String,
+}
+
 #[derive(serde::Serialize)]
 struct DecisionJson {
     action: String,
@@ -411,6 +554,8 @@ struct DecisionJson {
     // Aliases for hook-client fallback compatibility
     decision: String,
     source: String,
+    #[serde(rename = "hookSpecificOutput")]
+    hook_specific_output: HookSpecificOutput,
     // P1-08 shadow observability (no proto change until P2-01): shadow=true means
     // returned Allow is a shadow approve; would_have holds the real computed action.
     shadow: bool,
@@ -449,8 +594,13 @@ fn decision_to_json(d: &algo_types::Decision) -> DecisionJson {
         latency_ms: d.latency_ms,
         policy_version: d.policy_version.clone(),
         trace_id: d.trace_id.clone(),
-        decision: action_str,
+        decision: action_str.clone(),
         source: source_str,
+        hook_specific_output: HookSpecificOutput {
+            hook_event_name: "PreToolUse".to_string(),
+            permission_decision: action_str,
+            permission_decision_reason: d.reason.clone(),
+        },
         shadow,
         would_have,
     }
@@ -458,9 +608,14 @@ fn decision_to_json(d: &algo_types::Decision) -> DecisionJson {
 
 fn spawn_writer_task(mut rx: tokio::sync::mpsc::Receiver<DbRecord>, db_path: PathBuf) {
     tokio::spawn(async move {
-        // Ensure parent dir
+        // Ensure parent dir (0700: socket/db must never be group/world-visible)
         if let Some(parent) = db_path.parent() {
             let _ = tokio::fs::create_dir_all(parent).await;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+            }
         }
 
         // Blocking DB setup
@@ -498,6 +653,8 @@ fn spawn_writer_task(mut rx: tokio::sync::mpsc::Receiver<DbRecord>, db_path: Pat
             eprintln!("writer setup db error: {e:?}");
             // Still continue; fail-safe will map to ask on next writes if needed
         }
+        // audit.db holds redacted decisions: 0600 (owner-only).
+        enforce_0600(&db_path);
 
         while let Some(rec) = rx.recv().await {
             let path = db_path.clone();
@@ -642,5 +799,61 @@ mod tests {
         let s = serde_json::to_string(&j).unwrap();
         assert!(s.contains("\"shadow\":true"));
         assert!(s.contains("\"would_have\":\"deny\""));
+    }
+
+    #[test]
+    fn parse_tool_before_routes_claude_bash_hook() {
+        // C6: real Claude PreToolUse payload → tool_input.command extracted.
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"rm -rf /"},"cwd":"/tmp","session_id":"sess-1"}"#;
+        let tb = parse_tool_before(json, algo_types::PrivacyMode::LocalOnly as i32).unwrap();
+        assert_eq!(tb.redacted_payload, "rm -rf /");
+        assert_eq!(tb.tool_kind, algo_types::ToolKind::Shell as i32);
+        assert_eq!(tb.shell_argv, vec!["rm", "-rf", "/"]);
+        assert_eq!(tb.file_path, None);
+        let agent = tb.agent.unwrap();
+        assert_eq!(agent.session_id, "sess-1");
+        assert_eq!(agent.working_dir, "/tmp");
+    }
+
+    #[test]
+    fn parse_tool_before_routes_claude_edit_hook() {
+        let json = r#"{"tool_name":"Edit","tool_input":{"file_path":"/tmp/foo.txt","old_string":"a","new_string":"b"},"cwd":"/tmp","session_id":"sess-e"}"#;
+        let tb = parse_tool_before(json, algo_types::PrivacyMode::Redacted as i32).unwrap();
+        assert_eq!(tb.tool_kind, algo_types::ToolKind::Edit as i32);
+        assert_eq!(tb.file_path.as_deref(), Some("/tmp/foo.txt"));
+        assert!(tb.shell_argv.is_empty());
+    }
+
+    #[test]
+    fn parse_tool_before_unsupported_tool_is_ask() {
+        // Unsupported tools must surface as an error carrying the
+        // skipped:unsupported_tool signal (caller maps to ask, never allow).
+        let json = r#"{"tool_name":"WebFetch","tool_input":{"url":"https://example.com"},"cwd":"/tmp","session_id":"s1"}"#;
+        let err = parse_tool_before(json, algo_types::PrivacyMode::LocalOnly as i32).unwrap_err();
+        assert!(err.contains("skipped:unsupported_tool"), "{err}");
+    }
+
+    #[test]
+    fn decision_json_emits_hook_specific_output() {
+        // C6: hookSpecificOutput.permissionDecision allow/deny/ask per docs.
+        for (action, expected) in [
+            (algo_types::Action::Allow, "allow"),
+            (algo_types::Action::Deny, "deny"),
+            (algo_types::Action::Ask, "ask"),
+        ] {
+            let d = algo_types::Decision {
+                action: action as i32,
+                reason: "r".into(),
+                confidence_0_1: 0.9,
+                source_level: algo_types::SourceLevel::Rule as i32,
+                latency_ms: 1,
+                policy_version: "v0".into(),
+                trace_id: "t".into(),
+            };
+            let v = serde_json::to_value(decision_to_json(&d)).unwrap();
+            assert_eq!(v["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+            assert_eq!(v["hookSpecificOutput"]["permissionDecision"], expected);
+            assert_eq!(v["hookSpecificOutput"]["permissionDecisionReason"], "r");
+        }
     }
 }

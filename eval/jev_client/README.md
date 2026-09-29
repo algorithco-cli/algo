@@ -44,4 +44,4 @@ python measure.py --dataset ../../datasets/v0.1/all.jsonl \
    dataset SHA, provider version (server-echoed id), region, date, variance stats.
 4. Publish `eval/reports/jev-v0.1-<region>-<date>.md+json` (schema: `jev-v0.1-TEMPLATE.json`).
    Payloads redacted/hashed only.
-5. Gate: measurement needs false-allow + latency; miss ⇒ redesign/ADR, not silence.
+5. Gate: measurement needs false-allow + latency; miss ⇒ redesign/owner decision, not silence.

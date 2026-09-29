@@ -1,6 +1,6 @@
 name: Publish crates
 
-# crates.io auto-publish (ADR-0013 prep, ADR-0014 automation).
+# crates.io auto-publish.
 # Dry-run on PR/push to main (no secrets). Real publish only on tag
 # `release/*` or manual dispatch with confirm=publish, in environment `release`.
 # Secret: CARGO_REGISTRY_TOKEN (crates.io API token, scope publish).
@@ -46,7 +46,7 @@ jobs:
         run: |
           echo "== license check (informational on dry-run) =="
           if grep -r "LicenseRef-TBD" --include=Cargo.toml core agent backend fuzz; then
-            echo "NOTE: LicenseRef-TBD present — real publish will fail until ADR-0001 sign-off (or PUBLISH_ALLOW_TBD=1)."
+            echo "NOTE: LicenseRef-TBD present — real publish will fail until license is finalized (or PUBLISH_ALLOW_TBD=1)."
           fi
           echo "== ordered package list =="
           cat scripts/publish-crates-order.txt
@@ -97,7 +97,7 @@ jobs:
             if [ "$ALLOW_TBD" = "1" ] || [ "$PUBLISH_ALLOW_TBD" = "1" ]; then
               echo "WARNING: publishing with TBD license (override set)."
             else
-              echo "LICENSE GATE FAIL: LicenseRef-TBD still present. Complete ADR-0001 before real publish." >&2
+              echo "LICENSE GATE FAIL: LicenseRef-TBD still present. Finalize the license before real publish." >&2
               exit 1
             fi
           fi

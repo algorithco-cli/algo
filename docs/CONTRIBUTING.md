@@ -5,7 +5,6 @@
 Conventional commits. Examples:
 
 - `docs: add threat-model v0 assets`
-- `docs(adr): draft D-01 BYOK vs proxy`
 - `chore: fix markdown links`
 
 Types: `docs`, `feat`, `fix`, `chore`, `eval`, `proto` (cross-repo link required).
@@ -19,10 +18,9 @@ Types: `docs`, `feat`, `fix`, `chore`, `eval`, `proto` (cross-repo link required
 
 ## Decisions
 
-- `[DECISION]` items need a merged ADR before implementation code. See [adr/](./adr/README.md).
-- Branch name: `adr/D0X-short-title` for decision work.
+- `[DECISION]` items need an explicit owner decision recorded in the PR description before implementation code.
 
 ## Reviews
 
 - Paths in [CODEOWNERS](./CODEOWNERS) need human sign-off.
-- Budgets, thresholds, or fail-safe changes need an ADR + human sign-off.
+- Budgets, thresholds, or fail-safe changes need owner decision + human sign-off.

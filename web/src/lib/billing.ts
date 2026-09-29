@@ -75,11 +75,10 @@ export interface Entitlement {
   status: string;
   valid: boolean;
   features: Partial<PlanFeatures>;
-  limits: {
-    max_seats: number;
-    rate_multiplier: number;
-    retention_days: number;
-  };
+  max_seats: number;
+  rate_multiplier: number;
+  retention_days: number;
+  grace_seconds_left: number;
   subscription: Subscription | null;
   upgrade_hint: string | null;
 }
@@ -452,7 +451,7 @@ async function parseError(res: Response): Promise<BillingApiError> {
   return new BillingApiError(res.status, message, upgrade);
 }
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   token: string | null,
   init?: RequestInit,
@@ -581,6 +580,15 @@ export function fetchEntitlement(
 
 const TOKEN_KEY = "algo-billing-token";
 const ORG_KEY = "algo-billing-org";
+export const GUARD_SESSION_EVENT = "algo-guard-session-change";
+
+function announceSessionChange(): void {
+  try {
+    window.dispatchEvent(new Event(GUARD_SESSION_EVENT));
+  } catch {
+    /* non-browser/test environment */
+  }
+}
 
 export function loadStoredToken(): string {
   try {
@@ -597,6 +605,7 @@ export function saveStoredToken(token: string): void {
   } catch {
     /* storage unavailable — form state still holds the value */
   }
+  announceSessionChange();
 }
 
 export function loadStoredOrgId(): string {
@@ -614,4 +623,5 @@ export function saveStoredOrgId(orgId: string): void {
   } catch {
     /* storage unavailable — ignore */
   }
+  announceSessionChange();
 }

@@ -216,7 +216,7 @@ if (Test-Path "C:\Users\hamro\AppData\Local\Temp\opencode\latency_budget_warn") 
 Write-Host ""
 Write-Host "[latency-budget] Summary: FAIL=$fail WARN=$warn"
 if ($fail -gt 0) {
-    Write-Host "[latency-budget] ❌ LATENCY BUDGET BREACH or REGRESSION >${RegressionPct}% — adjust only via ADR" -ForegroundColor Red
+    Write-Host "[latency-budget] ❌ LATENCY BUDGET BREACH or REGRESSION >${RegressionPct}% — adjust only via owner decision" -ForegroundColor Red
     exit 1
 } else {
     Write-Host "[latency-budget] ✅ budgets OK (L0/L1 p50<3ms p99<10ms, redact <500us, L3 report-only, regression <=${RegressionPct}%)" -ForegroundColor Green

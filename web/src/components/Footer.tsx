@@ -19,8 +19,8 @@ const RESOURCE_LINKS = [
   { to: "/docs", label: "Documentation" },
   { to: "/docs/install", label: "Install guide" },
   { to: "/docs/cli", label: "CLI reference" },
+  { to: "/docs/troubleshooting", label: "Troubleshooting" },
   { to: "/faq", label: "FAQ" },
-  { to: "/privacy", label: "Privacy" },
 ];
 
 function FooterLinkGroup({
@@ -131,6 +131,8 @@ export function Footer({
         <div className="footer-impact-bottom">
           <span>© 2026 Algorithco</span>
           <Link to="/privacy">Privacy</Link>
+          <Link to="/terms">Terms</Link>
+          <Link to="/security">Security</Link>
         </div>
       </div>
     </footer>

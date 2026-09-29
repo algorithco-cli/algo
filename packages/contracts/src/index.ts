@@ -4,7 +4,6 @@
 export * from "./gen/algorithco_guard/v0/events_pb.js";
 export * from "./gen/algorithco_guard/v0/decision_pb.js";
 export * from "./gen/algorithco_guard/v0/dataset_pb.js";
-export * from "./gen/algorithco_guard/v0/backend_pb.js";
 export * from "./gen/algorithco_guard/v0/hook_daemon_pb.js";
 export * from "./gen/algorithco_guard/v0/daemon_backend_pb.js";
 

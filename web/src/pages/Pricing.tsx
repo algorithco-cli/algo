@@ -147,7 +147,7 @@ const FAQS: readonly { q: string; a: string }[] = [
   },
   {
     q: "How does billing work?",
-    a: "Per seat, per month, via an external merchant of record (ADR-0006). Card data never touches our systems — the MoR handles checkout, invoices, and tax.",
+    a: "Per seat, per month, via an external merchant of record (deferred MoR). Card data never touches our systems — the MoR handles checkout, invoices, and tax.",
   },
   {
     q: "What happens to my code on paid plans?",
@@ -323,7 +323,7 @@ export default function Pricing(): JSX.Element {
         </div>
 
         <p className="muted small plan-footnote">
-          Paid plans billed per seat via external MoR (ADR-0006). See{" "}
+          Paid plans billed per seat via external MoR (deferred MoR). See{" "}
           <Link to="/roadmap">roadmap</Link> and <Link to="/faq">FAQ</Link>.
         </p>
       </Section>

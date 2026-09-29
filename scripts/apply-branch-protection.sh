@@ -4,7 +4,7 @@
 # Branch not protected; GET rulesets → empty. GitHub docs gate protected
 # branches to Pro/Team/Enterprise for private repos, so a 403 "Upgrade to
 # GitHub Pro" at apply time is the expected plan-gate (flip to Pro, or public
-# after license ADR-0001 + legal sign-off, then re-run).
+# after license finalization, then re-run).
 # Usage: ./scripts/apply-branch-protection.sh [--check-only]
 set -euo pipefail
 
@@ -31,7 +31,7 @@ if CODE=$(gh api "repos/$OWNER/$REPO/branches/$BRANCH/protection" --jq '.require
 else
   if grep -q "Upgrade to GitHub Pro" /tmp/protect_err.txt 2>/dev/null; then
     echo "[protect] EXPECTED-BLOCKED (exit 2): plan-gated — private Free-plan repos cannot use branch protection." >&2
-    echo "[protect] Flip to Pro (or public after license ADR-0001 + legal sign-off), then re-run." >&2
+    echo "[protect] Flip to Pro (or public after license finalization), then re-run." >&2
     exit 2
   fi
   echo "[protect] no protection yet (or other error):" >&2

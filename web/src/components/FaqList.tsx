@@ -9,7 +9,7 @@ export const FaqList = React.memo(function FaqList(): JSX.Element {
       {FAQS.map(([q, a], i) => {
         const isOpen = open === i;
         return (
-          <div key={q} className={`faq-item reveal${isOpen ? " open" : ""}`}>
+          <div key={q} className={`faq-item${isOpen ? " open" : ""}`}>
             <button
               type="button"
               className="faq-q"
@@ -22,7 +22,12 @@ export const FaqList = React.memo(function FaqList(): JSX.Element {
                 <Plus size={17} />
               </span>
             </button>
-            <section className="faq-a-wrap" id={`faq-a-${i}`} aria-label={q}>
+            <section
+              className="faq-a-wrap"
+              id={`faq-a-${i}`}
+              aria-label={q}
+              aria-hidden={!isOpen}
+            >
               <p className="muted faq-a">{a}</p>
             </section>
           </div>

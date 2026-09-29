@@ -7,7 +7,7 @@ import Mail from "lucide-react/icons/mail.mjs";
 import ShieldCheck from "lucide-react/icons/shield-check.mjs";
 import User from "lucide-react/icons/user.mjs";
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
   type GithubDeviceInit,
@@ -68,6 +68,7 @@ function expiryLabel(expiresIn: number): string {
  * backend session token, stored for the Billing page.
  */
 export function DeviceLogin(): JSX.Element {
+  const navigate = useNavigate();
   const [online, setOnline] = React.useState<boolean | null>(null);
   const [method, setMethod] = React.useState<Method>("email");
   const [emailMode, setEmailMode] = React.useState<EmailMode>("login");
@@ -100,14 +101,22 @@ export function DeviceLogin(): JSX.Element {
     };
   }, []);
 
-  const finishLink = React.useCallback((id: number, accessToken: string) => {
-    if (runId.current !== id) return;
-    saveStoredToken(accessToken);
-    setToken(accessToken);
-    setLinked(true);
-    setBusy(false);
-    setWaiting(false);
-  }, []);
+  React.useEffect(() => {
+    if (linked) navigate("/dashboard", { replace: true });
+  }, [linked, navigate]);
+
+  const finishLink = React.useCallback(
+    (id: number, accessToken: string) => {
+      if (runId.current !== id) return;
+      saveStoredToken(accessToken);
+      setToken(accessToken);
+      setLinked(true);
+      setBusy(false);
+      setWaiting(false);
+      navigate("/dashboard", { replace: true });
+    },
+    [navigate],
+  );
 
   const fail = React.useCallback((id: number, message: string) => {
     if (runId.current !== id) return;

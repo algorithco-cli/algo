@@ -69,12 +69,30 @@ pub struct Counts {
 
 pub struct AuditStore {
     path: PathBuf,
+    read_only: bool,
 }
 
 impl AuditStore {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, AuditError> {
         Ok(Self {
             path: path.as_ref().to_path_buf(),
+            read_only: false,
+        })
+    }
+
+    /// Open an existing audit database without creating files, directories,
+    /// tables, indexes, journals, or changing database pragmas.
+    pub fn open_read_only<P: AsRef<Path>>(path: P) -> Result<Self, AuditError> {
+        let path = path.as_ref().to_path_buf();
+        if !path.is_file() {
+            return Err(AuditError::Other(format!(
+                "audit database does not exist: {}",
+                path.display()
+            )));
+        }
+        Ok(Self {
+            path,
+            read_only: true,
         })
     }
 
@@ -83,6 +101,15 @@ impl AuditStore {
     }
 
     fn connect(&self) -> Result<Connection, AuditError> {
+        if self.read_only {
+            let conn = Connection::open_with_flags(
+                &self.path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            )?;
+            conn.busy_timeout(Duration::from_millis(5000))?;
+            return Ok(conn);
+        }
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -94,6 +121,11 @@ impl AuditStore {
     }
 
     pub fn init(&self) -> Result<(), AuditError> {
+        if self.read_only {
+            return Err(AuditError::Other(
+                "cannot initialize a read-only audit store".to_string(),
+            ));
+        }
         let conn = self.connect()?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
@@ -434,6 +466,36 @@ mod tests {
         assert_eq!(last.fingerprint, "fp-redacted");
         assert!(last.shadow);
         assert_eq!(last.profile, "balanced");
+    }
+
+    #[test]
+    fn read_only_store_reads_without_writing() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("audit.db");
+        let store = AuditStore::open(&db).unwrap();
+        store.init().unwrap();
+        let d = test_decision(Action::Ask, "needs approval", "readonly");
+        store.insert(&d, "fp-readonly", false).unwrap();
+        drop(store);
+
+        let before = std::fs::metadata(&db).unwrap().modified().unwrap();
+        let read_only = AuditStore::open_read_only(&db).unwrap();
+        assert_eq!(read_only.counts().unwrap().ask, 1);
+        assert!(read_only.init().is_err());
+        assert!(read_only.insert(&d, "must-not-write", false).is_err());
+        assert_eq!(std::fs::metadata(&db).unwrap().modified().unwrap(), before);
+    }
+
+    #[test]
+    fn proves_ask_on_missing_read_only_database() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("audit.db");
+        let result = AuditStore::open_read_only(&missing);
+        assert!(result.is_err());
+        assert!(
+            !missing.exists(),
+            "read-only open must not create the database"
+        );
     }
 
     #[test]

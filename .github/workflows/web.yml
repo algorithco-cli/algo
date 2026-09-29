@@ -2,9 +2,9 @@ name: Web
 
 # Web + dashboard gates: typecheck, lint, tests, build, dep audit.
 # Always runs (required check "Web / web") — no path filters.
-# ADR-0011 records the Vite 5 + React 18 pin and a known HIGH advisory
+# Owner decision: Vite 5 + React 18 pin and a known HIGH advisory
 # accepted loopback-only for the private MVP: `npm audit` therefore fails
-# only on CRITICAL until the Vite 8 upgrade lands (see ADR-0011).
+# only on CRITICAL until the Vite 8 upgrade lands.
 
 on:
   push:
@@ -53,7 +53,7 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: npm run build
 
-      - name: npm audit (critical only; HIGH accepted per ADR-0011)
+      - name: npm audit (critical only; HIGH accepted per owner decision)
         working-directory: ${{ matrix.dir }}
         run: npm audit --audit-level=critical
 

@@ -1,7 +1,7 @@
 # Benches & latency budgets
 
 > Budgets: L0/L1 p50<3ms p99<10ms, L2 <10/<25ms, L3 p50<250 p99<800 (report-only for mock)  
-> Regression: >10% vs baseline `p1-exit` fails CI (`latency-budget` job, adjust only via ADR)
+> Regression: >10% vs baseline `p1-exit` fails CI (`latency-budget` job, adjust only via owner decision)
 
 ## Criterion benchmarks in this repo
 
@@ -19,7 +19,7 @@ All benches set `Throughput::Elements` / `Throughput::Bytes` hints and include a
 ## Baseline workflow
 
 ```powershell
-# 1) Save baseline on the pinned runner or locally (first run or after ADR-approved budget change)
+# 1) Save baseline on the pinned runner or locally (first run or after owner-approved budget change)
 cargo bench -- --save-baseline p1-exit
 # criterion writes: target/criterion/<group>/<bench>/p1-exit/{estimates.json,sample.json}
 #   + html_reports under target/criterion/<group>/<bench>/p1-exit/report/index.html
@@ -59,7 +59,7 @@ jobs:
 
 * Pinned runner: choose one `runs-on` (e.g., `ubuntu-latest-8-core` or `ubuntu-latest` with `cgroup` pinned). Do not matrix across runners — criterion baselines are hardware-sensitive.
 * Artifact upload: always upload `target/criterion` + `html_reports` so gate reviewers can diff baselines (`cargo bench --baseline p1-exit` html diff at `target/criterion/report/index.html`).
-* Absolute breaches and regressions >10% block merge; budget changes require an ADR (phase-1-09).
+* Absolute breaches and regressions >10% block merge; budget changes require an owner decision (phase-1-09).
 
 ## Hyperfine: hook-client cold start (~1 ms)
 
@@ -100,6 +100,6 @@ cargo bench -p algo-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit
 ## Tips
 
 * Never hand-edit `proto`-owned types — benches use `Engine::evaluate` with compile-once `OnceLock` rules; that hot path is what is measured.
-* If you change `deny_list.rs` or `engine.rs`, run `cargo bench -p algo-policy` and commit the baseline artifact if the ADR approves.
+* If you change `deny_list.rs` or `engine.rs`, run `cargo bench -p algo-policy` and commit the baseline artifact if the owner decision approves.
 * Redact bench asserts idempotence downstream; if `redact_10k` regresses >500 µs, check `aho-corasick` pre-filter gating (TODO in `lib.rs:146`).
 * Pipeline bench spawns a tokio `Runtime` and drains the writer channel in background so `Pipeline::decide` never maps to `ask` on DB busy — matching the real single-writer + 1 s guard.

@@ -8,7 +8,7 @@ export interface RouteMeta {
   path: string;
   title: string;
   description: string;
-  layout: "marketing" | "docs" | "minimal";
+  layout: "marketing" | "docs" | "minimal" | "dashboard";
   indexable: boolean;
   prev?: string;
   next?: string;
@@ -72,6 +72,46 @@ export const ROUTES: readonly RouteMeta[] = [
     indexable: false,
   },
   {
+    path: "/dashboard",
+    title: "Dashboard — team audit, policy, stats | Algorithco Guard",
+    description:
+      "Local-first team console: audit history, policy dry-run and publish, allow/ask/deny stats. Redacted by default.",
+    layout: "dashboard",
+    indexable: false,
+  },
+  {
+    path: "/dashboard/history",
+    title: "History — recent decisions | Algorithco Guard",
+    description:
+      "Newest-first audit history with action, reason, confidence, source, and latency per decision.",
+    layout: "dashboard",
+    indexable: false,
+  },
+  {
+    path: "/dashboard/audit",
+    title: "Audit log — full export view | Algorithco Guard",
+    description:
+      "Full redacted audit log with filters. Pairs with algo log --show-egress on the CLI.",
+    layout: "dashboard",
+    indexable: false,
+  },
+  {
+    path: "/dashboard/policy",
+    title: "Policy — dry-run and publish | Algorithco Guard",
+    description:
+      "Replay a policy bundle against redacted history, then publish the signed version.",
+    layout: "dashboard",
+    indexable: false,
+  },
+  {
+    path: "/dashboard/stats",
+    title: "Stats — allow/ask/deny trends | Algorithco Guard",
+    description:
+      "Decision breakdown, time buckets, and per-user tables from redacted audit aggregates.",
+    layout: "dashboard",
+    indexable: false,
+  },
+  {
     path: "/faq",
     title: "FAQ — blocking, agents, privacy, speed, cost | Algorithco Guard",
     description:
@@ -81,10 +121,25 @@ export const ROUTES: readonly RouteMeta[] = [
   },
   {
     path: "/privacy",
-    title:
-      "Privacy — local-only by default, BYOK redacted opt-in | Algorithco Guard",
+    title: "Privacy policy — local-first data controls | Algorithco Guard",
     description:
-      "local-only sends nothing. BYOK redacted/full sends to TypeSafe US infra, no training on Input, as-long-as-necessary retention. Inspect with algo log.",
+      "How algorithco guard handles local audit data, optional network processing, website activity, and user controls.",
+    layout: "marketing",
+    indexable: true,
+  },
+  {
+    path: "/terms",
+    title: "Terms of use | Algorithco Guard",
+    description:
+      "Terms for the algorithco guard private preview, local software, and website.",
+    layout: "marketing",
+    indexable: true,
+  },
+  {
+    path: "/security",
+    title: "Security and responsible disclosure | Algorithco Guard",
+    description:
+      "Fail-safe design, local-first boundaries, release controls, and vulnerability reporting for algorithco guard.",
     layout: "marketing",
     indexable: true,
   },
@@ -105,6 +160,16 @@ export const ROUTES: readonly RouteMeta[] = [
     layout: "docs",
     indexable: true,
     prev: "/docs",
+    next: "/docs/configuration",
+  },
+  {
+    path: "/docs/configuration",
+    title: "Configuration — profiles and local policy | Algorithco Guard",
+    description:
+      "Configure strict, balanced, and fast profiles without weakening hard-deny safeguards.",
+    layout: "docs",
+    indexable: true,
+    prev: "/docs/install",
     next: "/docs/cli",
   },
   {
@@ -115,7 +180,37 @@ export const ROUTES: readonly RouteMeta[] = [
       "Nine commands: init, doctor, status, why (action+reason+confidence+source+latency), log --show-egress, enforce, pause, login, policy.",
     layout: "docs",
     indexable: true,
-    prev: "/docs/install",
+    prev: "/docs/configuration",
+    next: "/docs/architecture",
+  },
+  {
+    path: "/docs/architecture",
+    title: "Architecture — local decision path | Algorithco Guard",
+    description:
+      "How adapters, parsing, redaction, policy decisions, and local audit records fit together.",
+    layout: "docs",
+    indexable: true,
+    prev: "/docs/cli",
+    next: "/docs/privacy-security",
+  },
+  {
+    path: "/docs/privacy-security",
+    title: "Privacy and security guide | Algorithco Guard",
+    description:
+      "Operate algorithco guard locally and inspect optional network egress safely.",
+    layout: "docs",
+    indexable: true,
+    prev: "/docs/architecture",
+    next: "/docs/troubleshooting",
+  },
+  {
+    path: "/docs/troubleshooting",
+    title: "Troubleshooting | Algorithco Guard",
+    description:
+      "Diagnose installation, daemon, and decision issues without bypassing guardrails.",
+    layout: "docs",
+    indexable: true,
+    prev: "/docs/privacy-security",
   },
 ];
 
@@ -141,18 +236,46 @@ export const DOCS_SIDEBAR: readonly {
   children: { value: string; label: string; to: string }[];
 }[] = [
   {
-    label: "Getting started",
+    label: "Start here",
     children: [
       { value: "docs", label: "Overview", to: "/docs" },
       { value: "install", label: "Install", to: "/docs/install" },
     ],
   },
   {
-    label: "Reference",
-    children: [{ value: "cli", label: "CLI reference", to: "/docs/cli" }],
+    label: "Configure & use",
+    children: [
+      {
+        value: "configuration",
+        label: "Configuration",
+        to: "/docs/configuration",
+      },
+      { value: "cli", label: "CLI reference", to: "/docs/cli" },
+    ],
   },
   {
-    label: "Trust",
-    children: [{ value: "privacy", label: "Privacy modes", to: "/privacy" }],
+    label: "Concepts & trust",
+    children: [
+      {
+        value: "architecture",
+        label: "Architecture",
+        to: "/docs/architecture",
+      },
+      {
+        value: "privacy-security",
+        label: "Privacy & security",
+        to: "/docs/privacy-security",
+      },
+    ],
+  },
+  {
+    label: "Help",
+    children: [
+      {
+        value: "troubleshooting",
+        label: "Troubleshooting",
+        to: "/docs/troubleshooting",
+      },
+    ],
   },
 ];

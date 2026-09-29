@@ -8,57 +8,102 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use serde_json::json;
 
 use crate::verify::{
-    advance_version_for, parse_version, verify_bundle_scoped, PolicyBundle, VerifyError,
+    advance_version_for, advance_version_str_for, parse_version, verify_bundle_scoped,
+    PolicyBundle, VerifyError,
 };
 
-/// Signing key loader.
+/// Signing key loader (fail-closed, no fallback).
 ///
-/// Production must set `ALGO_POLICY_SIGNING_SEED_HEX` (64 hex chars = 32 bytes,
-/// provisioned via OpenBao / SOPS+age per Phase 3 stack). If unset, we fall back
-/// to the deterministic test seed so local MVP/tests keep working, but emit a
-/// loud warning — this fallback must never be used in production.
-/// Key management is human-review-gated.
-fn load_signing_key() -> SigningKey {
-    if let Ok(hex) = std::env::var("ALGO_POLICY_SIGNING_SEED_HEX") {
-        let hex = hex.trim();
-        if hex.len() == 64 {
-            let mut seed = [0u8; 32];
-            let mut ok = true;
-            for i in 0..32 {
-                match u8::from_str_radix(&hex[2 * i..2 * i + 2], 16) {
-                    Ok(b) => seed[i] = b,
-                    Err(_) => {
-                        ok = false;
-                        break;
-                    }
-                }
+/// Production MUST set `ALGO_POLICY_SIGNING_SEED_HEX` (64 hex chars = 32 bytes,
+/// provisioned via OpenBao / SOPS+age per Phase 3 stack). Missing or malformed
+/// values are an error — callers fail closed (startup panic or 500, never a
+/// deterministic test key). Key management is human-review-gated.
+///
+/// Cached in a process-wide [`OnceLock`] (see `session.rs:52` pattern):
+/// first successful load wins; later env changes do not rotate the key
+/// (restart to rotate).
+static SIGNING_KEY: OnceLock<SigningKey> = OnceLock::new();
+
+/// Parse a 64-hex-char seed into a signing key (pure, testable, no I/O).
+fn parse_seed_hex(hex: &str) -> Result<SigningKey, String> {
+    let hex = hex.trim();
+    if hex.len() != 64 {
+        return Err(format!(
+            "ALGO_POLICY_SIGNING_SEED_HEX wrong length: got {}, want 64 hex chars",
+            hex.len()
+        ));
+    }
+    let mut seed = [0u8; 32];
+    for i in 0..32 {
+        match u8::from_str_radix(&hex[2 * i..2 * i + 2], 16) {
+            Ok(b) => seed[i] = b,
+            Err(_) => {
+                return Err(format!(
+                    "ALGO_POLICY_SIGNING_SEED_HEX malformed at byte {i}: not hex"
+                ))
             }
-            if ok {
-                return SigningKey::from_bytes(&seed);
-            }
-            tracing::warn!(
-                "ALGO_POLICY_SIGNING_SEED_HEX malformed; failing closed is preferred in prod"
-            );
-        } else {
-            tracing::warn!("ALGO_POLICY_SIGNING_SEED_HEX wrong length; expected 64 hex chars");
         }
     }
-    tracing::warn!("using deterministic test signing key (NOT for production)");
-    // 32-byte deterministic seed — stable across runs for tests.
-    let seed = [0x42u8; 32];
-    SigningKey::from_bytes(&seed)
+    Ok(SigningKey::from_bytes(&seed))
 }
 
-/// Deterministic test keypair for MVP (NOT production; pinned key in verify).
+/// Load the signing key from the environment. No fallback — `Err` on
+/// missing/malformed (fail-closed).
+fn load_signing_key() -> Result<SigningKey, String> {
+    match std::env::var("ALGO_POLICY_SIGNING_SEED_HEX") {
+        Ok(hex) => parse_seed_hex(&hex),
+        Err(_) => {
+            #[cfg(test)]
+            {
+                return Ok(SigningKey::from_bytes(&[0x24; 32]));
+            }
+            #[cfg(not(test))]
+            {
+                Err(
+                    "ALGO_POLICY_SIGNING_SEED_HEX missing: refusing to start without a key"
+                        .to_string(),
+                )
+            }
+        }
+    }
+}
+
+/// Cached process-wide signing key. Panics fail-closed with a clear message
+/// when the env seed is missing/malformed — call
+/// [`ensure_signing_key_at_startup`] once at boot for a clean `Result`
+/// instead of a panic.
+fn signing_key() -> &'static SigningKey {
+    SIGNING_KEY.get_or_init(|| match load_signing_key() {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::error!("policy signing key misconfigured (fail-closed): {e}");
+            panic!("policy signing key misconfigured (fail-closed): {e}");
+        }
+    })
+}
+
+/// Fail-fast startup check for `main.rs` wiring: validates the env seed and
+/// primes the [`OnceLock`] cache. `main.rs` crew: call once at boot; on
+/// `Err`, log and exit non-zero (never fall back to a test key).
+/// Returns the pinned pubkey bytes on success.
+pub fn ensure_signing_key_at_startup() -> Result<Vec<u8>, String> {
+    let key = load_signing_key()?;
+    let pubkey = key.verifying_key().to_bytes().to_vec();
+    let _ = SIGNING_KEY.get_or_init(|| key);
+    Ok(pubkey)
+}
+
+/// Internal signing accessor (production key; name kept short for call sites).
 fn test_signing_key() -> SigningKey {
-    load_signing_key()
+    signing_key().clone()
 }
 
 fn test_verifying_key() -> VerifyingKey {
-    test_signing_key().verifying_key()
+    signing_key().verifying_key()
 }
 
-/// Return test pubkey bytes for clients to pin.
+/// Return pinned pubkey bytes for clients (production key, fail-closed when
+/// unconfigured — replaces the former deterministic test key).
 pub fn test_pubkey_bytes() -> Vec<u8> {
     test_verifying_key().to_bytes().to_vec()
 }
@@ -129,9 +174,11 @@ impl PolicyStore {
                 bundle: bundle.clone(),
             },
         );
-        // Advance per-org verify store for rollback protection.
+        // Advance per-org verify store for rollback protection (both the
+        // legacy major line and the full semver string).
         // (Global store no longer advanced here to avoid cross-tenant interference.)
         advance_version_for(org_id, next);
+        advance_version_str_for(org_id, &version_str);
         bundle
     }
 
@@ -338,9 +385,14 @@ mod tests {
         let _guard = test_sync::lock();
         clear_version_store();
         let store = PolicyStore::new();
-        let payload = json!({"content":"raw","expires_at": Utc::now().timestamp()+3600})
-            .to_string()
-            .into_bytes();
+        let payload = json!({
+            "org_id":"org-raw",
+            "version":"5",
+            "content":"raw",
+            "expires_at": Utc::now().timestamp()+3600
+        })
+        .to_string()
+        .into_bytes();
         let bundle = store
             .publish_raw("org-raw", "5", payload)
             .expect("publish_raw ok");

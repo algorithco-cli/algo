@@ -18,7 +18,7 @@ reqwest = { version = "0.12", optional = true, default-features = false, feature
 serde_json = { version = "1.0", optional = true }
 
 [features]
-# Real Jev client (BYOK, shadow-only use). OFF by default per ADR-0009; the daemon
+# Real Jev client (BYOK, shadow-only use). OFF by default per repo-private waiver; the daemon
 # keeps MockProvider until the redact + consent + shadow gates clear.
 jev = ["dep:reqwest", "dep:serde_json"]
 

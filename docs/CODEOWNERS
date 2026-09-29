@@ -9,7 +9,6 @@
 # template checklist.
 
 # Hard deny list + threshold logic (eval gate, allow/deny tuning)
-/docs/adr/                         @algorithcoguard/security @algorithcoguard/core
 
 # Product code — ownership per directory (AGENTS.md §0.9 human sign-off paths
 # are subsets of these; agent approval never sufficient on security lines)

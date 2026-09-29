@@ -1,111 +1,115 @@
 import { Link } from "react-router-dom";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Section } from "../components/Section";
+import { LegalLayout } from "../components/LegalLayout";
 import { Seo } from "../components/Seo";
-import { useRevealOnMount } from "../hooks/useRevealOnMount";
 
 export default function Privacy(): JSX.Element {
-  useRevealOnMount();
   return (
     <>
       <Seo path="/privacy" />
-      <div className="wrap" style={{ paddingTop: 24 }}>
-        <Breadcrumbs
-          trail={[{ label: "Home", to: "/" }, { label: "Privacy" }]}
-        />
-      </div>
-      <Section
-        id="privacy"
-        kicker="Privacy"
-        title="Your data, stated plainly"
-        lede="This text matches behavior. Last reviewed 2026-09-20."
+      <LegalLayout
+        eyebrow="Privacy"
+        title="Privacy policy"
+        summary="How algorithco guard handles command context, audit data, website activity, and optional network features."
+        reviewed="September 28, 2026"
       >
-        <div className="card">
-          <h3>Modes — BYOK only, Jev off by default</h3>
+        <section>
+          <h2>1. Scope</h2>
+          <p>
+            This policy covers the algorithco guard command-line software and
+            this website. The current public product is local-first. Account,
+            team-cloud, and billing screens are previews and must not be used to
+            submit production credentials or payment details.
+          </p>
+        </section>
+        <section>
+          <h2>2. Processing modes</h2>
           <div className="table-scroll">
             <table className="cli-table">
               <thead>
                 <tr>
                   <th>Mode</th>
-                  <th>Behavior</th>
-                  <th>Jev?</th>
+                  <th>What happens</th>
+                  <th>Network</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>
-                    <code>local-only</code>{" "}
-                    <span className="badge badge-allow">default</span>
+                    <code>local-only</code> (default)
                   </td>
-                  <td>No network. No Jev call. Cloud sync off.</td>
-                  <td>
-                    <strong>Off</strong> — nothing leaves the machine
-                  </td>
+                  <td>Policy checks and audit records stay on your device.</td>
+                  <td>None for decision processing.</td>
                 </tr>
                 <tr>
                   <td>
-                    <code>redacted</code> (BYOK, opt-in)
+                    <code>redacted</code> (opt-in)
                   </td>
                   <td>
-                    Secrets masked on-machine. Only real-data mode. Requires{" "}
-                    <code>ALGO_JEV_API_KEY</code> (env-only) + consent.
+                    Sensitive values are masked before an enabled provider
+                    receives context.
                   </td>
-                  <td>
-                    On — <strong>redacted</strong> payload only, to{" "}
-                    <strong>US</strong>
-                  </td>
+                  <td>Only after configuration and consent.</td>
                 </tr>
                 <tr>
                   <td>
-                    <code>full</code> (BYOK, opt-in)
+                    <code>full</code> (opt-in)
                   </td>
                   <td>
-                    Unredacted payloads — second, clear consent + inspect step.
+                    Unredacted context may be sent after an additional explicit
+                    confirmation.
                   </td>
-                  <td>
-                    On — <strong>unredacted</strong> (only with{" "}
-                    <code>full</code> consent)
-                  </td>
+                  <td>Only to the provider you configure.</td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </div>
-        <div className="card">
-          <h3>Where your data goes</h3>
-          <ul className="tight-list">
+        </section>
+        <section>
+          <h2>3. Data stored locally</h2>
+          <p>
+            The software may store configuration, policy rules, decision
+            metadata, reasons, latency, and redacted audit events under the
+            algorithco guard home directory. Use <code>algo log</code> to review
+            records and <code>algo uninstall</code> to remove installed hooks.
+            Removing local data remains under your operating-system control.
+          </p>
+        </section>
+        <section>
+          <h2>4. Website and optional services</h2>
+          <p>
+            Static pages can be viewed without an account. A production hosted
+            service may later process account identifiers, organization data,
+            support messages, service logs, and billing metadata. Before those
+            features launch, this policy must be updated with the legal entity,
+            processors, locations, retention periods, and contact details.
+          </p>
+        </section>
+        <section>
+          <h2>5. Your controls</h2>
+          <ul>
+            <li>Keep the default local-only mode.</li>
             <li>
-              <strong>Who:</strong> TypeSafe AI, Inc. + US subprocessors:{" "}
-              <strong>AWS</strong> (stores) /{" "}
-              <strong>Modal, Nebius, CoreWeave</strong> (process) /{" "}
-              <strong>Slack, Google Workspace</strong> (support).
+              Inspect intended egress with <code>algo log --show-egress</code>.
             </li>
             <li>
-              <strong>Where:</strong> <strong>US infrastructure</strong> —
-              non-US users transfer data to the US.
+              Pause enforcement or uninstall without relying on the daemon.
             </li>
             <li>
-              <strong>How long:</strong> <strong>unspecified</strong> — “as long
-              as reasonably necessary”. No fixed deletion SLA is published.
-            </li>
-            <li>
-              <strong>Training:</strong> TypeSafe states it{" "}
-              <strong>will not train on your Input</strong> nor disclose it
-              beyond service providers.
-            </li>
-            <li>
-              <strong>Zero-retention:</strong> enterprise-only via{" "}
-              <code>privacy@typesafe.ai</code>.
+              Do not enable an external provider until you accept its terms.
             </li>
           </ul>
-          <p className="muted small">
-            Rules: redact-before-network · inspect exact payload with{" "}
-            <code>algo log --show-egress</code> · telemetry opt-in, never code.{" "}
-            <code>local-only</code> sends nothing. Back to{" "}
-            <Link to="/docs">docs</Link>.
+        </section>
+        <section>
+          <h2>6. Security, children, and changes</h2>
+          <p>
+            We use layered technical and release controls described on the{" "}
+            <Link to="/security">security page</Link>. The product is intended
+            for software-development use and not directed to children. Material
+            changes will be dated here. A verified privacy contact and legal
+            entity must be published before hosted general availability.
           </p>
-        </div>
-      </Section>
+        </section>
+      </LegalLayout>
     </>
   );
 }

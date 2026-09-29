@@ -20,6 +20,11 @@ use std::time::Instant;
 
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
+use crate::tokens::{
+    COLOR_ASK_DARK, COLOR_BG_DARK, COLOR_BORDER_DARK, COLOR_BRAND_DARK, COLOR_DENY_DARK,
+    COLOR_MUTED_DARK, COLOR_TEXT_DARK,
+};
+
 pub const CELLS_W: u16 = 36;
 pub const CELLS_H: u16 = 18;
 
@@ -282,7 +287,7 @@ impl GuardDog {
             animated: true,
             bark_start: 0,
             bark_until: 0,
-            accent: (0x2f, 0x6f, 0xed),
+            accent: rgb(COLOR_BRAND_DARK),
             mode: ColorMode::detect(),
             sprites: Sprites::new(),
         }
@@ -420,21 +425,18 @@ impl GuardDog {
                 _ => Color::Red, // x
             };
         }
-        let lighten = |v: u8| (v as f32 + (255.0 - v as f32) * 0.35).round() as u8;
         match ch {
-            b'o' => Color::Rgb(0x2d, 0x32, 0x50),
-            b'w' | b'g' => Color::Rgb(255, 255, 255),
-            b'l' => Color::Rgb(0xe3, 0xe9, 0xf4),
-            b's' => Color::Rgb(0xc3, 0xcd, 0xe1),
-            b'n' | b'm' => Color::Rgb(0x1c, 0x1f, 0x33),
-            b'p' => Color::Rgb(0xf5, 0xa8, 0xb8),
-            b'y' => Color::Rgb(0xfb, 0xbf, 0x24),
-            b'k' => Color::Rgb(0x1e, 0x3a, 0x8a),
+            b'o' => COLOR_BORDER_DARK,
+            b'w' | b'g' | b'l' => COLOR_TEXT_DARK,
+            b's' => COLOR_MUTED_DARK,
+            b'n' | b'm' | b'e' => COLOR_BG_DARK,
+            b'p' => COLOR_DENY_DARK,
+            b'y' => COLOR_ASK_DARK,
+            b'k' => COLOR_BRAND_DARK,
             b'c' => Color::Rgb(ar, ag, ab),
-            b'b' => Color::Rgb(lighten(ar), lighten(ag), lighten(ab)),
-            b'e' => Color::Rgb(0x1b, 0x1e, 0x2e),
-            b'E' => Color::Rgb(0x38, 0xbd, 0xf8),
-            _ => Color::Rgb(0xf4, 0x3f, 0x5e), // x
+            b'b' => COLOR_TEXT_DARK,
+            b'E' => COLOR_BRAND_DARK,
+            _ => COLOR_DENY_DARK, // x
         }
     }
 
@@ -501,6 +503,13 @@ impl GuardDog {
             out.push('\n');
         }
         out
+    }
+}
+
+fn rgb(color: Color) -> (u8, u8, u8) {
+    match color {
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => unreachable!("generated truecolor token must be RGB"),
     }
 }
 

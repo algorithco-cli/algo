@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  CLI: <code>algo</code> · Naming: <a href="docs/adr/0002-naming.md">ADR-0002</a>
+  CLI: <code>algo</code>
 </p>
 
 ## Contents
@@ -29,6 +29,15 @@
 ```
 algo init | doctor | status | why | log | enforce | pause | login | policy
 ```
+
+Build and install the CLI plus its daemon and hook client on Windows:
+
+```powershell
+cargo build --release --manifest-path agent/Cargo.toml
+.\scripts\install.ps1
+```
+
+The installer copies the three executables to `%USERPROFILE%\.algo\bin` and adds that directory to the user `PATH` once. Open a new terminal and run `algo --help`. To remove the installed binaries and the PATH entry, run `.\scripts\uninstall.ps1` after `algo uninstall`.
 
 | Command | Purpose |
 |---|---|
@@ -93,14 +102,13 @@ Per-crate details live in each package's `README.md`; working agreement in [`AGE
 
 1. Fail-safe → `ask`, never `allow` on error/timeout/crash/parse-fail.
 2. Deterministic rules outrank models.
-3. Latency budgets in CI — over-budget = no merge (or ADR).
+3. Latency budgets in CI — over-budget = no merge (or owner waiver).
 4. Local-first, privacy-by-default (redact before egress, `local-only/redacted/full`), explainable (`algo why`), reversible install, provider abstraction, no invented APIs (`[VERIFY]`).
 
 ## Docs
 
 - Working agreement: [`AGENTS.md`](AGENTS.md)
 - Contributing: [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)
-- Decisions: [`docs/adr/`](docs/adr/README.md) (naming: [`0002-naming`](docs/adr/0002-naming.md))
 - Brand tokens: [`design-tokens.css`](design-tokens.css) (Variant 1, single source — no hard-coded hex)
 
 ## Status (Phase 0)
