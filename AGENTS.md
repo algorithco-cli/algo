@@ -33,7 +33,7 @@
 ## 1. Phase discipline
 
 - **Repo and naming (owner decision, final):** we use **ONE repository** (the existing
-  monorepo `algorithcoguard/algorithco-guard`), which **stays PRIVATE until release**.
+  monorepo `algorithcoguard/algorithco-guard`).
   Top-level packages (`proto`, `core`, `agent`, `backend`, `dashboard`, `web`, `eval`,
   `docs`) stay independent via proto contracts (good hygiene, not a split). Keep the
   naming already **decided (owner decision, final) unchanged**: CLI `algo` (`algo init`,
