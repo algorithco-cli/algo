@@ -1,6 +1,6 @@
 {
   "name": "@algorithco/guard-contracts",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "algorithco guard contracts SDK (protobuf-es output from algorithco_guard.v0). Generated at build from pinned proto tag — never hand-edit.",
   "license": "GPL-3.0-only",
