@@ -40,6 +40,27 @@ crate_version_published() {
   [ "$code" = "200" ]
 }
 
+publish_with_retry() {
+  # $1=manifest $2=pkg — publish, backing off 300s on 429 (max 8 attempts).
+  local attempt=1 out
+  while [ "$attempt" -le 8 ]; do
+    if out=$(cargo publish --manifest-path "$1" -p "$2" 2>&1); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    printf '%s\n' "$out"
+    if printf '%s' "$out" | grep -q 'status 429'; then
+      echo "rate-limited publishing $2 (attempt $attempt/8); sleeping 300s"
+      sleep 300
+      attempt=$((attempt + 1))
+    else
+      return 1
+    fi
+  done
+  echo "giving up on $2 after 8 attempts" >&2
+  return 1
+}
+
 while read -r pkg; do
   case "$pkg" in ""|\#*) continue ;; esac
   manifest="$(manifest_for "$pkg")"
@@ -50,7 +71,7 @@ while read -r pkg; do
       continue
     fi
     echo "==> publishing $pkg"
-    cargo publish --manifest-path "$manifest" -p "$pkg"
+    publish_with_retry "$manifest" "$pkg"
     sleep 15 # let crates.io index settle for dependents
   else
     # --no-verify: metadata + packaging check only (fast, no build).
