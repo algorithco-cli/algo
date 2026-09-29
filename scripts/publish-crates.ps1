@@ -1,4 +1,4 @@
-# Ordered cargo publish for algo-* crates (local Windows). Usage:
+# Ordered cargo publish for algocli-* crates (local Windows). Usage:
 #   .\scripts\publish-crates.ps1 -Mode dry-run     # no network publish
 #   .\scripts\publish-crates.ps1 -Mode publish      # real publish (needs cargo login)
 param([ValidateSet("dry-run", "publish")][string]$Mode = "dry-run")

@@ -19,7 +19,7 @@
 ## Exact pins
 
 - Consumers pin the **exact tag**, never a branch or `main`:
-  - Rust: `algo-*` crates depend on generated code from tag `vX.Y.Z`.
+  - Rust: `algocli-*` crates depend on generated code from tag `vX.Y.Z`.
   - TS: `npm`/dashboard builds run `buf export` / `buf generate` against tag `vX.Y.Z`.
   - Eval harness imports `dataset.proto` from the same tag — no duplicated struct.
 - Example pin (after tagging):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ordered cargo publish for algo-* crates (CI + local). Usage:
+# Ordered cargo publish for algocli-* crates (CI + local). Usage:
 #   bash scripts/publish-crates.sh --dry-run   # no network publish
 #   bash scripts/publish-crates.sh --publish    # real publish (needs cargo login)
 set -euo pipefail
