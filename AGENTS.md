@@ -38,7 +38,7 @@
   `docs`) stay independent via proto contracts (good hygiene, not a split). Keep the
   naming already **decided (owner decision, final) unchanged**: CLI `algo` (`algo init`,
    `algo doctor`, `algo status`, `algo why`, `algo log`, `algo pause`), registry packages
-   `algocli-*` on crates.io / `algocli` on npm (bins stay `algo*`),
+   `algocli-*` on crates.io / `@algorithco/algocli` on npm (bins stay `algo*`),
    home `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`. Do **not** rename.
 - Task IDs: `P0-DOCS-*`, `P0-PROTO-*`, `P0-EVAL-*`, `P0-JEV-*`, `P0-GATE-*`.
 
@@ -92,7 +92,7 @@ quiet unless attention · Variant 1 tokens only (`design-tokens.css`, no hard-co
 ## 4. Conventions
 
 - Naming (DECIDED): product `algorithco guard`, CLI `algo`, proto `algorithco_guard.v0`,
-  registry `algocli-*` (crates.io) / `algocli` (npm), bins `algo*`,
+  registry `algocli-*` (crates.io) / `@algorithco/algocli` (npm), bins `algo*`,
   home `~/.algo/`, socket `~/.algo/algo.sock`, DB `~/.algo/audit.db`.
 - Colors: Variant 1 single source `design-tokens.css` (no hard-coded hex).
   Decision colors exclusive: allow/ask/deny only for decisions; brand never for semantics.

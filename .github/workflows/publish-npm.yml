@@ -1,6 +1,6 @@
 name: Publish npm
 
-# npm auto-publish for algocli only.
+# npm auto-publish for @algorithco/algocli only.
 # dashboard + web are private SPAs — asserted private here, never published.
 # Dry-run on PR/push to main (no secrets). Real publish only on tag
 # `release/*` or dispatch confirm=publish, env `release`.
@@ -128,7 +128,7 @@ jobs:
             fi
           fi
 
-      - name: Publish algocli
+      - name: Publish @algorithco/algocli
         working-directory: packages/contracts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

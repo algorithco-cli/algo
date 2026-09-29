@@ -1,4 +1,4 @@
-# algocli
+# @algorithco/algocli
 
 Contracts SDK for algorithco guard (`algorithco_guard.v0`). CLI stays `algo`; this is the registry name.
 
