@@ -32,14 +32,18 @@ impl PrivacyArg {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "algo", version, about = "algorithco guard CLI")]
+#[command(
+    name = "algo",
+    version,
+    about = "algorithco guard CLI (no args launches the TUI)"
+)]
 struct Cli {
     /// Override HOME directory (for tests, also respects ALGO_HOME env)
     #[arg(long, global = true)]
     home: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -115,60 +119,69 @@ enum Commands {
         #[arg(long)]
         home: Option<PathBuf>,
     },
+    /// Launch the interactive TUI (live decision feed, stats, policy editor)
+    Tui {
+        #[arg(long)]
+        home: Option<PathBuf>,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
+    // Bare `algo` (no subcommand) launches the interactive TUI — that is the
+    // expected entry point; `algo --help` still prints help.
     let res = match cli.command {
-        Commands::Init { home, privacy, yes } => {
+        None => cmd_tui(),
+        Some(Commands::Init { home, privacy, yes }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             let p = privacy.map(|p| p.as_str().to_string());
             cmd_init(&h, p.as_deref(), yes)
         }
-        Commands::Uninstall { home, keep_db } => {
+        Some(Commands::Uninstall { home, keep_db }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_uninstall(&h, keep_db)
         }
-        Commands::Doctor { home, show_egress } => {
+        Some(Commands::Doctor { home, show_egress }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_doctor(&h, show_egress)
         }
-        Commands::Pause { home } => {
+        Some(Commands::Pause { home }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_pause(&h)
         }
-        Commands::Resume { home } => {
+        Some(Commands::Resume { home }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_resume(&h)
         }
-        Commands::Why { home } => {
+        Some(Commands::Why { home }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_why(&h)
         }
-        Commands::Status { home } => {
+        Some(Commands::Status { home }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_status(&h)
         }
-        Commands::Log {
+        Some(Commands::Log {
             home,
             limit,
             show_egress,
-        } => {
+        }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_log(&h, limit, show_egress)
         }
-        Commands::Policy { home } => {
+        Some(Commands::Policy { home }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_policy(&h)
         }
-        Commands::Enforce { home, mode } => {
+        Some(Commands::Enforce { home, mode }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_enforce(&h, mode.as_deref())
         }
-        Commands::Login { .. } => {
+        Some(Commands::Login { .. }) => {
             println!("login: not yet implemented (stub, exit 0)");
             Ok(())
         }
+        Some(Commands::Tui { .. }) => cmd_tui(),
     };
     if let Err(e) = res {
         eprintln!("error: {e}");
@@ -687,9 +700,68 @@ fn remove_hook(json: &mut serde_json::Value, hook_cmd: &str) -> bool {
 }
 
 // ---------- doctor ----------
+fn tui_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "algo-tui.exe"
+    } else {
+        "algo-tui"
+    }
+}
+
+/// Pure lookup core over explicit dirs (deterministic under test).
+fn find_tui_in_dirs<I, P>(dirs: I) -> Option<PathBuf>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    dirs.into_iter()
+        .map(|d| d.as_ref().join(tui_binary_name()))
+        .find(|p| p.is_file())
+}
+
+/// Locate the `algo-tui` companion binary: sibling of the running `algo`
+/// executable first (install layout `~/.algo/bin`), then each dir on PATH.
+fn find_tui_binary() -> Option<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            dirs.push(parent.to_path_buf());
+        }
+    }
+    if let Some(paths) = std::env::var_os("PATH") {
+        dirs.extend(std::env::split_paths(&paths));
+    }
+    find_tui_in_dirs(&dirs)
+}
+
+fn cmd_tui() -> Result<(), String> {
+    let bin = find_tui_binary().ok_or_else(|| {
+        "algo-tui binary not found next to algo or on PATH; re-run install \
+         (cargo build --release --manifest-path agent/Cargo.toml, then scripts/install.ps1)"
+            .to_string()
+    })?;
+    let status = std::process::Command::new(&bin)
+        .status()
+        .map_err(|e| format!("launch {}: {e}", bin.display()))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "algo-tui exited with status {status} (binary {})",
+            bin.display()
+        ))
+    }
+}
+
 fn cmd_doctor(home: &Path, show_egress: bool) -> Result<(), String> {
     println!("=== algo doctor ===");
     let mut ok = true;
+
+    // tui companion binary (optional UX surface; WARN, never FAIL)
+    match find_tui_binary() {
+        Some(p) => println!("tui: {} OK", p.display()),
+        None => println!("tui: algo-tui binary not found - WARN (re-run install)"),
+    }
 
     // socket
     let sock = algo_dir(home).join("algo.sock");
@@ -1136,6 +1208,16 @@ mod tests {
         let home = dir.path().to_path_buf();
         // Keep dir alive by forgetting? We'll return dir and home
         (dir, home)
+    }
+
+    #[test]
+    fn bare_algo_defaults_to_tui() {
+        // Bare `algo` (no subcommand) must parse to None so main() launches
+        // the TUI instead of printing help; explicit `algo tui` still works.
+        let cli = Cli::try_parse_from(["algo"]).unwrap();
+        assert!(cli.command.is_none(), "bare `algo` must default to TUI");
+        let cli = Cli::try_parse_from(["algo", "tui"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Tui { .. })));
     }
 
     #[test]

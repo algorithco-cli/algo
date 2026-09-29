@@ -1,11 +1,11 @@
 [package]
 name = "algocli-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI for algorithco guard (algo init|uninstall|doctor|pause|resume|status|why|log)"
+description = "CLI for algorithco guard (bare algo launches TUI; algo init|uninstall|doctor|pause|resume|status|why|log|tui)"
 keywords = ["cli", "command-line", "security"]
 categories = ["command-line-utilities"]
 

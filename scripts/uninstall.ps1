@@ -13,7 +13,7 @@ if (-not $KeepPath) {
     [Environment]::SetEnvironmentVariable("Path", ($parts -join ";"), "User")
 }
 
-foreach ($name in @("algo.exe", "algo-hook-client.exe", "algo-daemon.exe")) {
+foreach ($name in @("algo.exe", "algo-hook-client.exe", "algo-daemon.exe", "algo-tui.exe")) {
     $target = Join-Path $InstallDir $name
     if (Test-Path -LiteralPath $target -PathType Leaf) {
         Remove-Item -LiteralPath $target -Force
