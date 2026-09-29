@@ -33,6 +33,14 @@ pub fn parse(input: &str) -> Result<ParsedCmd, ParseError> {
     if input.as_bytes().contains(&0) {
         return Err(ParseError("input contains null".into()));
     }
+    // tree-sitter-bash 0.25.1 can also segfault on supplementary-plane Unicode
+    // (fuzz regression afb9a263...). Reject it before crossing the C FFI boundary;
+    // ordinary BMP Unicode remains supported and the caller maps this error to ASK.
+    if input.chars().any(|ch| ch as u32 > 0xFFFF) {
+        return Err(ParseError(
+            "input contains unsupported supplementary-plane Unicode".into(),
+        ));
+    }
     // Empty input is not a command — Err so the caller maps to ASK.
     if input.trim().is_empty() {
         return Err(ParseError("empty input".into()));
@@ -173,6 +181,14 @@ mod tests {
         assert!(parse("<<<>>>").is_err());
         // Null bytes would SEGV the C parser — guarded to Err.
         assert!(parse("ls\x00 -la").is_err());
+    }
+
+    #[test]
+    fn proves_ask_on_supplementary_plane_unicode() {
+        // Regression for fuzz crash afb9a263ac58908dd7cd9805a3389e0ac86d7a6c.
+        // U+5B8ED reached tree-sitter-bash's C parser and caused an ASan SEGV.
+        let crash_input = ".\r{{..{{{{#{\u{5B8ED}&-\r/{{{{{{+";
+        assert!(parse(crash_input).is_err());
     }
 
     #[test]
