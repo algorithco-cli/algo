@@ -39,7 +39,7 @@
     "@tanstack/react-table": "^8.21.3",
     "lucide-react": "^1.47.0",
     "matter-js": "^0.20.0",
-    "motion": "^13.4.1",
+    "motion": "^13.4.4",
     "ogl": "^1.0.11",
     "postprocessing": "^6.39.5",
     "react": "^18.3.1",
