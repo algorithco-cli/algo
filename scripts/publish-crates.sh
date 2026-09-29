@@ -34,8 +34,9 @@ pkg_version() {
 
 crate_version_published() {
   # $1=name $2=version → true iff that exact version is on crates.io.
+  # NOTE: crates.io 403s API requests without a User-Agent — always send one.
   local code
-  code=$(curl -sSL -o /dev/null -w '%{http_code}' "https://crates.io/api/v1/crates/$1/$2" 2>/dev/null || true)
+  code=$(curl -sSL -o /dev/null -w '%{http_code}' -A 'algocli-publish/0.1 (+https://github.com/algorithco-cli/algo)' "https://crates.io/api/v1/crates/$1/$2" 2>/dev/null || true)
   [ "$code" = "200" ]
 }
 
