@@ -1,16 +1,10 @@
-mod cache;
-mod jev_pool;
-mod pipeline;
-mod transport;
-
 use algo_adapter_claude::parse::{parse_hook, ParseError};
-
-use cache::Cache;
-use jev_pool::JevPool;
-use pipeline::{DbRecord, Pipeline};
+use algocli_daemon::cache::Cache;
+use algocli_daemon::jev_pool::JevPool;
+use algocli_daemon::pipeline::{self, DbRecord, Pipeline};
 
 #[cfg(unix)]
-use transport::{Transport, UnixTransport};
+use algocli_daemon::transport::{self, Transport, UnixTransport};
 
 use algo_provider::MockProvider;
 use clap::Parser;
