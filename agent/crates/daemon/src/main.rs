@@ -3,7 +3,7 @@ mod jev_pool;
 mod pipeline;
 mod transport;
 
-use algo_adapter_claude::parse::{ParseError, parse_hook};
+use algo_adapter_claude::parse::{parse_hook, ParseError};
 
 use cache::Cache;
 use jev_pool::JevPool;
@@ -190,7 +190,9 @@ fn build_provider() -> Arc<dyn algo_provider::DecisionProvider> {
                     return Arc::new(p);
                 }
                 Ok(Err(e)) => {
-                    eprintln!("daemon: jev provider build failed ({e}) → MockProvider (ask on error)");
+                    eprintln!(
+                        "daemon: jev provider build failed ({e}) → MockProvider (ask on error)"
+                    );
                 }
                 Err(_) => {
                     eprintln!("daemon: jev provider thread panicked → MockProvider (ask on error)");

@@ -614,7 +614,8 @@ mod tests {
     }
 
     #[test]
-    fn debug_and_errors() {        assert!(
+    fn debug_and_errors() {
+        assert!(
             parse_tui_args(args(&["algo-tui", "--debug"]))
                 .unwrap()
                 .debug
@@ -646,8 +647,7 @@ mod tests {
             return; // packaged tree: nothing canonical to compare against
         }
         let canonical = std::fs::read_to_string(&canonical_path).unwrap();
-        let vendored =
-            std::fs::read_to_string(dir.join("design-tokens.css")).unwrap();
+        let vendored = std::fs::read_to_string(dir.join("design-tokens.css")).unwrap();
         assert_eq!(
             token_defs(&vendored),
             token_defs(&canonical),

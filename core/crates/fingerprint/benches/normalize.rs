@@ -5,7 +5,7 @@
 //! Budgets: inherits L0/L1 p50<3ms p99<10ms; fingerprint is on hot path, zero-alloc SmallVec/Arc path in pipeline.
 //! See core/benches/README.md for baseline workflow.
 
-use algo_fingerprint::{cache_key, normalize};
+use algocli_fingerprint::{cache_key, normalize};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 fn long_command_10k() -> String {
