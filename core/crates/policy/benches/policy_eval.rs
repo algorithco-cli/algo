@@ -1,5 +1,5 @@
 //! Criterion bench for `algo-policy` Engine::evaluate
-//! `cargo bench -p algo-policy --bench policy_eval -- --save-baseline p1-exit`
+//! `cargo bench -p algocli-policy --bench policy_eval -- --save-baseline p1-exit`
 //! Budgets (phase-1-09, §Gates, L0/L1 sync zero-alloc):
 //!   p50 < 3ms (3_000_000 ns), p99 < 10ms, budget enforced by scripts/latency-budget.{sh,ps1}
 //!   Regression >10% vs baseline p1-exit fails CI (`latency-budget` job).

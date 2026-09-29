@@ -1,5 +1,5 @@
 [package]
-name = "algo-policy"
+name = "algocli-policy"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -11,8 +11,8 @@ keywords = ["policy", "security", "guardrails"]
 categories = ["development-tools"]
 
 [dependencies]
-algo-types = { version = "0.1.0", path = "../types" }
-algo-shell-analysis = { version = "0.1.0", path = "../shell-analysis" }
+algo-types = { version = "0.1.0", path = "../types", package = "algocli-types" }
+algo-shell-analysis = { version = "0.1.0", path = "../shell-analysis", package = "algocli-shell-analysis" }
 regex = "1.12"
 
 [[bench]]

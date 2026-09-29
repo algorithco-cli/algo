@@ -1,5 +1,5 @@
 [package]
-name = "algo-cli"
+name = "algocli-cli"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -20,12 +20,12 @@ serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5.0"
 chrono = "0.4"
-algo-audit = { version = "0.1.0", path = "../audit" }
-algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
-algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
-algo-fingerprint = { version = "0.1.0", path = "../../../core/crates/fingerprint" }
-algo-provider = { version = "0.1.0", path = "../../../core/crates/provider" }
-algo-policy = { version = "0.1.0", path = "../../../core/crates/policy" }
+algo-audit = { version = "0.1.0", path = "../audit", package = "algocli-audit" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types", package = "algocli-types" }
+algo-redact = { version = "0.1.0", path = "../../../core/crates/redact", package = "algocli-redact" }
+algo-fingerprint = { version = "0.1.0", path = "../../../core/crates/fingerprint", package = "algocli-fingerprint" }
+algo-provider = { version = "0.1.0", path = "../../../core/crates/provider", package = "algocli-provider" }
+algo-policy = { version = "0.1.0", path = "../../../core/crates/policy", package = "algocli-policy" }
 
 [dev-dependencies]
 tempfile = "3.10"

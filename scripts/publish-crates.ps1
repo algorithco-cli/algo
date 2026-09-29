@@ -7,8 +7,8 @@ $root = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 if ([string]::IsNullOrEmpty($root)) { $root = (Get-Location).Path }
 
 function Manifest-For($pkg) {
-  if ($pkg -eq "algo-backend") { return "$root\backend\Cargo.toml" }
-  if (@("algo-types", "algo-redact", "algo-fingerprint", "algo-shell-analysis", "algo-policy", "algo-provider") -contains $pkg) { return "$root\core\Cargo.toml" }
+  if ($pkg -eq "algocli-backend") { return "$root\backend\Cargo.toml" }
+  if (@("algocli-types", "algocli-redact", "algocli-fingerprint", "algocli-shell-analysis", "algocli-policy", "algocli-provider") -contains $pkg) { return "$root\core\Cargo.toml" }
   return "$root\agent\Cargo.toml"
 }
 

@@ -1,4 +1,4 @@
-# algo-policy — hard-deny + profiles
+# algocli-policy — hard-deny + profiles
 
 Compile-once at load, `evaluate(facts, profile: strict|balanced|fast) -> Allow|Deny|Abstain + rule_id`.
 

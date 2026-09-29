@@ -10,8 +10,8 @@ ORDER="$ROOT/scripts/publish-crates-order.txt"
 
 manifest_for() {
   case "$1" in
-    algo-backend) echo "$ROOT/backend/Cargo.toml" ;;
-    algo-types|algo-redact|algo-fingerprint|algo-shell-analysis|algo-policy|algo-provider) echo "$ROOT/core/Cargo.toml" ;;
+    algocli-backend) echo "$ROOT/backend/Cargo.toml" ;;
+    algocli-types|algocli-redact|algocli-fingerprint|algocli-shell-analysis|algocli-policy|algocli-provider) echo "$ROOT/core/Cargo.toml" ;;
     *) echo "$ROOT/agent/Cargo.toml" ;;
   esac
 }

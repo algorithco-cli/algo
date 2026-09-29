@@ -327,11 +327,11 @@ fi
 echo ""
 echo "[latency-budget] hyperfine hook-client cold start (reference, ~1ms budget):"
 if command -v hyperfine >/dev/null 2>&1; then
-  echo "  hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin'"
+  echo "  hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin'"
   # Run a quick 10-run hyperfine if not in CI (optional, not failing)
   if [[ "${CI:-}" != "true" ]]; then
     set +e
-    hyperfine --warmup 10 --runs 20 --show-output 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin <<< "ls -la"' || true
+    hyperfine --warmup 10 --runs 20 --show-output 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin <<< "ls -la"' || true
     # Also benchmark the binary directly if built
     if [[ -f "target/release/algo-hook-client" ]]; then
       hyperfine --warmup 10 --runs 20 'echo "ls -la" | target/release/algo-hook-client --socket /tmp/nonexistent.sock --stdin' || true
@@ -342,8 +342,8 @@ if command -v hyperfine >/dev/null 2>&1; then
   fi
 else
   echo -e "${YELLOW}  hyperfine not installed — install via: cargo install hyperfine  OR  choco install hyperfine / brew install hyperfine${NC}"
-  echo "  Expected: hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin'  must be ~1ms"
-  echo "  (On Windows: hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket NUL --stdin')"
+  echo "  Expected: hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin'  must be ~1ms"
+  echo "  (On Windows: hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket NUL --stdin')"
 fi
 
 echo "[latency-budget] Artifacts: upload target/criterion and target/criterion/*/p1-exit html_reports (see core/benches/README.md)"

@@ -1,5 +1,5 @@
 [package]
-name = "algo-fingerprint"
+name = "algocli-fingerprint"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ keywords = ["caching", "hashing", "fingerprint"]
 categories = ["development-tools"]
 
 [dependencies]
-algo-types = { version = "0.1.0", path = "../types" }
+algo-types = { version = "0.1.0", path = "../types", package = "algocli-types" }
 blake3 = "1.5"
 regex = "1.12"
 

@@ -1,6 +1,6 @@
 {
-  "name": "@algorithco/guard-contracts",
-  "version": "0.1.2",
+  "name": "algocli",
+  "version": "0.1.3",
   "private": false,
   "description": "algorithco guard contracts SDK (protobuf-es output from algorithco_guard.v0). Generated at build from pinned proto tag — never hand-edit.",
   "license": "GPL-3.0-only",

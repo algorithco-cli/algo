@@ -1,6 +1,6 @@
-# @algorithco/guard-contracts
+# algocli
 
-Contracts SDK for algorithco guard (`algorithco_guard.v0`).
+Contracts SDK for algorithco guard (`algorithco_guard.v0`). CLI stays `algo`; this is the registry name.
 
 > **Status: scaffold only — DO NOT PUBLISH until scope (`@algorithco`, version policy)
 > is decided + proto tag pinned.** Repo stays private until release.

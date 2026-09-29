@@ -1,4 +1,4 @@
-# algo-audit
+# algocli-audit
 
 SQLite WAL audit store `~/.algo/audit.db` via `AuditStore`.
 Never raw secrets: caller must redact; store only `redacted_command`.

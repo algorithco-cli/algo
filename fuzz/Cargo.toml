@@ -15,18 +15,23 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 
 [dependencies.algo-shell-analysis]
+package = "algocli-shell-analysis"
 path = "../core/crates/shell-analysis"
 
 [dependencies.algo-policy]
+package = "algocli-policy"
 path = "../core/crates/policy"
 
 [dependencies.algo-adapter-claude]
+package = "algocli-adapter-claude"
 path = "../agent/crates/adapter-claude"
 
 [dependencies.algo-redact]
+package = "algocli-redact"
 path = "../core/crates/redact"
 
 [dependencies.algo-types]
+package = "algocli-types"
 path = "../core/crates/types"
 
 [lints.rust]

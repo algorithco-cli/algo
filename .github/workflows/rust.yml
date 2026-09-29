@@ -60,8 +60,8 @@ jobs:
       - name: cargo test + clippy provider jev feature (core)
         # The real Jev client is feature-gated (default OFF); its tests only run here.
         run: |
-          (cd core && cargo test -p algo-provider --features jev)
-          (cd core && cargo clippy -p algo-provider --features jev --all-targets -- -D warnings)
+          (cd core && cargo test -p algocli-provider --features jev)
+          (cd core && cargo clippy -p algocli-provider --features jev --all-targets -- -D warnings)
 
       - name: Install cargo-deny + cargo-audit (pinned)
         run: |

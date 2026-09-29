@@ -1,4 +1,4 @@
-# algo-shell-analysis — tree-sitter-bash
+# algocli-shell-analysis — tree-sitter-bash
 
 `parse`, `facts`, `obfuscation` over tree-sitter-bash.
 

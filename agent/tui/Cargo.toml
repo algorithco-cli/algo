@@ -1,5 +1,5 @@
 [package]
-name = "algo-tui"
+name = "algocli-tui"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -15,8 +15,8 @@ name = "algo-tui"
 path = "src/main.rs"
 
 [dependencies]
-algo-audit = { version = "0.1.0", path = "../crates/audit" }
-algo-types = { version = "0.1.0", path = "../../core/crates/types" }
+algo-audit = { version = "0.1.0", path = "../crates/audit", package = "algocli-audit" }
+algo-types = { version = "0.1.0", path = "../../core/crates/types", package = "algocli-types" }
 ratatui = { version = "0.29", features = ["crossterm"] }
 crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1.53", features = ["full"] }
@@ -26,7 +26,7 @@ serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3.10"
-algo-types = { version = "0.1.0", path = "../../core/crates/types" }
+algo-types = { version = "0.1.0", path = "../../core/crates/types", package = "algocli-types" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

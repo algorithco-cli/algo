@@ -1,5 +1,5 @@
 [package]
-name = "algo-policy-spike"
+name = "algocli-policy-spike"
 version = "0.1.0"
 publish = false
 edition.workspace = true

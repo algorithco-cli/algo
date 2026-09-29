@@ -1,4 +1,4 @@
-# algo-fingerprint — normalize for cache
+# algocli-fingerprint — normalize for cache
 
 `normalize(cmd: &str) -> String` — lowercases argv[0] basename, sorts long flags, replaces paths/hashes/timestamps → `<PATH>/<HASH>/<NUM>`, preserves pipes/redirections/sudo.
 

@@ -55,15 +55,15 @@ jobs:
         run: |
           for p in $(cat scripts/publish-crates-order.txt | grep -v "^#" | grep -v "^$"); do
             case "$p" in
-              algo-backend) (cd backend && cargo package --list --allow-dirty -p "$p") ;;
-              algo-types|algo-redact|algo-fingerprint|algo-shell-analysis|algo-policy|algo-provider) (cd core && cargo package --list --allow-dirty -p "$p") ;;
+              algocli-backend) (cd backend && cargo package --list --allow-dirty -p "$p") ;;
+              algocli-types|algocli-redact|algocli-fingerprint|algocli-shell-analysis|algocli-policy|algocli-provider) (cd core && cargo package --list --allow-dirty -p "$p") ;;
               *) (cd agent && cargo package --list --allow-dirty -p "$p") ;;
             esac
           done
 
       - name: cargo publish --dry-run (topological order, informational pre-first-release)
         # Pre-first-publish this step FAILS for crates with unpublished internal
-        # deps ("no matching package named algo-*") — cargo resolves against the
+        # deps ("no matching package named algocli-*") — cargo resolves against the
         # crates.io index, not the local tree. Informational until the first
         # ordered release lands; the `cargo package --list` step above is the
         # binding PR gate. Real publish on tags runs in order so deps resolve.

@@ -1,5 +1,5 @@
 [package]
-name = "algo-hook-client"
+name = "algocli-hook-client"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
