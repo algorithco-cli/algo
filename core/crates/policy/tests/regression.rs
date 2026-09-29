@@ -11,7 +11,7 @@
 //! Path resolution is robust for both `cargo test` (cwd = core/) and `cargo test -p algocli-policy`
 //! and for CI where env var `ALGO_REGRESSION_CORPUS` may override.
 
-use algo_policy::{Engine, PolicyDecision as Decision, Profile};
+use algocli_policy::{Engine, PolicyDecision as Decision, Profile};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 

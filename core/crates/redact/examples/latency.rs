@@ -1,4 +1,4 @@
-use algo_redact::Redactor;
+use algocli_redact::Redactor;
 use std::time::Instant;
 
 fn main() {

@@ -5,7 +5,7 @@
 //! Enforced via scripts/latency-budget.* (+ proptest/fuzz elsewhere).
 //! Baselines: html_reports + json under target/criterion/redact_10k/*/new/estimates.json
 
-use algo_redact::Redactor;
+use algocli_redact::Redactor;
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 /// Build a deterministic 10 KiB payload containing secrets interleaved with filler.
@@ -76,7 +76,7 @@ fn bench_redact_10k(c: &mut Criterion) {
     // Global (OnceLock) path — same implementation but via global singleton
     group.bench_function("redact_10k_global", |b| {
         b.iter(|| {
-            let (masked, findings) = algo_redact::redact(std::hint::black_box(payload_static));
+            let (masked, findings) = algocli_redact::redact(std::hint::black_box(payload_static));
             std::hint::black_box((masked, findings));
         });
     });

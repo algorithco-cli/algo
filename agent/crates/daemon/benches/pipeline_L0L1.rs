@@ -7,11 +7,11 @@
 //! Reference: hyperfine hook-client cold start ~1ms (see scripts/latency-budget.sh).
 //! Baselines via `criterion::html_reports` under target/criterion/pipeline_L0L1
 
-use algo_daemon::cache::Cache;
-use algo_daemon::jev_pool::JevPool;
-use algo_daemon::pipeline::Pipeline;
 use algo_provider::MockProvider;
 use algo_types::{AgentIdentity, PrivacyMode, ToolBefore, ToolKind};
+use algocli_daemon::cache::Cache;
+use algocli_daemon::jev_pool::JevPool;
+use algocli_daemon::pipeline::Pipeline;
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -36,7 +36,7 @@ fn tool_before(payload: &str) -> ToolBefore {
     }
 }
 
-fn make_pipeline(rt: &Runtime) -> (Pipeline, mpsc::Receiver<algo_daemon::pipeline::DbRecord>) {
+fn make_pipeline(rt: &Runtime) -> (Pipeline, mpsc::Receiver<algocli_daemon::pipeline::DbRecord>) {
     let engine = Arc::new(algo_policy::Engine::new());
     let cache = Arc::new(Cache::new());
     let pool = Arc::new(JevPool::new(Arc::new(MockProvider::new())));

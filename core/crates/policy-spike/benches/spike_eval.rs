@@ -5,10 +5,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::time::Duration;
 
-use algo_policy_spike::cel_engine::CelEngine;
-use algo_policy_spike::corpus;
-use algo_policy_spike::dsl::DslEngine;
-use algo_policy_spike::facts::facts_of;
+use algocli_policy_spike::cel_engine::CelEngine;
+use algocli_policy_spike::corpus;
+use algocli_policy_spike::dsl::DslEngine;
+use algocli_policy_spike::facts::facts_of;
 
 fn corpus_500_cel() -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = corpus::real_rules()
@@ -32,7 +32,7 @@ fn corpus_500_dsl() -> Vec<(String, String)> {
     v
 }
 
-fn sample_facts() -> Vec<algo_policy_spike::facts::Facts> {
+fn sample_facts() -> Vec<algocli_policy_spike::facts::Facts> {
     corpus::sample_cmds()
         .into_iter()
         .map(|(cmd, _)| facts_of(cmd))

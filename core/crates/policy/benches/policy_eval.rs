@@ -7,7 +7,7 @@
 //! Baselines produced via `criterion::html_reports` + JSON under `target/criterion/policy_eval/*/new/estimates.json`
 //! Reference runner pinned in `.github/workflows` + artifacts uploaded (see core/benches/README.md).
 
-use algo_policy::{Engine, Profile};
+use algocli_policy::{Engine, Profile};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::time::Instant;
 
