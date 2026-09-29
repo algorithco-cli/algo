@@ -1,5 +1,5 @@
 //! Criterion bench for `algo-fingerprint` normalize + cache_key
-//! `cargo bench -p algo-fingerprint --bench normalize -- --save-baseline p1-exit`
+//! `cargo bench -p algocli-fingerprint --bench normalize -- --save-baseline p1-exit`
 //! Group name: `fingerprint_normalize` per spec.
 //! Benches: normalize(short curl-pipe), normalize(long command 10k), cache_key (blake3).
 //! Budgets: inherits L0/L1 p50<3ms p99<10ms; fingerprint is on hot path, zero-alloc SmallVec/Arc path in pipeline.
@@ -101,7 +101,7 @@ fn bench_fingerprint_normalize(c: &mut Criterion) {
         avg_ns,
         avg_ns / 1_000_000.0
     );
-    eprintln!("[fingerprint_normalize] baseline: cargo bench -p algo-fingerprint --bench normalize -- --save-baseline p1-exit");
+    eprintln!("[fingerprint_normalize] baseline: cargo bench -p algocli-fingerprint --bench normalize -- --save-baseline p1-exit");
 }
 
 criterion_group!(benches, bench_fingerprint_normalize);

@@ -3,7 +3,7 @@
 > Part of **algorithco guard** (CLI algo). Monorepo: `algorithcoguard/algorithco-guard`.
 > Real code lives in the monorepo subdirectory `core/` starting its build phase. This dir is a scaffold stub.
 
-Scope: shared Rust libraries (algo-* crates): types, shell-analysis, policy, redact,
+Scope: shared Rust libraries (algocli-* crates): types, shell-analysis, policy, redact,
 provider, fingerprint. Heavy fuzz + property + mutation gates. Human review on deny
 list, thresholds, redaction, sig-verify.
 
@@ -14,4 +14,4 @@ generate at build. Fail-safe (ask, never allow), latency budgets in CI, no secre
 
 ## Now
 
-Product code lives here (shared `algo-*` library crates).
+Product code lives here (shared `algocli-*` library crates).

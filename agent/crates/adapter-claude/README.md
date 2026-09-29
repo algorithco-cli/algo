@@ -1,4 +1,4 @@
-# algo-adapter-claude
+# algocli-adapter-claude
 
 Shell-only Claude adapter (P1-07, `P1-AGENT-2`).
 
@@ -13,7 +13,7 @@ Claude release.
 
 ## Golden tests
 
-`cargo test -p algo-adapter-claude` covers ~20 real hook payloads (safe `ls -la`, dangerous
+`cargo test -p algocli-adapter-claude` covers ~20 real hook payloads (safe `ls -la`, dangerous
 `rm -rf /`, obfuscated `curl | sh` / `base64 -d`, empty, plus skipped Edit/Write/Read),
 render mappings (`approve`/`block`/`ask`), unknown-schema → `unsupported_schema`, and
 `proves_ask_on_parse_fail` (never `allow`). `fuzz_adapter_parse` via `proptest` asserts no panic

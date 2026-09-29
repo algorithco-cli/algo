@@ -1,4 +1,4 @@
-# algo-provider — DecisionProvider trait + mock + feature-gated Jev client
+# algocli-provider — DecisionProvider trait + mock + feature-gated Jev client
 
 Trait `DecisionProvider { judge(&self, event: &ToolBefore, qs: &[TypedQuestion]) -> Result<TypedAnswers, ProviderError> }`.
 

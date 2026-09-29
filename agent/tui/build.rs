@@ -21,14 +21,34 @@ fn emit(out: &mut String, rust_name: &str, block: &str, css_name: &str) {
 }
 
 fn main() {
-    let token_path =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../design-tokens.css");
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    // Workspace builds read the canonical root tokens. Packaged builds
+    // (cargo publish verifies from an isolated tree) cannot see outside the
+    // crate, so they fall back to the vendored snapshot (same content; the
+    // vendored_tokens_match_canonical test keeps them in sync).
+    let canonical = manifest_dir.join("../../design-tokens.css");
+    let vendored = manifest_dir.join("design-tokens.css");
+    let (token_path, vendored_build) = if canonical.is_file() {
+        (canonical, false)
+    } else if vendored.is_file() {
+        println!("cargo:warning=using vendored design-tokens.css snapshot (packaged build)");
+        (vendored, true)
+    } else {
+        panic!("missing design-tokens.css: no canonical root file and no vendored snapshot");
+    };
     println!("cargo:rerun-if-changed={}", token_path.display());
     let css = fs::read_to_string(&token_path).expect("read canonical design-tokens.css");
     let dark_start = css.find("[data-theme=\"dark\"]").expect("dark token block");
     let light = &css[..dark_start];
     let dark = &css[dark_start..];
-    let mut generated = String::from("// Generated from root design-tokens.css.\n");
+    let mut generated = format!(
+        "// Generated from {}.\n",
+        if vendored_build {
+            "vendored design-tokens.css snapshot"
+        } else {
+            "root design-tokens.css"
+        }
+    );
     for (rust_name, css_name) in [
         ("COLOR_BRAND", "ag-brand"),
         ("COLOR_ALLOW", "ag-allow"),

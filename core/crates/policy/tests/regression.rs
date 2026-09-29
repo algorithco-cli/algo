@@ -8,7 +8,7 @@
 //!   Homoglyph entries with fallback ascii are currently Deny; pure homoglyph without fallback
 //!   is tracked as WARN not FAIL until NFKC normalization lands (see README § Bins).
 //!
-//! Path resolution is robust for both `cargo test` (cwd = core/) and `cargo test -p algo-policy`
+//! Path resolution is robust for both `cargo test` (cwd = core/) and `cargo test -p algocli-policy`
 //! and for CI where env var `ALGO_REGRESSION_CORPUS` may override.
 
 use algo_policy::{Engine, PolicyDecision as Decision, Profile};

@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $source = (Resolve-Path -LiteralPath $SourceDir).Path
-$required = @("algo.exe", "algo-hook-client.exe", "algo-daemon.exe")
+$required = @("algo.exe", "algo-hook-client.exe", "algo-daemon.exe", "algo-tui.exe")
 
 foreach ($name in $required) {
     $candidate = Join-Path $source $name

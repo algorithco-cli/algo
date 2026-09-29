@@ -1,5 +1,5 @@
 //! Criterion bench for `algo-daemon` Pipeline::decide L0/L1 path
-//! `cargo bench -p algo-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit`
+//! `cargo bench -p algocli-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit`
 //! Group name: `pipeline_L0L1` per spec.
 //! Benches: L0 policy deny (rm -rf hot path), L1 cache hit (blake3 + DashMap).
 //! Budget: L0/L1 p50<3ms p99<10ms, 100 rps burst; L3 p50<250 p99<800 report-only (mock Jev 700ms timeout).
@@ -171,7 +171,7 @@ fn bench_pipeline_l0l1(c: &mut Criterion) {
     eprintln!(
         "[pipeline_L0L1] L3 mock p50<250ms p99<800ms is report-only (see scripts/latency-budget)"
     );
-    eprintln!("[pipeline_L0L1] baseline: cargo bench -p algo-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit");
+    eprintln!("[pipeline_L0L1] baseline: cargo bench -p algocli-daemon --bench pipeline_L0L1 -- --save-baseline p1-exit");
     // Ensure runtime shuts down gracefully — drop pipeline before criterion exit
     drop(pipeline);
     // Give drain task a moment

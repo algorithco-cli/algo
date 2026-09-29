@@ -29,9 +29,11 @@ fuzz/
 
 Dependencies use relative paths from `fuzz/`:
 
-- `algo-shell-analysis = { path = "../core/crates/shell-analysis" }`
-- `algo-policy         = { path = "../core/crates/policy" }`
-- `algo-adapter-claude = { path = "../agent/crates/adapter-claude" }`
+- `algo-shell-analysis = { path = "../core/crates/shell-analysis", package = "algocli-shell-analysis" }`
+- `algo-policy         = { path = "../core/crates/policy", package = "algocli-policy" }`
+- `algo-adapter-claude = { path = "../agent/crates/adapter-claude", package = "algocli-adapter-claude" }`
+- `algo-redact         = { path = "../core/crates/redact", package = "algocli-redact" }`
+- `algo-types          = { path = "../core/crates/types", package = "algocli-types" }`
 - `libfuzzer-sys = "0.4"`
 
 ## Prerequisites

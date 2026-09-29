@@ -225,10 +225,10 @@ if ($fail -gt 0) {
 Write-Host ""
 Write-Host "[latency-budget] hyperfine hook-client cold start (reference, ~1ms budget):"
 if (Get-Command hyperfine -ErrorAction SilentlyContinue) {
-    Write-Host "  hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin'"
+    Write-Host "  hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin'"
     if (-not $env:CI) {
         try {
-            hyperfine --warmup 10 --runs 20 --show-output 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin <<< "ls -la"' 2>&1 | Out-Null
+            hyperfine --warmup 10 --runs 20 --show-output 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin <<< "ls -la"' 2>&1 | Out-Null
         } catch {}
         if (Test-Path "target/release/algo-hook-client.exe") {
             try { hyperfine --warmup 10 --runs 20 'echo "ls -la" | target/release/algo-hook-client.exe --socket NUL --stdin' } catch {}
@@ -240,7 +240,7 @@ if (Get-Command hyperfine -ErrorAction SilentlyContinue) {
     }
 } else {
     Write-Host "  hyperfine not installed — cargo install hyperfine  or  choco install hyperfine" -ForegroundColor Yellow
-    Write-Host "  Expected: hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket /tmp/nonexistent.sock --stdin'  must be ~1ms"
-    Write-Host "  (On Windows: hyperfine --warmup 10 'cargo run --release -p algo-hook-client -- --socket NUL --stdin')"
+    Write-Host "  Expected: hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket /tmp/nonexistent.sock --stdin'  must be ~1ms"
+    Write-Host "  (On Windows: hyperfine --warmup 10 'cargo run --release -p algocli-hook-client -- --socket NUL --stdin')"
 }
 Write-Host "[latency-budget] Artifacts: upload target/criterion and html_reports (see core/benches/README.md)"

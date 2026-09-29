@@ -1,20 +1,20 @@
-# Topological publish order for algo-* crates.
+# Topological publish order for algocli-* crates.
 # Lines starting with # are comments. Consumed by scripts/publish-crates.sh(.ps1).
-algo-types
-algo-redact
-algo-shell-analysis
-algo-hook-client
-algo-backend
-algo-fingerprint
-algo-policy
-algo-audit
-algo-provider
-algo-adapter-claude
-algo-adapter-codex
-algo-adapter-opencode
-algo-daemon
-algo-cli
-algo-verifier
-algo-loop-controller
-algo-scanner
-algo-tui
+algocli-types
+algocli-redact
+algocli-shell-analysis
+algocli-hook-client
+algocli-backend
+algocli-fingerprint
+algocli-policy
+algocli-audit
+algocli-provider
+algocli-adapter-claude
+algocli-adapter-codex
+algocli-adapter-opencode
+algocli-daemon
+algocli-cli
+algocli-verifier
+algocli-loop-controller
+algocli-scanner
+algocli-tui

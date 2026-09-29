@@ -1,5 +1,5 @@
 [package]
-name = "algo-adapter-claude"
+name = "algocli-adapter-claude"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -11,8 +11,8 @@ keywords = ["ai", "adapter", "claude"]
 categories = ["development-tools"]
 
 [dependencies]
-algo-types = { version = "0.1.0", path = "../../../core/crates/types" }
-algo-redact = { version = "0.1.0", path = "../../../core/crates/redact" }
+algo-types = { version = "0.1.0", path = "../../../core/crates/types", package = "algocli-types" }
+algo-redact = { version = "0.1.0", path = "../../../core/crates/redact", package = "algocli-redact" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
