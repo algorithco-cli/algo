@@ -1,8 +1,74 @@
-//! Auth: Bearer validation + require_auth middleware.
+//! Auth: dual-mode Bearer validation.
 //!
-//! Accepts backend session JWTs (email/GitHub/Google). Legacy
-//! `valid-token-<id>` credentials are always rejected, including in local
-//! development. Tests mint real signed sessions through `session`.
+//! Legacy mode accepts backend session JWTs. Account mode accepts only
+//! Algorithco account access tokens verified by `account_auth`.
+
+use std::sync::Arc;
+
+use crate::account_auth::{AccountAuthConfig, AccountTokenVerifier, AuthMode};
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct AuthenticatedUser {
+    pub sub: String,
+    pub email: Option<String>,
+    pub email_verified: Option<bool>,
+}
+
+#[derive(Clone)]
+pub enum AuthService {
+    Legacy,
+    Account(Arc<AccountTokenVerifier>),
+}
+
+impl AuthService {
+    #[cfg(test)]
+    pub fn legacy() -> Self {
+        Self::Legacy
+    }
+
+    pub async fn from_env(client: reqwest::Client) -> Result<Self, String> {
+        match AuthMode::from_env()? {
+            AuthMode::Legacy => {
+                crate::session::ensure_session_secret_at_startup()?;
+                Ok(Self::Legacy)
+            }
+            AuthMode::Account => Ok(Self::Account(Arc::new(
+                AccountTokenVerifier::discover(AccountAuthConfig::from_env()?, client).await?,
+            ))),
+        }
+    }
+
+    pub fn is_legacy(&self) -> bool {
+        matches!(self, Self::Legacy)
+    }
+
+    pub async fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Result<AuthenticatedUser, AuthError> {
+        match self {
+            Self::Legacy => require_auth(headers).map(|sub| AuthenticatedUser {
+                sub,
+                email: None,
+                email_verified: None,
+            }),
+            Self::Account(verifier) => verifier
+                .verify_headers(headers)
+                .await
+                .map(|claims| AuthenticatedUser {
+                    sub: claims.sub,
+                    email: claims.email,
+                    email_verified: claims.email_verified,
+                })
+                .map_err(|error| match error {
+                    crate::account_auth::AccountAuthError::Missing => AuthError::MissingToken,
+                    crate::account_auth::AccountAuthError::Expired => AuthError::Expired,
+                    crate::account_auth::AccountAuthError::Invalid => AuthError::InvalidToken,
+                }),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(dead_code)]

@@ -15,7 +15,43 @@ generate at build. Fail-safe (ask, never allow), latency budgets in CI, no secre
 
 Product code lives here (in-memory MVP).
 
-## OAuth login (private MVP, backend only)
+## Authentication modes
+
+`GUARD_AUTH_MODE=legacy|account` selects authentication. The default remains
+`legacy` during the staged account-service rollout.
+
+In `account` mode, the backend discovers the central Algorithco account
+service from `GUARD_ACCOUNT_ISSUER`, fetches its ES256 JWKS, and verifies
+account access tokens locally. It never mints backend sessions and the legacy
+signup/provider routes are not mounted. Tokens must have `typ=at+jwt`, a
+nonempty `client_id` and `scope`, and no ID-token markers. `sub` is the sole
+ownership identity; email is display/contact data only.
+
+The temporary audience bridge is an exact allow-list with no code default.
+`GUARD_ACCOUNT_AUDIENCES` is required in account mode and rejects empty,
+whitespace-bearing, wildcard, and duplicate entries. The current account
+service emits client-ID audiences, so the deployment value is
+`guard-web,guard-cli`. This changes to one dedicated Guard API audience when
+the account service adds it.
+
+JWKS responses are size-limited and cached using bounded `Cache-Control`
+`max-age` (at most ten minutes) plus `stale-if-error` (at most five minutes).
+An unknown `kid` triggers one rate-limited refresh. A cold-cache outage or
+invalid token fails closed with 401; a bounded stale key may be used during a
+JWKS outage.
+
+| Var | Purpose |
+|---|---|
+| `GUARD_AUTH_MODE` | `legacy` or `account`; default `legacy` until the final rollout PR |
+| `GUARD_ACCOUNT_ISSUER` | required in account mode; exact HTTPS issuer (loopback HTTP allowed for local tests) |
+| `GUARD_ACCOUNT_AUDIENCES` | required exact-match comma list; current bridge value `guard-web,guard-cli` |
+| `GUARD_ACCOUNT_CLOCK_SKEW_SECS` | expiry/not-before/future-issued-at leeway, `0..300`; default `5` |
+
+The JWKS URI is intentionally not configured separately: it is read from
+`/.well-known/openid-configuration`, whose returned issuer must exactly match
+`GUARD_ACCOUNT_ISSUER`.
+
+## Legacy OAuth login (private MVP, backend only)
 
 Email/password accounts (`POST /v1/auth/signup|login`, argon2id-hashed,
 in-memory users) plus GitHub device flow + Google OIDC (installed-app
@@ -34,7 +70,7 @@ Env:
 | `ALGO_GITHUB_CLIENT_ID` | GitHub App/OAuth App client ID (device flow must be enabled in app settings); unset → GitHub routes 503 |
 | `ALGO_GOOGLE_CLIENT_ID` | Google Cloud "Desktop app" OAuth client ID; unset → Google routes 503 |
 | `ALGO_GOOGLE_CLIENT_SECRET` | optional; without it the backend acts as a public client (PKCE only) |
-| `ALGO_SESSION_JWT_SECRET` | required HS256 secret (minimum 32 bytes); missing or shorter values prevent startup |
+| `ALGO_SESSION_JWT_SECRET` | required only in legacy mode; HS256 secret (minimum 32 bytes); missing or shorter values prevent startup |
 | `ALGO_GITHUB_DEVICE_CODE_URL` / `ALGO_GITHUB_ACCESS_TOKEN_URL` / `ALGO_GITHUB_API_BASE` | override for staging / GitHub Enterprise Server |
 | `ALGO_GOOGLE_AUTH_URL` / `ALGO_GOOGLE_TOKEN_URL` / `ALGO_GOOGLE_USERINFO_URL` / `ALGO_GOOGLE_JWKS_URL` | override for staging / offline dev |
 | `ALGO_POLICY_SIGNING_SEED_HEX` | required 64-hex policy signing seed; missing or malformed values prevent startup |

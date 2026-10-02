@@ -18,6 +18,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod account_auth;
 mod audit;
 mod auth;
 mod email;
@@ -34,7 +35,7 @@ mod test_sync;
 mod verify;
 
 use audit::{ingest_audit, list_audit, AuditError, ListAuditQuery};
-use auth::require_auth;
+use auth::AuthService;
 use policy::PolicyStore;
 use stats::{query_stats_series, Granularity, StatsSeriesQuery};
 use verify::PolicyBundle;
@@ -46,6 +47,7 @@ struct AppState {
     policy_store: Arc<PolicyStore>,
     oauth: Arc<oauth_config::OAuthConfig>,
     http: reqwest::Client,
+    auth: Arc<AuthService>,
 }
 
 fn http_client() -> reqwest::Client {
@@ -340,13 +342,14 @@ async fn api_console_handler() -> impl IntoResponse {
 }
 
 async fn create_org_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateOrgPayload>,
 ) -> impl IntoResponse {
     // P3-03: org creation requires auth; owner is derived from caller, never
     // trusted from the client payload.
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -397,8 +400,12 @@ async fn create_org_handler(
     (StatusCode::CREATED, Json(resp)).into_response()
 }
 
-async fn get_org_handler(headers: HeaderMap, Path(org_id): Path<String>) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn get_org_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org_id): Path<String>,
+) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -421,8 +428,8 @@ async fn get_org_handler(headers: HeaderMap, Path(org_id): Path<String>) -> impl
     }
 }
 
-async fn list_orgs_handler(headers: HeaderMap) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn list_orgs_handler(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -906,13 +913,21 @@ fn require_feature(
 
 /// Authenticate and return the caller identity (token or session sub).
 /// Every billing handler binds records to this identity (owner).
-fn authed_caller(headers: &HeaderMap) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
-    require_auth(headers).map_err(|_| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-    })
+async fn authed_caller(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
+    state
+        .auth
+        .authenticate(headers)
+        .await
+        .map(|user| user.sub)
+        .map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+        })
 }
 
 fn sub_err(e: subscriptions::SubError) -> (StatusCode, serde_json::Value) {
@@ -943,10 +958,11 @@ async fn plans_handler() -> impl IntoResponse {
 }
 
 async fn create_sub_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateSubPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -975,8 +991,12 @@ async fn create_sub_handler(
     }
 }
 
-async fn get_sub_handler(headers: HeaderMap, Query(params): Query<SubQuery>) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn get_sub_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<SubQuery>,
+) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1003,11 +1023,12 @@ async fn get_sub_handler(headers: HeaderMap, Query(params): Query<SubQuery>) -> 
 }
 
 async fn change_sub_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<ChangeSubPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1041,11 +1062,12 @@ async fn change_sub_handler(
 }
 
 async fn cancel_sub_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<CancelSubPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1069,8 +1091,12 @@ async fn cancel_sub_handler(
     }
 }
 
-async fn activate_sub_handler(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn activate_sub_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1094,11 +1120,12 @@ async fn activate_sub_handler(headers: HeaderMap, Path(id): Path<String>) -> imp
 }
 
 async fn seats_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<SeatsPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1122,10 +1149,11 @@ async fn seats_handler(
 }
 
 async fn entitlement_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<EntitlementQuery>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1159,10 +1187,11 @@ async fn billing_webhook_handler() -> impl IntoResponse {
 }
 
 async fn export_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<ExportQuery>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1204,8 +1233,8 @@ async fn publish_policy_handler(
     Json(payload): Json<PublishPolicyPayload>,
 ) -> impl IntoResponse {
     // Auth already checked via middleware; double-check for direct handler tests.
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1318,8 +1347,8 @@ async fn get_policy_handler(
     Path(version): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1362,11 +1391,12 @@ async fn get_policy_handler(
 }
 
 async fn ingest_audit_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(mut payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1429,11 +1459,12 @@ fn parse_time_bound(
 }
 
 async fn stats_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<StatsQueryParams>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1527,11 +1558,12 @@ fn audit_record_view(r: &audit::AuditRecord) -> serde_json::Value {
 }
 
 async fn list_audit_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<ListAuditParams>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1629,11 +1661,12 @@ async fn list_audit_handler(
 /// reconnects (honoring Last-Event-ID) after `retry: 5000`. No long-lived
 /// connection, no new deps — true streaming is a follow-up.
 async fn audit_stream_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<ListAuditParams>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1715,10 +1748,11 @@ async fn audit_stream_handler(
 }
 
 async fn dry_run_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1853,18 +1887,11 @@ fn app_router(state: AppState) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
         .max_age(std::time::Duration::from_secs(600));
-    Router::new()
+    let legacy_mode = state.auth.is_legacy();
+    let router = Router::new()
         .route("/", get(api_console_handler))
         .route("/ui", get(api_console_handler))
         .route("/health", get(health_handler))
-        .route("/v1/auth/signup", post(email_signup_handler))
-        .route("/v1/auth/login", post(email_login_handler))
-        .route("/v1/auth/github/device", post(github_device_handler))
-        .route("/v1/auth/github/poll", post(github_poll_handler))
-        .route("/v1/auth/github/validate", post(github_validate_handler))
-        .route("/v1/auth/google/url", post(google_url_handler))
-        .route("/v1/auth/google/callback", post(google_callback_handler))
-        .route("/v1/auth/google/verify", post(google_verify_handler))
         .route("/v1/orgs", post(create_org_handler).get(list_orgs_handler))
         .route("/v1/orgs/:id", get(get_org_handler))
         .route("/v1/policy/publish", post(publish_policy_handler))
@@ -1883,7 +1910,21 @@ fn app_router(state: AppState) -> Router {
         .route("/v1/audit", get(list_audit_handler))
         .route("/v1/audit/stream", get(audit_stream_handler))
         .route("/v1/stats", get(stats_handler))
-        .route("/v1/policy/dry-run", post(dry_run_handler))
+        .route("/v1/policy/dry-run", post(dry_run_handler));
+    let router = if legacy_mode {
+        router
+            .route("/v1/auth/signup", post(email_signup_handler))
+            .route("/v1/auth/login", post(email_login_handler))
+            .route("/v1/auth/github/device", post(github_device_handler))
+            .route("/v1/auth/github/poll", post(github_poll_handler))
+            .route("/v1/auth/github/validate", post(github_validate_handler))
+            .route("/v1/auth/google/url", post(google_url_handler))
+            .route("/v1/auth/google/callback", post(google_callback_handler))
+            .route("/v1/auth/google/verify", post(google_verify_handler))
+    } else {
+        router
+    };
+    router
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
         .layer(TimeoutLayer::new(std::time::Duration::from_secs(10)))
         .layer(RateLimitLayer)
@@ -1900,15 +1941,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    session::ensure_session_secret_at_startup()
-        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
     policy::ensure_signing_key_at_startup()
         .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
 
+    let http = http_client();
+    let auth = AuthService::from_env(http.clone())
+        .await
+        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
     let state = AppState {
         policy_store: Arc::new(PolicyStore::new()),
         oauth: Arc::new(oauth_config::OAuthConfig::from_env()),
-        http: http_client(),
+        http,
+        auth: Arc::new(auth),
     };
     let app = app_router(state);
 
@@ -1936,6 +1980,7 @@ mod tests {
             policy_store: Arc::new(PolicyStore::new()),
             oauth: Arc::new(oauth_config::OAuthConfig::disabled()),
             http: http_client(),
+            auth: Arc::new(AuthService::legacy()),
         }
     }
 
@@ -1944,6 +1989,7 @@ mod tests {
             policy_store: Arc::new(PolicyStore::new()),
             oauth: Arc::new(cfg),
             http: http_client(),
+            auth: Arc::new(AuthService::legacy()),
         }
     }
 
