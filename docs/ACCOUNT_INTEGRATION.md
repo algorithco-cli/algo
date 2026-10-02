@@ -63,6 +63,24 @@ API audience (resource indicator). When that ships,
 `GUARD_ACCOUNT_AUDIENCES` is changed to that single value and client-ID
 audiences are removed.
 
+### Organization membership and roles
+
+The account service internally uses organization memberships and assigned
+billing seats when computing effective entitlements. It does not currently
+publish organization membership or role claims in Guard access tokens, and it
+does not expose a product-facing membership/role lookup endpoint. The public
+entitlement response may identify an organization as the winning entitlement
+owner, but that is not an authorization-role contract.
+
+Until the account service exposes such a contract, Guard keeps its existing
+local organization registry and maps its sole owner directly to the verified
+account `sub`. Every `/v1/orgs*`, `/v1/policy*`, `/v1/audit*`, and `/v1/stats`
+operation performs this owner check. Unknown organizations and other owners'
+organizations use the same not-found response so the API does not become an
+existence oracle. Multi-member roles, membership synchronization, and
+account-managed team authorization remain unavailable; Guard does not infer
+or invent them.
+
 ### Human TODOs
 
 - Provision and rotate the read-only Guard product service credential.

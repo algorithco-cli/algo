@@ -2106,7 +2106,7 @@ mod tests {
             .into_response()
     }
 
-    async fn account_state() -> (AppState, AccountApiState) {
+    async fn account_state_for_sub(sub: &str) -> (AppState, AccountApiState) {
         let api_state = AccountApiState {
             calls: Arc::new(AtomicUsize::new(0)),
             subjects: Arc::new(Mutex::new(Vec::new())),
@@ -2125,7 +2125,7 @@ mod tests {
             16,
         );
         let user = auth::AuthenticatedUser {
-            sub: "account-subject".to_string(),
+            sub: sub.to_string(),
             email: None,
             email_verified: None,
             token_iat: Some(chrono::Utc::now().timestamp()),
@@ -2142,6 +2142,10 @@ mod tests {
             },
             api_state,
         )
+    }
+
+    async fn account_state() -> (AppState, AccountApiState) {
+        account_state_for_sub("account-subject").await
     }
 
     #[allow(dead_code)]
@@ -2962,6 +2966,114 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
         assert_eq!(body["upgrade"]["feature"], "dry_run");
+    }
+
+    #[tokio::test]
+    async fn account_mode_subject_ownership_blocks_every_cross_org_route() {
+        let _guard = test_sync::lock();
+        clear_org_store();
+        audit::clear_audit_store();
+        let (owner_state, _) = account_state_for_sub("account-owner").await;
+        let (attacker_state, _) = account_state_for_sub("account-attacker").await;
+        register_test_org("org-account-owned", "account-owner");
+
+        let (status, created) = post_json(
+            app_router(owner_state.clone()),
+            "/v1/orgs",
+            Some("test-account"),
+            serde_json::json!({"org_name":"account org","owner_id":"account-attacker"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(created["owner_id"], "account-owner");
+
+        let (status, policy) = post_json(
+            app_router(owner_state.clone()),
+            "/v1/policy/publish",
+            Some("test-account"),
+            serde_json::json!({"org_id":"org-account-owned","content":"ask on unknown"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let version = policy["version"].as_str().unwrap();
+        let (status, _) = post_json(
+            app_router(owner_state.clone()),
+            "/v1/audit/ingest",
+            Some("test-account"),
+            serde_json::json!({
+                "org_id":"org-account-owned","redacted_event":"redacted command",
+                "decision":"ask","latency_ms":1
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        for uri in [
+            "/v1/orgs/org-account-owned".to_string(),
+            format!("/v1/policy/{version}?org_id=org-account-owned"),
+            "/v1/audit?org_id=org-account-owned".to_string(),
+            "/v1/audit/stream?org_id=org-account-owned".to_string(),
+            "/v1/audit/export?org_id=org-account-owned".to_string(),
+            "/v1/stats?org_id=org-account-owned".to_string(),
+        ] {
+            let (status, _) = get_json(
+                app_router(attacker_state.clone()),
+                &uri,
+                Some("test-account"),
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        }
+
+        for (uri, body) in [
+            (
+                "/v1/policy/publish",
+                serde_json::json!({"org_id":"org-account-owned","content":"allow"}),
+            ),
+            (
+                "/v1/audit/ingest",
+                serde_json::json!({
+                    "org_id":"org-account-owned","redacted_event":"redacted attacker",
+                    "decision":"allow","latency_ms":1
+                }),
+            ),
+            (
+                "/v1/policy/dry-run",
+                serde_json::json!({
+                    "org_id":"org-account-owned","bundle":{"version":"1"},"history_ids":[]
+                }),
+            ),
+        ] {
+            let (status, _) = post_json(
+                app_router(attacker_state.clone()),
+                uri,
+                Some("test-account"),
+                body,
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        }
+
+        let (status, body) =
+            get_json(app_router(attacker_state), "/v1/orgs", Some("test-account")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["total"], 0);
+
+        let (status, _) = get_json(
+            app_router(owner_state.clone()),
+            &format!("/v1/policy/{version}?org_id=org-account-owned"),
+            Some("test-account"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, body) = get_json(
+            app_router(owner_state),
+            "/v1/stats?org_id=org-account-owned",
+            Some("test-account"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["ask"], 1);
     }
 
     fn billing_token() -> String {
