@@ -38,8 +38,8 @@ const PAGES = [
   },
   {
     path: "/pricing",
-    title: "Pricing — free local, team + enterprise planned | Algorithco Guard",
-    desc: "Local MVP free forever. Team $19/seat/mo and Enterprise custom planned for Phase 3 cloud with dashboard and SSO.",
+    title: "Plans — local-first and account-managed | Algorithco Guard",
+    desc: "Run Guard locally without an account, or sign in to view account-managed cloud and team entitlements.",
   },
   {
     path: "/roadmap",
@@ -48,8 +48,14 @@ const PAGES = [
   },
   {
     path: "/login",
-    title: "Log in — link terminal via device code | Algorithco Guard",
-    desc: "algo login device flow demo. Team cloud with org policy and dashboard is Phase 3 planned; local MVP runs today.",
+    title: "Sign in | Algorithco Guard",
+    desc: "Sign in to Guard for cloud and team features. Local Guard protection continues to work without an account.",
+    noindex: true,
+  },
+  {
+    path: "/auth/callback",
+    title: "Completing sign-in | Algorithco Guard",
+    desc: "Complete the Algorithco account sign-in callback.",
     noindex: true,
   },
   {
@@ -74,8 +80,8 @@ const PAGES = [
   },
   {
     path: "/billing",
-    title: "Billing preview | Algorithco Guard",
-    desc: "Preview subscription and seat-management interface for future hosted plans.",
+    title: "Billing and entitlement | Algorithco Guard",
+    desc: "View the current Guard entitlement and open the configured account billing service.",
     noindex: true,
   },
   {
