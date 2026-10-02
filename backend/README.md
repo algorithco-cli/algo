@@ -46,10 +46,35 @@ JWKS outage.
 | `GUARD_ACCOUNT_ISSUER` | required in account mode; exact HTTPS issuer (loopback HTTP allowed for local tests) |
 | `GUARD_ACCOUNT_AUDIENCES` | required exact-match comma list; current bridge value `guard-web,guard-cli` |
 | `GUARD_ACCOUNT_CLOCK_SKEW_SECS` | expiry/not-before/future-issued-at leeway, `0..300`; default `5` |
+| `GUARD_ACCOUNT_SERVICE_KEY` | required in account mode; read-only, Guard-product-scoped `alg_sk_...` credential; provide through the deployment secret manager |
+| `ENTITLEMENT_CACHE_MAX_TTL_SECS` | requested hard cache ceiling, `1..300`; default `300`, capped to the account contract's stricter 60-second `max-age` |
+| `ENTITLEMENT_REFRESH_MIN_INTERVAL_SECS` | per-subject minimum interval for user refresh, `1..3600`; default `30` |
 
 The JWKS URI is intentionally not configured separately: it is read from
 `/.well-known/openid-configuration`, whose returned issuer must exactly match
 `GUARD_ACCOUNT_ISSUER`.
+
+## Account entitlements
+
+In `account` mode, the verified token's compact `guard` entitlement is used
+first while both its expiry and the 60-second local freshness bound remain
+valid. Otherwise the backend calls the product-scoped
+`GET /v1/users/{sub}/entitlements` account endpoint with the read-only service
+credential. The credential is never logged. Successful API responses use
+`ETag`, `If-None-Match`, and `Cache-Control`; the documented 60-second
+`max-age` is the effective maximum freshness even though the configurable
+owner default is 300 seconds. The in-memory cache is limited to 1,024 subjects
+and concurrent misses for one subject are coalesced.
+
+On an account API failure, a last-known-good entitlement is used only while
+its `validUntil` remains valid; otherwise Guard returns the free tier. This
+failure affects feature availability only and cannot alter an allow/ask/deny
+policy result. `POST /v1/entitlements/refresh` authenticates the caller,
+accepts no subject parameter, bypasses freshness for that caller only, and is
+rate-limited per subject. Account mode does not mount local plan/subscription
+mutation routes or any webhook receiver. See
+[`../docs/ACCOUNT_INTEGRATION.md`](../docs/ACCOUNT_INTEGRATION.md) for the
+owner-approved webhook deferral.
 
 ## Legacy OAuth login (private MVP, backend only)
 
