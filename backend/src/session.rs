@@ -58,7 +58,7 @@ fn load_secret() -> Result<Vec<u8>, String> {
         Err(_) => {
             #[cfg(test)]
             {
-                return Ok(vec![b'x'; 32]);
+                Ok(vec![b'x'; 32])
             }
             #[cfg(not(test))]
             {

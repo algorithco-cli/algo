@@ -55,7 +55,7 @@ fn load_signing_key() -> Result<SigningKey, String> {
         Err(_) => {
             #[cfg(test)]
             {
-                return Ok(SigningKey::from_bytes(&[0x24; 32]));
+                Ok(SigningKey::from_bytes(&[0x24; 32]))
             }
             #[cfg(not(test))]
             {
