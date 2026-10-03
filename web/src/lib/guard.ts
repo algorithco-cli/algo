@@ -145,20 +145,34 @@ export function guardOrgId(): string {
 }
 
 /** Decode display-only JWT claims. Authorization still belongs to backend. */
-export function sessionProfileFromToken(token: string): GuardProfile | null {
+export function sessionProfileFromToken(
+  token: string,
+  accountMode = false,
+): GuardProfile | null {
   const payload = token.split(".")[1];
   if (!payload) return null;
   try {
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
     const claims = JSON.parse(atob(padded)) as Record<string, unknown>;
-    if (typeof claims.sub !== "string" || typeof claims.provider !== "string") {
+    const provider =
+      typeof claims.provider === "string"
+        ? claims.provider
+        : accountMode
+          ? "algorithco"
+          : null;
+    if (typeof claims.sub !== "string" || !claims.sub || !provider) {
       return null;
     }
     return {
       subject: claims.sub,
-      provider: claims.provider,
-      name: typeof claims.login === "string" ? claims.login : null,
+      provider,
+      name:
+        typeof claims.name === "string"
+          ? claims.name
+          : typeof claims.login === "string"
+            ? claims.login
+            : null,
       email: typeof claims.email === "string" ? claims.email : null,
       issuedAt: typeof claims.iat === "number" ? claims.iat : null,
       expiresAt: typeof claims.exp === "number" ? claims.exp : null,

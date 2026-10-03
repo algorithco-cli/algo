@@ -55,6 +55,7 @@ export function AppRoutes(): JSX.Element {
             <Route path="billing" element={<Billing />} />
             <Route path="roadmap" element={<Roadmap />} />
             <Route path="login" element={<Login />} />
+            <Route path="auth/callback" element={<Login />} />
             <Route path="faq" element={<Faq />} />
             <Route path="privacy" element={<Privacy />} />
             <Route path="terms" element={<Terms />} />
