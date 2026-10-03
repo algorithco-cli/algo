@@ -18,6 +18,7 @@ mod theme;
 mod tokens;
 mod ui;
 
+use algo_account_auth::{AccountClient, AuthConfig, LoginEvent, NativeCredentialStore};
 use app::{App, LoginFocus, LoginStatus, ViewMode};
 use crossterm::{
     cursor::Show,
@@ -27,7 +28,17 @@ use crossterm::{
 };
 use dog::ColorMode;
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{io, path::PathBuf, time::Duration};
+use std::{
+    io,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, TryRecvError},
+        Arc,
+    },
+    thread::JoinHandle,
+    time::Duration,
+};
 
 /// Parsed `algo-tui` flags. `--color` pins the login theme tier
 /// (default `auto`: `NO_COLOR` → mono, `COLORTERM` → truecolor, else ansi16).
@@ -160,8 +171,61 @@ fn build_app() -> App {
         app.error = Some(format!("audit.db not found at {}", path.display()));
         app
     };
-    app.set_mode(ViewMode::Feed);
+    app.show_login();
     app
+}
+
+enum AuthMessage {
+    Event(LoginEvent),
+    Finished(Result<(), String>),
+}
+
+struct AuthWorker {
+    cancelled: Arc<AtomicBool>,
+    receiver: Receiver<AuthMessage>,
+    handle: JoinHandle<()>,
+}
+
+fn spawn_device_login() -> AuthWorker {
+    let (sender, receiver) = mpsc::channel();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let worker_cancelled = Arc::clone(&cancelled);
+    let home = App::resolve_home();
+    let handle = std::thread::spawn(move || {
+        let result = AuthConfig::from_env()
+            .and_then(AccountClient::new)
+            .and_then(|client| {
+                let store = NativeCredentialStore::for_home(&home);
+                client.login_device(&store, &worker_cancelled, |event| {
+                    let _ = sender.send(AuthMessage::Event(event));
+                })?;
+                Ok(())
+            })
+            .map_err(|error| error.to_string());
+        let _ = sender.send(AuthMessage::Finished(result));
+    });
+    AuthWorker {
+        cancelled,
+        receiver,
+        handle,
+    }
+}
+
+fn apply_auth_event(app: &mut App, event: LoginEvent) {
+    match event {
+        LoginEvent::Verification {
+            verification_uri,
+            verification_uri_complete,
+            user_code,
+        } => app.account_verification(
+            verification_uri_complete.unwrap_or(verification_uri),
+            user_code,
+        ),
+        LoginEvent::Waiting => app.account_waiting(),
+        LoginEvent::SlowDown { interval_secs } => app.account_slow_down(interval_secs),
+        LoginEvent::Success => app.account_login_succeeded(),
+        LoginEvent::AuthorizationUrl(_) => {}
+    }
 }
 
 /// Owns terminal modes from acquisition to restoration, including setup
@@ -216,7 +280,41 @@ fn run_tui(mut app: App) -> io::Result<()> {
     let result: io::Result<()> = (|| {
         use std::time::Instant;
         let mut last_auto = Instant::now();
+        let mut auth_worker: Option<AuthWorker> = None;
         loop {
+            let mut auth_finished = false;
+            if let Some(worker) = auth_worker.as_ref() {
+                loop {
+                    match worker.receiver.try_recv() {
+                        Ok(AuthMessage::Event(event)) => apply_auth_event(&mut app, event),
+                        Ok(AuthMessage::Finished(result)) => {
+                            if let Err(error) = result {
+                                app.account_login_failed(error);
+                            }
+                            auth_finished = true;
+                            break;
+                        }
+                        Err(TryRecvError::Empty) => break,
+                        Err(TryRecvError::Disconnected) => {
+                            app.account_login_failed("Account sign-in worker stopped.".into());
+                            auth_finished = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if auth_finished {
+                if let Some(worker) = auth_worker.take() {
+                    let _ = worker.handle.join();
+                }
+            }
+            if app.login_status == LoginStatus::BrowserPending && auth_worker.is_none() {
+                auth_worker = Some(spawn_device_login());
+            } else if app.login_status != LoginStatus::BrowserPending {
+                if let Some(worker) = auth_worker.as_ref() {
+                    worker.cancelled.store(true, Ordering::Relaxed);
+                }
+            }
             terminal.draw(|f| ui::render(f, &mut app))?;
 
             // Cap redraw at ~30 FPS: animations (80ms spinner, dog wag) stay
@@ -536,6 +634,10 @@ fn run_tui(mut app: App) -> io::Result<()> {
                 }
                 last_auto = Instant::now();
             }
+        }
+        if let Some(worker) = auth_worker.take() {
+            worker.cancelled.store(true, Ordering::Relaxed);
+            let _ = worker.handle.join();
         }
         Ok(())
     })();

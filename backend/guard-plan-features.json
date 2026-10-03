@@ -1,0 +1,42 @@
+{
+  "default_plan": "free",
+  "upgrade_order": ["pro", "max", "team"],
+  "plans": {
+    "free": {
+      "signed_bundles": false,
+      "dry_run": false,
+      "dashboard": false,
+      "per_user_stats": false,
+      "oauth_org": false,
+      "siem_export": false,
+      "sso_scim": false
+    },
+    "pro": {
+      "signed_bundles": true,
+      "dry_run": true,
+      "dashboard": true,
+      "per_user_stats": true,
+      "oauth_org": false,
+      "siem_export": false,
+      "sso_scim": false
+    },
+    "max": {
+      "signed_bundles": true,
+      "dry_run": true,
+      "dashboard": true,
+      "per_user_stats": true,
+      "oauth_org": true,
+      "siem_export": false,
+      "sso_scim": false
+    },
+    "team": {
+      "signed_bundles": true,
+      "dry_run": true,
+      "dashboard": true,
+      "per_user_stats": true,
+      "oauth_org": true,
+      "siem_export": true,
+      "sso_scim": true
+    }
+  }
+}

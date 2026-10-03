@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { guardKeys, parseSseBurst } from "./guard";
+import { guardKeys, parseSseBurst, sessionProfileFromToken } from "./guard";
+
+function unsignedToken(claims: Record<string, unknown>): string {
+  return [
+    "e30",
+    Buffer.from(JSON.stringify(claims)).toString("base64url"),
+    "sig",
+  ].join(".");
+}
 
 const RECORD = JSON.stringify({
   trace_id: "t-1",
@@ -66,5 +74,32 @@ describe("guardKeys", () => {
     expect(() =>
       JSON.stringify(guardKeys.stats({ granularity: "day" })),
     ).not.toThrow();
+  });
+});
+
+describe("sessionProfileFromToken", () => {
+  it("uses central account display claims in account mode", () => {
+    const profile = sessionProfileFromToken(
+      unsignedToken({
+        sub: "test-subject",
+        name: "Test Account",
+        email: "test@example.invalid",
+        iat: 1,
+        exp: 2,
+      }),
+      true,
+    );
+    expect(profile).toMatchObject({
+      subject: "test-subject",
+      provider: "algorithco",
+      name: "Test Account",
+      email: "test@example.invalid",
+    });
+  });
+
+  it("does not accept a provider-less token in legacy mode", () => {
+    expect(
+      sessionProfileFromToken(unsignedToken({ sub: "test-subject" })),
+    ).toBeNull();
   });
 });

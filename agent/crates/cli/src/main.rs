@@ -1,4 +1,7 @@
 #![allow(unused_imports)]
+use algo_account_auth::{
+    AccountClient, AuthConfig, CredentialStore, LoginEvent, NativeCredentialStore,
+};
 use algo_audit::AuditStore;
 use algo_policy::Engine as PolicyEngine;
 use algo_policy::Profile;
@@ -9,6 +12,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -29,6 +33,12 @@ impl PrivacyArg {
             PrivacyArg::Full => "full",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LoginFlow {
+    Device,
+    Loopback,
 }
 
 #[derive(Parser, Debug)]
@@ -114,8 +124,16 @@ enum Commands {
         /// on = enforcing (shadow off), off = shadow (default), status = print current
         mode: Option<String>,
     },
-    /// Login stub
+    /// Sign in to the Algorithco account service
     Login {
+        #[arg(long)]
+        home: Option<PathBuf>,
+        /// OAuth flow: device authorization (default) or loopback code + PKCE
+        #[arg(long, value_enum, default_value_t = LoginFlow::Device)]
+        flow: LoginFlow,
+    },
+    /// Delete Algorithco account credentials from the OS credential vault
+    Logout {
         #[arg(long)]
         home: Option<PathBuf>,
     },
@@ -131,7 +149,7 @@ fn main() {
     // Bare `algo` (no subcommand) launches the interactive TUI — that is the
     // expected entry point; `algo --help` still prints help.
     let res = match cli.command {
-        None => cmd_tui(),
+        None => cmd_tui(cli.home.as_deref()),
         Some(Commands::Init { home, privacy, yes }) => {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             let p = privacy.map(|p| p.as_str().to_string());
@@ -177,11 +195,18 @@ fn main() {
             let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
             cmd_enforce(&h, mode.as_deref())
         }
-        Some(Commands::Login { .. }) => {
-            println!("login: not yet implemented (stub, exit 0)");
-            Ok(())
+        Some(Commands::Login { home, flow }) => {
+            let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
+            cmd_login(&h, flow)
         }
-        Some(Commands::Tui { .. }) => cmd_tui(),
+        Some(Commands::Logout { home }) => {
+            let h = resolve_home(combine_home(cli.home.as_deref(), home.as_deref()));
+            cmd_logout(&h)
+        }
+        Some(Commands::Tui { home }) => {
+            let h = combine_home(cli.home.as_deref(), home.as_deref());
+            cmd_tui(h)
+        }
     };
     if let Err(e) = res {
         eprintln!("error: {e}");
@@ -516,6 +541,13 @@ fn merge_hook(json: &mut serde_json::Value, hook_cmd: &str) {
 
 // ---------- uninstall ----------
 fn cmd_uninstall(home: &Path, keep_db: bool) -> Result<(), String> {
+    // Credentials live outside Guard's files. Delete them first so an
+    // uninstall can never report success while leaving an account token in
+    // the operating-system vault.
+    NativeCredentialStore::for_home(home)
+        .delete()
+        .map_err(|error| format!("remove account credentials before uninstall: {error}"))?;
+
     let config_path = detect_claude_config(home);
     let hook_cmd = hook_command_for_home(home);
 
@@ -642,6 +674,56 @@ fn cmd_uninstall(home: &Path, keep_db: bool) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- account authentication ----------
+fn cmd_login(home: &Path, flow: LoginFlow) -> Result<(), String> {
+    let client = AccountClient::new(AuthConfig::from_env().map_err(|error| error.to_string())?)
+        .map_err(|error| error.to_string())?;
+    let store = NativeCredentialStore::for_home(home);
+    let cancelled = AtomicBool::new(false);
+    let emit = |event: LoginEvent| match event {
+        LoginEvent::Verification {
+            verification_uri,
+            verification_uri_complete,
+            user_code,
+        } => {
+            println!("Open this account sign-in page:");
+            println!(
+                "{}",
+                verification_uri_complete
+                    .as_deref()
+                    .unwrap_or(&verification_uri)
+            );
+            println!("Device code: {user_code}");
+        }
+        LoginEvent::AuthorizationUrl(url) => {
+            println!("Open this account sign-in page:");
+            println!("{url}");
+            println!("Waiting for the callback on 127.0.0.1 …");
+        }
+        LoginEvent::Waiting => println!("Waiting for account approval …"),
+        LoginEvent::SlowDown { interval_secs } => {
+            println!("Account requested slower polling ({interval_secs}s).")
+        }
+        LoginEvent::Success => {}
+    };
+
+    match flow {
+        LoginFlow::Device => client.login_device(&store, &cancelled, emit),
+        LoginFlow::Loopback => client.login_loopback(&store, &cancelled, emit),
+    }
+    .map_err(|error| error.to_string())?;
+    println!("Signed in. Credentials are stored in the operating-system vault.");
+    Ok(())
+}
+
+fn cmd_logout(home: &Path) -> Result<(), String> {
+    NativeCredentialStore::for_home(home)
+        .delete()
+        .map_err(|error| error.to_string())?;
+    println!("Signed out. Stored account credentials were removed.");
+    Ok(())
+}
+
 fn hook_present(json: &serde_json::Value, hook_cmd: &str) -> bool {
     if let Some(hooks) = json.get("hooks").and_then(|h| h.as_object()) {
         if let Some(arr) = hooks.get("PreToolUse").and_then(|a| a.as_array()) {
@@ -734,13 +816,17 @@ fn find_tui_binary() -> Option<PathBuf> {
     find_tui_in_dirs(&dirs)
 }
 
-fn cmd_tui() -> Result<(), String> {
+fn cmd_tui(home: Option<&Path>) -> Result<(), String> {
     let bin = find_tui_binary().ok_or_else(|| {
         "algo-tui binary not found next to algo or on PATH; re-run install \
          (cargo build --release --manifest-path agent/Cargo.toml, then scripts/install.ps1)"
             .to_string()
     })?;
-    let status = std::process::Command::new(&bin)
+    let mut command = std::process::Command::new(&bin);
+    if let Some(home) = home {
+        command.env("ALGO_HOME", home);
+    }
+    let status = command
         .status()
         .map_err(|e| format!("launch {}: {e}", bin.display()))?;
     if status.success() {
@@ -1200,7 +1286,10 @@ fn cmd_log(home: &Path, limit: usize, show_egress: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use algo_account_auth::{AuthError, StoredSession};
+    use algo_policy::PolicyDecision;
     use algo_types::{Action, SourceLevel};
+    use std::sync::atomic::AtomicBool;
     use tempfile::TempDir;
 
     fn test_home() -> (TempDir, PathBuf) {
@@ -1218,6 +1307,52 @@ mod tests {
         assert!(cli.command.is_none(), "bare `algo` must default to TUI");
         let cli = Cli::try_parse_from(["algo", "tui"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Tui { .. })));
+        let cli = Cli::try_parse_from(["algo", "login", "--flow", "loopback"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Login {
+                flow: LoginFlow::Loopback,
+                ..
+            })
+        ));
+        let cli = Cli::try_parse_from(["algo", "logout"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Logout { .. })));
+    }
+
+    struct NoopCredentialStore;
+
+    impl CredentialStore for NoopCredentialStore {
+        fn load(&self) -> Result<Option<StoredSession>, AuthError> {
+            Ok(None)
+        }
+
+        fn save(&self, _session: &StoredSession) -> Result<(), AuthError> {
+            Ok(())
+        }
+
+        fn delete(&self) -> Result<(), AuthError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn proves_ask_on_account_network_failure() {
+        let engine = PolicyEngine::new();
+        let before = engine.evaluate("ls -la", Profile::Balanced);
+        assert_eq!(before, PolicyDecision::Abstain);
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let issuer = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        let client = AccountClient::new(AuthConfig::new(&issuer, 5).unwrap()).unwrap();
+        let error = client
+            .login_device(&NoopCredentialStore, &AtomicBool::new(false), |_| {})
+            .unwrap_err();
+        assert!(matches!(error, AuthError::Network));
+
+        let after = engine.evaluate("ls -la", Profile::Balanced);
+        assert_eq!(after, PolicyDecision::Abstain);
+        assert_eq!(before, after, "auth failure must not change policy output");
     }
 
     #[test]

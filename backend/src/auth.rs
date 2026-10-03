@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::account_auth::{AccountAuthConfig, AccountTokenVerifier, AuthMode};
+use crate::account_auth::{AccountAuthConfig, AccountTokenVerifier, AuthMode, CompactEntitlement};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -13,18 +13,28 @@ pub struct AuthenticatedUser {
     pub sub: String,
     pub email: Option<String>,
     pub email_verified: Option<bool>,
+    pub token_iat: Option<i64>,
+    pub token_exp: Option<i64>,
+    pub entitlements: Option<Vec<CompactEntitlement>>,
 }
 
 #[derive(Clone)]
 pub enum AuthService {
     Legacy,
     Account(Arc<AccountTokenVerifier>),
+    #[cfg(test)]
+    TestAccount(AuthenticatedUser),
 }
 
 impl AuthService {
     #[cfg(test)]
     pub fn legacy() -> Self {
         Self::Legacy
+    }
+
+    #[cfg(test)]
+    pub fn test_account(user: AuthenticatedUser) -> Self {
+        Self::TestAccount(user)
     }
 
     pub async fn from_env(client: reqwest::Client) -> Result<Self, String> {
@@ -52,6 +62,9 @@ impl AuthService {
                 sub,
                 email: None,
                 email_verified: None,
+                token_iat: None,
+                token_exp: None,
+                entitlements: None,
             }),
             Self::Account(verifier) => verifier
                 .verify_headers(headers)
@@ -60,12 +73,28 @@ impl AuthService {
                     sub: claims.sub,
                     email: claims.email,
                     email_verified: claims.email_verified,
+                    token_iat: Some(claims.iat),
+                    token_exp: Some(claims.exp),
+                    entitlements: claims.entitlements,
                 })
                 .map_err(|error| match error {
                     crate::account_auth::AccountAuthError::Missing => AuthError::MissingToken,
                     crate::account_auth::AccountAuthError::Expired => AuthError::Expired,
                     crate::account_auth::AccountAuthError::Invalid => AuthError::InvalidToken,
                 }),
+            #[cfg(test)]
+            Self::TestAccount(user) => {
+                let bearer = headers
+                    .get_all(axum::http::header::AUTHORIZATION)
+                    .iter()
+                    .filter_map(|value| value.to_str().ok())
+                    .collect::<Vec<_>>();
+                if bearer.as_slice() == ["Bearer test-account"] {
+                    Ok(user.clone())
+                } else {
+                    Err(AuthError::MissingToken)
+                }
+            }
         }
     }
 }

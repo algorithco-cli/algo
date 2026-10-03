@@ -1,10 +1,17 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
 import { DeviceLogin } from "../components/DeviceLogin";
 import { DitherBackground, type RGB } from "../components/Dither";
 import { Seo } from "../components/Seo";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useRevealOnMount } from "../hooks/useRevealOnMount";
+import {
+  accountAuthError,
+  beginAccountLogin,
+  handleAccountCallback,
+} from "../lib/accountAuth";
+import { isAccountMode } from "../lib/billing";
 
 /** Variant 1 token hexes for the waves (dark-only site: read once). */
 function useLoginWaveColors(): {
@@ -24,6 +31,61 @@ function useLoginWaveColors(): {
     color: readToken("--ag-brand"),
   }));
   return colors;
+}
+
+function AccountLogin(): JSX.Element {
+  const navigate = useNavigate();
+  const started = React.useRef(false);
+  const [error, setError] = React.useState("");
+
+  const signIn = React.useCallback(async () => {
+    setError("");
+    try {
+      await beginAccountLogin();
+    } catch (err) {
+      setError(accountAuthError(err));
+      started.current = false;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const callback = new URL(window.location.href);
+    if (
+      callback.searchParams.has("code") ||
+      callback.searchParams.has("error")
+    ) {
+      void handleAccountCallback(callback.href)
+        .then(() => navigate("/dashboard", { replace: true }))
+        .catch((err: unknown) => {
+          window.history.replaceState({}, "", callback.pathname);
+          setError(accountAuthError(err));
+          started.current = false;
+        });
+      return;
+    }
+    void signIn();
+  }, [navigate, signIn]);
+
+  return (
+    <div className="card" style={{ maxWidth: 620, margin: "0 auto" }}>
+      <p className="eyebrow">Algorithco account</p>
+      <h1>Sign in to Guard</h1>
+      <p className="muted">
+        Guard uses the central Algorithco account service. Authentication opens
+        in this top-level window and returns here securely.
+      </p>
+      {error ? <p className="notice notice-error">{error}</p> : null}
+      <button
+        type="button"
+        className="btn btn-primary"
+        onClick={() => void signIn()}
+      >
+        {error ? "Try again" : "Continue to Algorithco"}
+      </button>
+    </div>
+  );
 }
 
 export default function Login(): JSX.Element {
@@ -57,7 +119,7 @@ export default function Login(): JSX.Element {
       ) : null}
       <section id="login" className="section reveal">
         <div className="wrap">
-          <DeviceLogin />
+          {isAccountMode() ? <AccountLogin /> : <DeviceLogin />}
         </div>
       </section>
     </>

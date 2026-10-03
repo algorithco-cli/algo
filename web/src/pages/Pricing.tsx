@@ -1,11 +1,17 @@
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ElectricBorder from "../components/ElectricBorder";
 import { Section } from "../components/Section";
 import { Seo } from "../components/Seo";
+import { useGuardSession } from "../hooks/useGuardSession";
 import { useRevealOnMount } from "../hooks/useRevealOnMount";
+import {
+  type AccountEntitlement,
+  fetchAccountEntitlement,
+  isAccountMode,
+} from "../lib/billing";
 
 interface PlanCta {
   to: string;
@@ -165,7 +171,7 @@ function Check(): JSX.Element {
   );
 }
 
-export default function Pricing(): JSX.Element {
+function LegacyPricing(): JSX.Element {
   useRevealOnMount();
   const [annual, setAnnual] = useState(true);
   return (
@@ -329,4 +335,71 @@ export default function Pricing(): JSX.Element {
       </Section>
     </>
   );
+}
+
+function AccountPricing(): JSX.Element {
+  useRevealOnMount();
+  const { token } = useGuardSession();
+  const [entitlement, setEntitlement] = useState<AccountEntitlement | null>(
+    null,
+  );
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    void fetchAccountEntitlement(token)
+      .then(setEntitlement)
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error ? err.message : "Could not load entitlement",
+        );
+      });
+  }, [token]);
+
+  return (
+    <>
+      <Seo path="/pricing" />
+      <Section
+        id="pricing"
+        kicker="Plans"
+        title="Guard plans live in your Algorithco account."
+        accent="One entitlement, no duplicate billing."
+        lede="Prices and numeric limits are managed by the central account service and are not copied into Guard."
+      >
+        <div className="card" style={{ display: "grid", gap: "1rem" }}>
+          {token ? (
+            entitlement ? (
+              <>
+                <p style={{ margin: 0 }}>
+                  Current plan: <strong>{entitlement.plan}</strong> ·{" "}
+                  {entitlement.status}
+                </p>
+                <Link className="btn btn-primary" to="/billing">
+                  View entitlement and manage billing
+                </Link>
+              </>
+            ) : (
+              <p className="muted">
+                {error || "Loading your current entitlement…"}
+              </p>
+            )
+          ) : (
+            <>
+              <p className="muted" style={{ margin: 0 }}>
+                Sign in to see your current Guard entitlement. Plan prices and
+                limits are TODOs until the account-service catalog is finalized.
+              </p>
+              <Link className="btn btn-primary" to="/login">
+                Sign in with Algorithco
+              </Link>
+            </>
+          )}
+        </div>
+      </Section>
+    </>
+  );
+}
+
+export default function Pricing(): JSX.Element {
+  return isAccountMode() ? <AccountPricing /> : <LegacyPricing />;
 }

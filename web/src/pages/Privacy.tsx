@@ -10,15 +10,16 @@ export default function Privacy(): JSX.Element {
         eyebrow="Privacy"
         title="Privacy policy"
         summary="How algorithco guard handles command context, audit data, website activity, and optional network features."
-        reviewed="September 28, 2026"
+        reviewed="October 3, 2026"
       >
         <section>
           <h2>1. Scope</h2>
           <p>
             This policy covers the algorithco guard command-line software and
-            this website. The current public product is local-first. Account,
-            team-cloud, and billing screens are previews and must not be used to
-            submit production credentials or payment details.
+            this website. The product remains local-first. In account-mode
+            builds, cloud and team features use the central Algorithco account
+            service; payment details are handled there and must never be entered
+            into Guard.
           </p>
         </section>
         <section>
@@ -77,11 +78,23 @@ export default function Privacy(): JSX.Element {
         <section>
           <h2>4. Website and optional services</h2>
           <p>
-            Static pages can be viewed without an account. A production hosted
-            service may later process account identifiers, organization data,
-            support messages, service logs, and billing metadata. Before those
-            features launch, this policy must be updated with the legal entity,
-            processors, locations, retention periods, and contact details.
+            Static pages can be viewed without an account. Choosing account
+            sign-in sends an OIDC authorization request to the configured
+            Algorithco account service. Guard keeps browser tokens in memory
+            only and sends the access token to the Guard backend for verified
+            cloud/team requests. Guard reads effective entitlement data but does
+            not store prices, subscriptions, payment details, or card data.
+            Hosted-service legal entity, processors, locations, retention
+            periods, and contact details remain publication TODOs before general
+            availability.
+          </p>
+          <p>
+            For entitlement lookup, the backend sends the account service the
+            opaque account subject in the documented request path and a
+            read-only Guard service credential. Command text, policy input, and
+            local audit contents are not part of that request. The backend keeps
+            bounded JWKS and entitlement caches in memory; it does not register
+            a billing webhook or persist billing events.
           </p>
         </section>
         <section>

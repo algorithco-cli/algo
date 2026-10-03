@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Section } from "../components/Section";
 import { Seo } from "../components/Seo";
+import { useGuardSession } from "../hooks/useGuardSession";
 import { useRevealOnMount } from "../hooks/useRevealOnMount";
+import { accountBillingUrl } from "../lib/accountAuth";
 import {
   BILLING_PLANS,
   BillingApiError,
@@ -19,17 +21,20 @@ import {
   cancelSubscription,
   changeSubscription,
   createSubscription,
+  fetchAccountEntitlement,
   fetchEntitlement,
   fetchPlans,
   fetchSubscription,
   formatCentsUsd,
   formatPeriodDate,
+  isAccountMode,
   loadStoredOrgId,
   loadStoredToken,
   monthlyTotalCents,
   parseBillingSearchParams,
   planByTier,
   previewChange,
+  refreshAccountEntitlement,
   saveStoredOrgId,
   saveStoredToken,
   subscriptionAccess,
@@ -66,7 +71,135 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
 };
 
-export default function Billing(): JSX.Element {
+function AccountBilling(): JSX.Element {
+  useRevealOnMount();
+  const { token } = useGuardSession();
+  const [searchParams] = useSearchParams();
+  const returnedFromBilling = searchParams.get("account_return") === "1";
+  const [entitlement, setEntitlement] = useState<
+    import("../lib/billing").AccountEntitlement | null
+  >(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(
+    async (force: boolean) => {
+      if (!token) return;
+      setLoading(true);
+      setError("");
+      try {
+        const next = force
+          ? await refreshAccountEntitlement(token)
+          : await fetchAccountEntitlement(token);
+        setEntitlement(next);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not load entitlement",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [token],
+  );
+
+  useEffect(() => {
+    if (!token) {
+      window.location.assign("/login");
+      return;
+    }
+    void load(returnedFromBilling);
+    if (returnedFromBilling) {
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete("account_return");
+      window.history.replaceState(
+        {},
+        "",
+        `${clean.pathname}${clean.search}${clean.hash}`,
+      );
+    }
+  }, [load, returnedFromBilling, token]);
+
+  const features = entitlement
+    ? Object.entries(entitlement.features).filter(([, enabled]) => enabled)
+    : [];
+
+  return (
+    <>
+      <Seo path="/billing" />
+      <Section
+        id="billing"
+        kicker="Account"
+        title="Your Guard entitlement"
+        accent="Billing stays with Algorithco."
+        lede="Guard reads your current entitlement from the backend. Payment details and prices are never stored here."
+      >
+        {loading ? <p className="muted">Loading entitlement…</p> : null}
+        {error ? <p role="alert">{error}</p> : null}
+        {entitlement ? (
+          <div className="card" style={{ display: "grid", gap: "1rem" }}>
+            <div>
+              <p className="eyebrow">Current plan</p>
+              <h2 style={{ margin: 0 }}>{entitlement.plan}</h2>
+              <p className="muted" style={{ marginBottom: 0 }}>
+                Status: {entitlement.status}
+                {entitlement.valid_until
+                  ? ` · valid until ${new Date(entitlement.valid_until).toLocaleString()}`
+                  : ""}
+              </p>
+            </div>
+            <div>
+              <strong>Enabled features</strong>
+              {features.length > 0 ? (
+                <ul>
+                  {features.map(([name]) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No paid features are currently enabled.</p>
+              )}
+            </div>
+            {Object.keys(entitlement.limits).length > 0 ? (
+              <div>
+                <strong>Limits</strong>
+                <dl>
+                  {Object.entries(entitlement.limits).map(([name, value]) => (
+                    <div key={name}>
+                      <dt>{name}</dt>
+                      <dd>{String(value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+              <a className="btn btn-primary" href={accountBillingUrl()}>
+                Upgrade / Manage billing
+              </a>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={loading}
+                onClick={() => void load(true)}
+              >
+                Refresh entitlement
+              </button>
+            </div>
+            <p className="muted small" style={{ margin: 0 }}>
+              Configure the account billing return URL as{" "}
+              <code>/billing?account_return=1</code> to refresh immediately
+              after an upgrade. Prices and numeric product limits remain
+              account-service TODOs.
+            </p>
+          </div>
+        ) : null}
+      </Section>
+    </>
+  );
+}
+
+function LegacyBilling(): JSX.Element {
   useRevealOnMount();
   const [searchParams] = useSearchParams();
   const preselect = useMemo(
@@ -617,4 +750,8 @@ export default function Billing(): JSX.Element {
       </Section>
     </>
   );
+}
+
+export default function Billing(): JSX.Element {
+  return isAccountMode() ? <AccountBilling /> : <LegacyBilling />;
 }

@@ -37,7 +37,7 @@ pub enum AuthMode {
 impl AuthMode {
     pub fn from_env() -> Result<Self, String> {
         match std::env::var("GUARD_AUTH_MODE")
-            .unwrap_or_else(|_| "legacy".to_string())
+            .unwrap_or_else(|_| "account".to_string())
             .as_str()
         {
             "legacy" => Ok(Self::Legacy),
@@ -642,6 +642,20 @@ mod tests {
         match old_audiences {
             Some(value) => std::env::set_var("GUARD_ACCOUNT_AUDIENCES", value),
             None => std::env::remove_var("GUARD_ACCOUNT_AUDIENCES"),
+        }
+    }
+
+    #[test]
+    fn account_mode_is_the_default_and_legacy_remains_explicit() {
+        let _guard = crate::test_sync::lock();
+        let old_mode = std::env::var("GUARD_AUTH_MODE").ok();
+        std::env::remove_var("GUARD_AUTH_MODE");
+        assert_eq!(AuthMode::from_env().unwrap(), AuthMode::Account);
+        std::env::set_var("GUARD_AUTH_MODE", "legacy");
+        assert_eq!(AuthMode::from_env().unwrap(), AuthMode::Legacy);
+        match old_mode {
+            Some(value) => std::env::set_var("GUARD_AUTH_MODE", value),
+            None => std::env::remove_var("GUARD_AUTH_MODE"),
         }
     }
 
