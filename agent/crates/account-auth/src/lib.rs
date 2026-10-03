@@ -279,22 +279,14 @@ impl CredentialStore for NativeCredentialStore {
 
     fn delete(&self) -> Result<(), AuthError> {
         let marker_existed = self.marker_path.exists();
-        match self
-            .entry()
-            .and_then(|entry| match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => Ok(entry),
-                Err(_) => Err(AuthError::CredentialStore),
-            }) {
-            Ok(_) => {
-                if marker_existed {
-                    std::fs::remove_file(&self.marker_path)
-                        .map_err(|_| AuthError::CredentialStore)?;
-                }
-                Ok(())
-            }
-            Err(_) if !marker_existed => Ok(()),
-            Err(error) => Err(error),
+        match self.entry()?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(_) => return Err(AuthError::CredentialStore),
         }
+        if marker_existed {
+            std::fs::remove_file(&self.marker_path).map_err(|_| AuthError::CredentialStore)?;
+        }
+        Ok(())
     }
 }
 
@@ -565,7 +557,10 @@ impl AccountClient {
             store.delete()?;
             return Err(AuthError::ReloginRequired);
         }
-        let replacement = tokens.refresh_token.ok_or(AuthError::InvalidResponse)?;
+        let Some(replacement) = tokens.refresh_token else {
+            store.delete()?;
+            return Err(AuthError::ReloginRequired);
+        };
         if replacement.is_empty() || replacement == session.refresh_token {
             store.delete()?;
             return Err(AuthError::ReloginRequired);
@@ -574,7 +569,8 @@ impl AccountClient {
             let id =
                 self.verify_token(&discovery, id_token, TokenKind::Id { nonce: None }, false)?;
             if id.sub != session.subject {
-                return Err(AuthError::InvalidToken);
+                store.delete()?;
+                return Err(AuthError::ReloginRequired);
             }
         }
         session.access_token = tokens.access_token;
@@ -1326,6 +1322,80 @@ mod tests {
         assert!(reused_store.load().unwrap().is_none());
         assert_eq!(reused_store.deletes.load(AtomicOrdering::Relaxed), 1);
         reused.finish();
+
+        let signer = TestSigner::new();
+        let jwks = signer.jwks.clone();
+        let missing = MockServer::start(|issuer| {
+            let access = signer.token(issuer, "at+jwt", claims(issuer, true));
+            let id = signer.token(issuer, "JWT", claims(issuer, false));
+            vec![
+                (200, discovery(issuer)),
+                (
+                    200,
+                    json!({
+                        "access_token": access,
+                        "id_token": id,
+                        "token_type": "Bearer",
+                        "expires_in": 300
+                    })
+                    .to_string(),
+                ),
+                (200, jwks),
+            ]
+        });
+        let missing_store = MemoryStore::default();
+        missing_store
+            .save(&StoredSession {
+                issuer: missing.issuer.clone(),
+                client_id: CLIENT_ID.into(),
+                subject: "subject-123".into(),
+                access_token: "expired".into(),
+                refresh_token: "refresh-1".into(),
+                expires_at: 0,
+            })
+            .unwrap();
+        let client = AccountClient::new(AuthConfig::new(&missing.issuer, 5).unwrap()).unwrap();
+        assert!(matches!(
+            client.access_token(&missing_store),
+            Err(AuthError::ReloginRequired)
+        ));
+        assert!(missing_store.load().unwrap().is_none());
+        assert_eq!(missing_store.deletes.load(AtomicOrdering::Relaxed), 1);
+        missing.finish();
+
+        let signer = TestSigner::new();
+        let jwks = signer.jwks.clone();
+        let changed_subject = MockServer::start(|issuer| {
+            let access = signer.token(issuer, "at+jwt", claims(issuer, true));
+            let mut id_claims = claims(issuer, false);
+            id_claims["sub"] = json!("different-subject");
+            let id = signer.token(issuer, "JWT", id_claims);
+            vec![
+                (200, discovery(issuer)),
+                (200, token_response(&access, &id, "refresh-2")),
+                (200, jwks),
+            ]
+        });
+        let changed_store = MemoryStore::default();
+        changed_store
+            .save(&StoredSession {
+                issuer: changed_subject.issuer.clone(),
+                client_id: CLIENT_ID.into(),
+                subject: "subject-123".into(),
+                access_token: "expired".into(),
+                refresh_token: "refresh-1".into(),
+                expires_at: 0,
+            })
+            .unwrap();
+        let client =
+            AccountClient::new(AuthConfig::new(&changed_subject.issuer, 5).unwrap()).unwrap();
+        assert!(matches!(
+            client.access_token(&changed_store),
+            Err(AuthError::ReloginRequired)
+        ));
+        assert!(changed_store.load().unwrap().is_none());
+        assert_eq!(changed_store.deletes.load(AtomicOrdering::Relaxed), 1);
+        changed_subject.finish();
     }
 
     #[test]

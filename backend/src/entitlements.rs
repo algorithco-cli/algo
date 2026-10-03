@@ -547,7 +547,7 @@ enum FetchResult {
 fn last_known_good_valid(entitlement: &EffectiveEntitlement) -> bool {
     match entitlement.valid_until {
         Some(until) => until > Utc::now(),
-        None => true,
+        None => false,
     }
 }
 
@@ -720,7 +720,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outage_never_serves_last_known_good_past_valid_until() {
+    async fn outage_never_serves_last_known_good_past_or_without_valid_until() {
         let (service, state) = service(Duration::ZERO, 4).await;
         service
             .insert(
@@ -740,6 +740,27 @@ mod tests {
             .await;
         state.mode.store(1, Ordering::SeqCst);
         assert_eq!(service.resolve(&user("expired")).await.plan, "free");
+
+        service
+            .insert(
+                "missing-valid-until",
+                EffectiveEntitlement {
+                    product: "guard".to_string(),
+                    plan: "team".to_string(),
+                    status: "active".to_string(),
+                    valid_until: None,
+                    limits: serde_json::Map::new(),
+                    features: plan_config().plans["team"].clone(),
+                    source: "test".to_string(),
+                },
+                Some("\"missing-valid-until\"".to_string()),
+                Duration::ZERO,
+            )
+            .await;
+        assert_eq!(
+            service.resolve(&user("missing-valid-until")).await.plan,
+            "free"
+        );
     }
 
     #[tokio::test]
