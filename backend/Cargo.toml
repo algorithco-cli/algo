@@ -44,7 +44,7 @@ base64 = "0.22"
 [dev-dependencies]
 # Ephemeral RSA keygen for Google JWKS/ID-token tests (dev-only, never shipped).
 rsa = "0.9"
-rand = "0.8"
+rand = "0.10"
 # Ephemeral P-256 keys for account-token tests (no private-key fixtures).
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 
