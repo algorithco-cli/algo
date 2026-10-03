@@ -52,12 +52,23 @@ struct AppState {
     account_entitlements: Option<Arc<entitlements::AccountEntitlementService>>,
 }
 
-fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
+fn http_client() -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("algo-backend/0.1")
+        .user_agent("algo-backend/0.1");
+    if let Ok(path) = std::env::var("GUARD_ACCOUNT_CA_CERT") {
+        if !path.is_empty() {
+            let pem = std::fs::read(path)
+                .map_err(|_| "GUARD_ACCOUNT_CA_CERT could not be read".to_string())?;
+            let certificate = reqwest::Certificate::from_pem(&pem).map_err(|_| {
+                "GUARD_ACCOUNT_CA_CERT must contain one PEM certificate".to_string()
+            })?;
+            builder = builder.add_root_certificate(certificate);
+        }
+    }
+    builder
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .map_err(|_| "backend HTTP client could not be created".to_string())
 }
 
 static RATE_LIMIT_STORE: OnceLock<Mutex<HashMap<String, (u32, Instant)>>> = OnceLock::new();
@@ -2012,7 +2023,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     policy::ensure_signing_key_at_startup()
         .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
 
-    let http = http_client();
+    let http = http_client()
+        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
     let auth = AuthService::from_env(http.clone())
         .await
         .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
@@ -2058,7 +2070,7 @@ mod tests {
         AppState {
             policy_store: Arc::new(PolicyStore::new()),
             oauth: Arc::new(oauth_config::OAuthConfig::disabled()),
-            http: http_client(),
+            http: http_client().unwrap(),
             auth: Arc::new(AuthService::legacy()),
             account_entitlements: None,
         }
@@ -2068,7 +2080,7 @@ mod tests {
         AppState {
             policy_store: Arc::new(PolicyStore::new()),
             oauth: Arc::new(cfg),
-            http: http_client(),
+            http: http_client().unwrap(),
             auth: Arc::new(AuthService::legacy()),
             account_entitlements: None,
         }
@@ -2136,7 +2148,7 @@ mod tests {
             AppState {
                 policy_store: Arc::new(PolicyStore::new()),
                 oauth: Arc::new(oauth_config::OAuthConfig::disabled()),
-                http: http_client(),
+                http: http_client().unwrap(),
                 auth: Arc::new(AuthService::test_account(user)),
                 account_entitlements: Some(Arc::new(service)),
             },

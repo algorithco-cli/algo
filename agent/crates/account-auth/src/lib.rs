@@ -328,10 +328,24 @@ pub struct AccountClient {
 
 impl AccountClient {
     pub fn new(config: AuthConfig) -> Result<Self, AuthError> {
-        let http = Client::builder()
+        let mut builder = Client::builder()
             .connect_timeout(HTTP_TIMEOUT)
             .timeout(HTTP_TIMEOUT)
-            .user_agent(concat!("algorithco-guard/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("algorithco-guard/", env!("CARGO_PKG_VERSION")));
+        if let Ok(path) = std::env::var("ALGO_ACCOUNT_CA_CERT") {
+            if !path.is_empty() {
+                let pem = std::fs::read(path).map_err(|_| {
+                    AuthError::Config("ALGO_ACCOUNT_CA_CERT could not be read".into())
+                })?;
+                let certificate = reqwest::Certificate::from_pem(&pem).map_err(|_| {
+                    AuthError::Config(
+                        "ALGO_ACCOUNT_CA_CERT must contain one PEM certificate".into(),
+                    )
+                })?;
+                builder = builder.add_root_certificate(certificate);
+            }
+        }
+        let http = builder
             .build()
             .map_err(|_| AuthError::Config("HTTP client could not be created".into()))?;
         Ok(Self {

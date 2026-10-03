@@ -17,14 +17,14 @@ npm run gen:deny # parity check core deny_list.rs vs src/lib/verdict.ts
 npm run preview  # preview dist/ at http://127.0.0.1:3007 (NO vite proxy — billing needs a VITE_BACKEND_URL build + running backend, see below)
 ```
 
-Account-mode builds set `VITE_GUARD_AUTH_MODE=account` and the three required
-account values shown in [`.env.example`](.env.example). `guard-web` is a public
+Account mode is the build default. Configure the three required account values
+shown in [`.env.example`](.env.example). `guard-web` is a public
 OIDC client: the SPA uses authorization code + PKCE S256 and sends no client
 secret. Its access, ID, and refresh tokens are memory-only; a page reload starts
 a new top-level authorization redirect and relies on the account SSO session.
 The configured redirect URI must exactly match a URI registered for the client.
-Legacy builds continue to use the existing login and billing UI until PR6 flips
-the default.
+Set `VITE_GUARD_AUTH_MODE=legacy` to build the rollback path with the existing
+login and billing UI; legacy code remains available but is no longer the default.
 
 > **Preview/billing note:** `vite preview` serves `dist/` with no `/api` proxy.
 > The billing page works under `npm run dev` (proxy `/api/*` → `127.0.0.1:8080`
