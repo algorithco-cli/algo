@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ed25519-dalek = { version = "3", features = ["rand_core"] }
 # Email/password auth (argon2id hashing, no plaintext secrets at rest).
-argon2 = "0.5"
+argon2 = "0.6"
 rand_core = { version = "0.6", features = ["getrandom"] }
 # Algorithco account access-token verification (ES256 + discovered JWKS).
 jsonwebtoken = "9"
