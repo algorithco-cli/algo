@@ -12,9 +12,6 @@ use ratatui::widgets::TableState;
 use crate::dog::{ColorMode, GuardDog};
 use crate::theme::Theme;
 
-/// Ticks (at ~100ms UI poll) before a pending browser sign-in times out
-/// with an honest "not available yet" error instead of spinning forever.
-pub const BROWSER_TIMEOUT_TICKS: usize = 300;
 /// Milliseconds per marching-ants dash step (5 cells/sec).
 pub const ANIM_STEP_MS: u64 = 200;
 /// Milliseconds per spinner frame (~12 fps, braille spinner on login).
@@ -209,8 +206,7 @@ pub struct App {
     pub login_dog: Option<ratatui::layout::Rect>,
     /// Login visual theme (truecolor → ANSI-16 → mono). No hex in widgets.
     pub theme: Theme,
-    /// OAuth entry URL shown on the browser card (`ALGO_OAUTH_URL`).
-    /// `None` means browser sign-in is not configured in this build.
+    /// Device verification URL returned by the account service.
     pub oauth_url: Option<String>,
     /// Signed-in identity label, e.g. `key ••••abcd`. Set on success.
     pub login_user: Option<String>,
@@ -256,10 +252,6 @@ impl App {
         {
             dog.set_animated(false);
         }
-        let oauth_url = std::env::var("ALGO_OAUTH_URL")
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty());
         Self {
             store,
             counts: Counts {
@@ -282,7 +274,7 @@ impl App {
             dog,
             login_dog: None,
             theme,
-            oauth_url,
+            oauth_url: None,
             login_user: None,
             browser_since: None,
             debug: false,
@@ -643,21 +635,52 @@ impl App {
         self.mode = ViewMode::Connect;
     }
 
-    /// Start a browser sign-in attempt.
-    ///
-    /// Honest gate: without a configured [`Self::oauth_url`] there is no
-    /// backend to wait on, so this fails immediately with a specific error
-    /// (what failed + how to fix) instead of fake pending theater.
+    /// Start an account device-authorization attempt. The event loop notices
+    /// this state and starts the network worker off the UI thread.
     pub fn start_browser_signin(&mut self) {
-        let msg = "Browser authentication is not implemented in the TUI. Use `algo login` when authentication is available.".to_string();
-        self.login_status = LoginStatus::Error(msg.clone());
+        let msg = "Starting secure account sign-in…".to_string();
+        self.login_status = LoginStatus::BrowserPending;
         self.login_device_code = None;
         self.login_ticks = 0;
-        self.login_pending = false;
-        self.browser_since = None;
+        self.login_pending = true;
+        self.browser_since = Some(std::time::Instant::now());
         self.login_note = Some(msg.clone());
         self.login_status_msg = Some(msg);
         self.login_focus = LoginFocus::Browser;
+        self.dog.set_alert(true);
+    }
+
+    pub fn account_verification(&mut self, url: String, user_code: String) {
+        self.oauth_url = Some(url);
+        self.login_device_code = Some(user_code.clone());
+        self.login_status_msg = Some(format!("Open the URL and enter code {user_code}."));
+    }
+
+    pub fn account_waiting(&mut self) {
+        self.login_status_msg = Some("Waiting for account approval… Esc to cancel.".into());
+    }
+
+    pub fn account_slow_down(&mut self, interval_secs: u64) {
+        self.login_status_msg = Some(format!(
+            "Account requested slower polling ({interval_secs}s). Esc to cancel."
+        ));
+    }
+
+    pub fn account_login_succeeded(&mut self) {
+        self.login_status = LoginStatus::Success;
+        self.login_user = Some("Algorithco account".into());
+        self.login_status_msg = Some("Signed in; credentials are in the OS vault.".into());
+        self.login_pending = false;
+        self.login_ticks = 0;
+        self.browser_since = None;
+    }
+
+    pub fn account_login_failed(&mut self, message: String) {
+        self.login_status = LoginStatus::Error(message.clone());
+        self.login_status_msg = Some(message);
+        self.login_pending = false;
+        self.login_ticks = 0;
+        self.browser_since = None;
         self.dog.set_alert(true);
         self.dog.bark();
     }
@@ -760,7 +783,7 @@ impl App {
             self.dog.bark();
             return false;
         }
-        let msg = "API-key authentication is not implemented in the TUI. No key was stored; use `algo login` when authentication is available.".to_string();
+        let msg = "API keys are not accepted. No key was stored; use the central Algorithco account sign-in.".to_string();
         self.login_api_input.clear();
         self.login_user = None;
         self.login_status = LoginStatus::Error(msg.clone());
@@ -890,21 +913,10 @@ impl App {
         match self.login_status.clone() {
             LoginStatus::BrowserPending => {
                 self.login_ticks += 1;
-                if self.login_ticks >= BROWSER_TIMEOUT_TICKS {
-                    // Honest timeout: specific failure + fix, then bark.
-                    let msg = "Browser sign-in timed out. Finish approval in the browser, or use an API key.".to_string();
-                    self.login_status = LoginStatus::Error(msg.clone());
-                    self.login_status_msg = Some(msg.clone());
-                    self.login_note = Some(msg);
-                    self.login_pending = false;
-                    self.login_ticks = 0;
-                    self.browser_since = None;
-                    self.dog.set_alert(true);
-                    self.dog.bark();
-                }
             }
             LoginStatus::ApiKeyValidating => {
-                let msg = "API-key authentication is not implemented in the TUI.".to_string();
+                let msg = "API keys are not accepted; use the central Algorithco account sign-in."
+                    .to_string();
                 self.login_api_input.clear();
                 self.login_status = LoginStatus::Error(msg.clone());
                 self.login_status_msg = Some(msg.clone());
@@ -1223,18 +1235,18 @@ mod tests {
     }
 
     #[test]
-    fn login_browser_is_fail_closed() {
+    fn login_browser_starts_real_device_flow_state() {
         let mut app = App::new(None);
         app.show_login();
         app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
         app.login_confirm();
-        assert!(matches!(app.login_status, LoginStatus::Error(_)));
+        assert_eq!(app.login_status, LoginStatus::BrowserPending);
         assert!(app.login_device_code.is_none());
         assert!(app
             .login_status_msg
             .as_deref()
             .unwrap_or_default()
-            .contains("not implemented"));
+            .contains("Starting secure"));
         // Esc / cancel returns to idle
         app.cancel_login();
         assert_eq!(app.login_status, LoginStatus::Idle);
@@ -1246,33 +1258,41 @@ mod tests {
     }
 
     #[test]
-    fn login_browser_needs_url() {
-        // Without ALGO_OAUTH_URL there is no backend to wait on: fail fast
-        // with a specific error (what + fix), never fake pending theater.
+    fn login_browser_does_not_need_preconfigured_url() {
+        // Device authorization supplies its verification URL dynamically.
         let mut app = App::new(None);
         app.show_login();
         assert!(app.oauth_url.is_none());
         app.login_confirm();
-        let msg = match &app.login_status {
-            LoginStatus::Error(m) => m.clone(),
-            other => panic!("expected Error, got {other:?}"),
-        };
-        assert!(msg.contains("not implemented"), "msg was: {msg}");
-        assert!(msg.contains("algo login"), "msg was: {msg}");
+        assert_eq!(app.login_status, LoginStatus::BrowserPending);
+        let msg = app.login_status_msg.clone().unwrap_or_default();
+        assert!(msg.contains("Starting secure"), "msg was: {msg}");
         assert!(!msg.to_lowercase().contains("sorry"), "no apologies: {msg}");
-        assert!(app.dog.barking() || app.dog.is_alert());
+        assert!(app.dog.is_alert());
     }
 
     #[test]
-    fn login_browser_never_enters_fake_pending_state() {
+    fn login_browser_progress_is_driven_by_account_events() {
         let mut app = App::new(None);
         app.show_login();
         app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
         app.start_browser_signin();
-        assert!(matches!(app.login_status, LoginStatus::Error(_)));
-        let msg = app.login_status_msg.clone().unwrap_or_default();
-        assert!(msg.contains("not implemented"), "msg was: {msg}");
-        assert!(!msg.to_lowercase().contains("sorry"), "no apologies: {msg}");
+        assert_eq!(app.login_status, LoginStatus::BrowserPending);
+        app.account_verification(
+            "https://auth.example.test/device".into(),
+            "WD-4829-XK".into(),
+        );
+        assert_eq!(app.login_device_code.as_deref(), Some("WD-4829-XK"));
+        assert_eq!(
+            app.oauth_url.as_deref(),
+            Some("https://auth.example.test/device")
+        );
+        app.account_waiting();
+        assert!(app.login_status_msg.as_deref().unwrap().contains("Waiting"));
+        app.account_slow_down(10);
+        assert!(app.login_status_msg.as_deref().unwrap().contains("10s"));
+        app.account_login_succeeded();
+        assert_eq!(app.login_status, LoginStatus::Success);
     }
 
     #[test]
@@ -1292,8 +1312,8 @@ mod tests {
         app.login_status = LoginStatus::ApiKeyEditing;
         app.submit_api_key();
         assert!(matches!(app.login_status, LoginStatus::Error(_)));
-        // A plausible key still fails closed because TUI auth is not implemented.
-        app.login_api_input = "ag-valid-key-12345".to_string();
+        // A plausible key still fails closed because central-account login is required.
+        app.login_api_input = "synthetic-input-without-secret".to_string();
         assert!(!app.submit_api_key());
         assert!(matches!(app.login_status, LoginStatus::Error(_)));
         assert!(app.login_user.is_none());
@@ -1302,7 +1322,7 @@ mod tests {
             .login_status_msg
             .as_deref()
             .unwrap_or_default()
-            .contains("not implemented"));
+            .contains("not accepted"));
     }
 
     #[test]
@@ -1362,7 +1382,7 @@ mod tests {
         assert!(app.login_user.is_none());
         assert!(app.login_api_input.is_empty());
         let msg = app.login_status_msg.clone().unwrap_or_default();
-        assert!(msg.contains("not implemented"), "msg was: {msg}");
+        assert!(msg.contains("not accepted"), "msg was: {msg}");
         assert!(msg.contains("No key was stored"), "msg was: {msg}");
     }
 
@@ -1435,7 +1455,7 @@ mod tests {
         // 1/2 shortcuts via direct focus set + confirm
         app.login_focus = LoginFocus::Browser;
         app.login_confirm();
-        assert!(matches!(app.login_status, LoginStatus::Error(_)));
+        assert_eq!(app.login_status, LoginStatus::BrowserPending);
         app.cancel_login();
         app.login_focus = LoginFocus::ApiKey;
         app.login_confirm();

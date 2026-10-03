@@ -682,14 +682,16 @@ fn browser_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static
     };
     let dest = match app.oauth_url.as_deref() {
         Some(url) => fit_row(url, width.saturating_sub(2)),
-        None => "Not available in this build".to_string(),
+        None => "Algorithco account device authorization".to_string(),
     };
+    let detail = app
+        .login_device_code
+        .as_deref()
+        .map(|code| format!("  Device code: {code}"))
+        .unwrap_or_else(|| "  Tokens are stored only in your OS vault".to_string());
     vec![
         action,
-        Line::from(Span::styled(
-            "  Authentication is handled by algo login",
-            t.muted(),
-        )),
+        Line::from(Span::styled(detail, t.muted())),
         Line::from(Span::styled(format!("  {dest}"), t.muted())),
     ]
 }
@@ -702,10 +704,10 @@ fn api_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static>> {
         let line = if focused {
             Line::from(vec![
                 Span::styled("▶ ", t.fg_bold()),
-                Span::styled("Paste a key from your dashboard", t.fg_bold()),
+                Span::styled("API keys are not accepted", t.fg_bold()),
             ])
         } else {
-            Line::from(Span::styled("  Paste a key from your dashboard", t.muted()))
+            Line::from(Span::styled("  API keys are not accepted", t.muted()))
         };
         return vec![line];
     }
@@ -740,11 +742,11 @@ fn api_card_rows(app: &App, focused: bool, width: usize) -> Vec<Line<'static>> {
             vec![
                 input,
                 Line::from(Span::styled(
-                    "  TUI authentication is unavailable",
+                    "  Guard uses the central Algorithco account",
                     t.muted(),
                 )),
                 Line::from(Span::styled(
-                    "  Keys are never stored by this screen",
+                    "  Choose Continue in browser instead",
                     t.muted(),
                 )),
             ]
@@ -790,24 +792,28 @@ fn login_status_lines(app: &App, width: usize) -> Vec<Line<'static>> {
             ))]
         }
         LoginStatus::BrowserPending => {
+            let message = app
+                .login_status_msg
+                .as_deref()
+                .unwrap_or("Waiting for account approval… Esc to cancel");
             if app.browser_wait_ms() >= SPINNER_GRACE_MS {
                 vec![Line::from(vec![
                     Span::styled(format!("{} ", spinner_frame(app.spin_phase)), t.accent()),
-                    Span::styled("Waiting for browser… Esc to cancel", t.warn()),
+                    Span::styled(fit_row(message, w.saturating_sub(2)), t.warn()),
                 ])]
             } else {
-                vec![Line::from(Span::styled("○ Opening browser…", t.muted()))]
+                vec![Line::from(Span::styled(fit_row(message, w), t.muted()))]
             }
         }
         LoginStatus::Success => {
             let user = app.login_user.clone().unwrap_or_default();
             vec![
                 Line::from(Span::styled(
-                    fit_row(&format!("✓ Signed in as {user}."), w),
+                    fit_row(&format!("✓ Signed in with {user}."), w),
                     t.ok(),
                 )),
                 Line::from(Span::styled(
-                    "Key stored locally — not verified yet.",
+                    "Credentials stored in the operating-system vault.",
                     t.muted(),
                 )),
             ]
@@ -2025,7 +2031,7 @@ mod tests {
             "card label must not repeat: {s}"
         );
         assert!(
-            s.contains("2 API key") && s.contains("Paste a key from your dashboard"),
+            s.contains("2 API key") && s.contains("API keys are not accepted"),
             "apikey card missing: {s}"
         );
         assert!(
@@ -2058,8 +2064,12 @@ mod tests {
         let mut app = App::new(None);
         app.show_login();
         app.oauth_url = Some("http://127.0.0.1:8912/callback".to_string());
-        // Browser authentication fails closed; no fake wait or device flow.
+        // Device authorization progress is rendered from real account events.
         app.start_browser_signin();
+        app.account_verification(
+            "https://auth.example.test/device".into(),
+            "WD-4829-XK".into(),
+        );
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -2070,15 +2080,12 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s.contains("not implem"), "unavailable message missing: {s}");
+        assert!(s.contains("WD-4829-XK"), "device code missing: {s}");
         assert!(
-            s.contains("127.0.0.1"),
+            s.contains("auth.example.test"),
             "destination URL must be shown: {s}"
         );
-        assert!(
-            !s.contains("WD-4829-XK") && !s.contains("Device code"),
-            "fabricated device code must be gone: {s}"
-        );
+        assert!(s.contains("Device code"), "device code label missing: {s}");
         // API key editing: empty entry invites paste, typed entry masks.
         app.show_login();
         app.start_api_key_entry();
@@ -2123,7 +2130,7 @@ mod tests {
         );
         assert!(!s3.to_lowercase().contains("sorry"), "no apologies: {s3}");
         // Plausible keys still fail closed and are not retained.
-        app.login_api_input = "ag-valid-key-12345".to_string();
+        app.login_api_input = "synthetic-input-without-secret".to_string();
         app.submit_api_key();
         terminal.draw(|f| render(f, &mut app)).unwrap();
         let s4: String = terminal
@@ -2134,7 +2141,7 @@ mod tests {
             .map(|c| c.symbol().to_string())
             .collect();
         assert!(
-            s4.contains("not implem") && s4.contains("No key was stored"),
+            s4.contains("not accepted") && s4.contains("central Algorithco"),
             "fail-closed message missing: {s4}"
         );
         // Legacy validating state does not claim validation or persistence.
@@ -2295,7 +2302,7 @@ mod tests {
             let mut app = App::new(None);
             app.show_login();
             app.start_api_key_entry();
-            for c in "ag-valid-key-12345".chars() {
+            for c in "synthetic-input-without-secret".chars() {
                 app.push_api_key_char(c);
             }
             let backend = TestBackend::new(width, 30);
@@ -2320,7 +2327,7 @@ mod tests {
             clicked.show_login();
             clicked.login_focus = crate::app::LoginFocus::ApiKey;
             clicked.login_status = crate::app::LoginStatus::ApiKeyEditing;
-            for c in "ag-valid-key-12345".chars() {
+            for c in "synthetic-input-without-secret".chars() {
                 clicked.push_api_key_char(c);
             }
             clicked.login_apikey = Some(card);
@@ -2354,7 +2361,7 @@ mod tests {
         // API editing with input
         app.show_login();
         app.start_api_key_entry();
-        for c in "ag-valid-key-12345".chars() {
+        for c in "synthetic-input-without-secret".chars() {
             app.push_api_key_char(c);
         }
         terminal.draw(|f| render(f, &mut app)).unwrap();
@@ -2796,7 +2803,10 @@ mod tests {
             .iter()
             .map(|c| c.symbol().to_string())
             .collect();
-        assert!(s.contains("not implem"), "unavailable message missing: {s}");
+        assert!(
+            s.contains("Starting secure"),
+            "pending message missing: {s}"
+        );
         // Clicking the dog barks.
         let r = app.login_dog.expect("dog rect");
         let cx = r.x + r.width / 2;

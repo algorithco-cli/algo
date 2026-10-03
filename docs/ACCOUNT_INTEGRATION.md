@@ -5,6 +5,48 @@ Account mode verifies central ES256 access tokens locally and uses the account
 service as the only source of identity and entitlement truth. Local/offline
 Guard behavior does not require an account.
 
+## Native CLI sign-in (`guard-cli`)
+
+`algo login` uses RFC 8628 device authorization by default. It discovers the
+device and token endpoints from the configured issuer, requests exactly
+`openid profile email offline_access`, displays the account-provided
+verification URL and user code, respects `interval`, adds five seconds after
+each `slow_down`, and stops on cancellation or expiry. `algo login --flow
+loopback` is also available: it binds only an ephemeral `127.0.0.1` port at
+`/callback`, uses authorization code + PKCE S256 with random state and nonce,
+and requires an exact state match before exchanging the code. Neither flow
+uses a client secret.
+
+`ALGO_ACCOUNT_ISSUER` optionally overrides the production issuer for a local
+account-service run, and `ALGO_ACCOUNT_CLOCK_SKEW_SECS` configures token clock
+skew from 0 through 60 seconds (default 5). Non-loopback issuers and all
+discovered account endpoints must use HTTPS and remain on the issuer origin.
+
+The CLI accepts only ES256 tokens verified against discovered JWKS. It
+requires issuer, `guard-cli` audience, `exp`, `iat`, and `sub`; applies the
+configured clock-skew bound to `iat` and optional `nbf`; and requires `azp` to
+be `guard-cli` for a multi-valued audience. Access tokens must have
+`typ=at+jwt`, `client_id=guard-cli`, and a non-empty `scope`, and must not have
+ID-token markers (`nonce`, `at_hash`, or `auth_time`). ID tokens are rejected
+if they carry access-token markers, and loopback ID tokens must carry the
+attempt nonce. Tokens are never logged.
+
+Access and rotated refresh tokens are stored as one opaque record in the
+operating-system credential vault: Windows Credential Manager, macOS Keychain,
+or Linux Secret Service. There is no plaintext fallback. A non-secret marker
+under `~/.algo` lets uninstall fail closed if a credential should exist but
+the vault cannot be reached; it contains no token, subject, or account data.
+The client refreshes expiring access tokens transparently. An
+`invalid_grant`/`invalid_token`, subject change, or missing/reused replacement
+refresh token deletes the stored session and requires `algo login` again.
+`algo logout`, `algo uninstall`, and the Windows uninstall script remove the
+vault record before reporting success.
+
+Local policy evaluation, the daemon, audit viewing, and offline TUI mode do
+not require login. The account-auth crate has no dependency on the policy
+engine, so discovery, login, refresh, vault, and network failures cannot
+change an allow/ask/deny result.
+
 ## Web sign-in (`guard-web`)
 
 Account-mode web builds use the discovered OIDC authorization and token
@@ -119,4 +161,7 @@ or invent them.
   URL; the current account integration docs do not define one.
 - Decide prices, numeric limits, and offline-license TTL in the account
   service; Guard does not invent them.
+- Account plan configuration currently has no offline-license TTL. The native
+  client therefore exposes only a verification trait; offline-license issuance
+  and persistence remain disabled until a TTL is configured.
 - Choose a legacy-auth removal date after the staged rollout.
