@@ -28,7 +28,7 @@ jsonwebtoken = "9"
 tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.5", features = ["trace", "limit", "timeout", "cors"] }
 # OAuth providers (P3-03): GitHub device flow + Google OIDC (PKCE/JWKS).
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 # 0.11 unifies with ed25519-dalek's sha2 (avoids a duplicate runtime version).
 sha2 = "0.11"
 uuid = { version = "1", features = ["v4", "serde"] }
