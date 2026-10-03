@@ -41,9 +41,9 @@ export const ROUTES: readonly RouteMeta[] = [
   },
   {
     path: "/pricing",
-    title: "Pricing — free local, team + enterprise planned | Algorithco Guard",
+    title: "Plans — local-first and account-managed | Algorithco Guard",
     description:
-      "Local MVP free forever. Team $19/seat/mo and Enterprise custom planned for Phase 3 cloud with dashboard and SSO.",
+      "Run Guard locally without an account, or sign in to view account-managed cloud and team entitlements.",
     layout: "marketing",
     indexable: true,
   },
@@ -57,17 +57,24 @@ export const ROUTES: readonly RouteMeta[] = [
   },
   {
     path: "/login",
-    title: "Log in — email or provider sign-in | Algorithco Guard",
+    title: "Sign in | Algorithco Guard",
     description:
-      "Create an account with email or sign in with GitHub/Google. Team cloud with org policy and dashboard is Phase 3 planned; local MVP runs today.",
+      "Sign in to Guard for cloud and team features. Local Guard protection continues to work without an account.",
+    layout: "marketing",
+    indexable: false,
+  },
+  {
+    path: "/auth/callback",
+    title: "Completing sign-in | Algorithco Guard",
+    description: "Complete the Algorithco account sign-in callback.",
     layout: "marketing",
     indexable: false,
   },
   {
     path: "/billing",
-    title: "Billing — manage subscription and seats | Algorithco Guard",
+    title: "Billing and entitlement | Algorithco Guard",
     description:
-      "Manage your org subscription: pick Pro, Max, or Team per seat, monthly or annual, update seats, or cancel at period end.",
+      "View the current Guard entitlement and open the configured account billing service.",
     layout: "marketing",
     indexable: false,
   },

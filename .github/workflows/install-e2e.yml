@@ -35,6 +35,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux keyring build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev pkg-config
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: agent -> target
@@ -67,6 +72,10 @@ jobs:
           echo "--- hook residue check ---"
           if [ -e "$TEST_HOME/.algo/algo.sock" ]; then
             echo "UNINSTALL FAIL: socket residue" >&2
+            exit 1
+          fi
+          if [ -e "$TEST_HOME/.algo/account-keyring.marker" ]; then
+            echo "UNINSTALL FAIL: account credential marker residue" >&2
             exit 1
           fi
           echo "install E2E OK on ${{ matrix.os }}"
@@ -112,6 +121,7 @@ jobs:
           "$BIN/algo" --home "$TEST_HOME" init --yes
           "$BIN/algo" --home "$TEST_HOME" doctor
           "$BIN/algo" --home "$TEST_HOME" uninstall
+          test ! -e "$TEST_HOME/.algo/account-keyring.marker"
           echo "install E2E OK on macos-14 (informational)"
 
   windows:
@@ -140,6 +150,7 @@ jobs:
           algo --home $testHome init --yes
           algo --home $testHome doctor
           algo --home $testHome uninstall
+          if (Test-Path (Join-Path $testHome ".algo\account-keyring.marker")) { throw "account credential marker remains after uninstall" }
           .\scripts\uninstall.ps1 -InstallDir $install -KeepPath
           if (Test-Path (Join-Path $install "algo.exe")) { throw "algo.exe remains after uninstall" }
 

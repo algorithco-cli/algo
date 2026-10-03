@@ -9,15 +9,18 @@ import {
   annualMonthlyTotalCents,
   annualYearlyTotalCents,
   apiPath,
+  fetchAccountEntitlement,
   formatCentsUsd,
   formatPeriodDate,
   graceSecondsLeft,
+  isAccountMode,
   isPaidTier,
   isValidCycle,
   monthlyTotalCents,
   parseBillingSearchParams,
   planByTier,
   previewChange,
+  refreshAccountEntitlement,
   subscriptionAccess,
   validateSeats,
   yearlySavingsCents,
@@ -87,6 +90,63 @@ describe("price totals", () => {
     expect(formatPeriodDate(1_700_000_000)).toContain("2023");
     expect(formatPeriodDate(0)).toBe("—");
     expect(formatPeriodDate(Number.NaN)).toBe("—");
+  });
+});
+
+describe("account entitlement client", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("loads and refreshes only the authenticated caller entitlement", async () => {
+    vi.stubEnv("VITE_BACKEND_URL", "");
+    const entitlement = {
+      product: "guard",
+      plan: "free",
+      status: "active",
+      valid_until: null,
+      limits: {},
+      features: {},
+      source: "free",
+    };
+    const calls: Array<{
+      url: string;
+      method: string;
+      authorization: string | null;
+    }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        const headers = new Headers(init.headers);
+        calls.push({
+          url,
+          method: init.method ?? "GET",
+          authorization: headers.get("Authorization"),
+        });
+        return new Response(JSON.stringify(entitlement), { status: 200 });
+      }),
+    );
+
+    await expect(fetchAccountEntitlement("fake-token")).resolves.toEqual(
+      entitlement,
+    );
+    await expect(refreshAccountEntitlement("fake-token")).resolves.toEqual(
+      entitlement,
+    );
+    expect(calls).toEqual([
+      {
+        url: "/api/v1/entitlement",
+        method: "GET",
+        authorization: "Bearer fake-token",
+      },
+      {
+        url: "/api/v1/entitlements/refresh",
+        method: "POST",
+        authorization: "Bearer fake-token",
+      },
+    ]);
+    expect(calls.some((call) => call.url.includes("sub="))).toBe(false);
   });
 });
 
@@ -284,5 +344,21 @@ describe("apiPath backend routing", () => {
   it("does not strip non-/api prefixes", () => {
     vi.stubEnv("VITE_BACKEND_URL", "http://127.0.0.1:8080");
     expect(apiPath("/v1/plans")).toBe("http://127.0.0.1:8080/v1/plans");
+  });
+});
+
+describe("web auth rollout mode", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("defaults to account and keeps legacy as an explicit rollback", () => {
+    vi.stubEnv("VITE_GUARD_AUTH_MODE", "");
+    expect(isAccountMode()).toBe(true);
+    vi.stubEnv("VITE_GUARD_AUTH_MODE", "legacy");
+    expect(isAccountMode()).toBe(false);
+  });
+
+  it("rejects an invalid mode instead of falling back to legacy", () => {
+    vi.stubEnv("VITE_GUARD_AUTH_MODE", "typo");
+    expect(() => isAccountMode()).toThrow("must be legacy or account");
   });
 });

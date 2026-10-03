@@ -33,6 +33,11 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Install Linux keyring build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libdbus-1-dev pkg-config
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core -> target,agent -> target,backend -> target

@@ -18,9 +18,11 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+mod account_auth;
 mod audit;
 mod auth;
 mod email;
+mod entitlements;
 mod github;
 mod google;
 mod oauth_config;
@@ -34,7 +36,7 @@ mod test_sync;
 mod verify;
 
 use audit::{ingest_audit, list_audit, AuditError, ListAuditQuery};
-use auth::require_auth;
+use auth::AuthService;
 use policy::PolicyStore;
 use stats::{query_stats_series, Granularity, StatsSeriesQuery};
 use verify::PolicyBundle;
@@ -46,14 +48,27 @@ struct AppState {
     policy_store: Arc<PolicyStore>,
     oauth: Arc<oauth_config::OAuthConfig>,
     http: reqwest::Client,
+    auth: Arc<AuthService>,
+    account_entitlements: Option<Arc<entitlements::AccountEntitlementService>>,
 }
 
-fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
+fn http_client() -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("algo-backend/0.1")
+        .user_agent("algo-backend/0.1");
+    if let Ok(path) = std::env::var("GUARD_ACCOUNT_CA_CERT") {
+        if !path.is_empty() {
+            let pem = std::fs::read(path)
+                .map_err(|_| "GUARD_ACCOUNT_CA_CERT could not be read".to_string())?;
+            let certificate = reqwest::Certificate::from_pem(&pem).map_err(|_| {
+                "GUARD_ACCOUNT_CA_CERT must contain one PEM certificate".to_string()
+            })?;
+            builder = builder.add_root_certificate(certificate);
+        }
+    }
+    builder
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .map_err(|_| "backend HTTP client could not be created".to_string())
 }
 
 static RATE_LIMIT_STORE: OnceLock<Mutex<HashMap<String, (u32, Instant)>>> = OnceLock::new();
@@ -340,13 +355,14 @@ async fn api_console_handler() -> impl IntoResponse {
 }
 
 async fn create_org_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateOrgPayload>,
 ) -> impl IntoResponse {
     // P3-03: org creation requires auth; owner is derived from caller, never
     // trusted from the client payload.
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -397,8 +413,12 @@ async fn create_org_handler(
     (StatusCode::CREATED, Json(resp)).into_response()
 }
 
-async fn get_org_handler(headers: HeaderMap, Path(org_id): Path<String>) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn get_org_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org_id): Path<String>,
+) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -421,8 +441,8 @@ async fn get_org_handler(headers: HeaderMap, Path(org_id): Path<String>) -> impl
     }
 }
 
-async fn list_orgs_handler(headers: HeaderMap) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn list_orgs_handler(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -882,20 +902,41 @@ struct ExportQuery {
 /// unknown features, lapsed subscriptions → 402 with an upgrade hint
 /// (never 200, never allow). Non-owners resolve exactly like strangers:
 /// the paywall cannot be spent with someone else's org_id.
-fn require_feature(
+struct FeatureGrant {
+    rate_multiplier: i64,
+}
+
+async fn require_feature(
+    state: &AppState,
     org_id: &str,
-    caller: &str,
+    caller: &auth::AuthenticatedUser,
     feature: &str,
-) -> Result<subscriptions::Entitlement, (StatusCode, serde_json::Value)> {
+) -> Result<FeatureGrant, (StatusCode, serde_json::Value)> {
     if org_id.trim().is_empty() || org_id.len() > MAX_ORG_ID_LEN {
         return Err((
             StatusCode::PAYMENT_REQUIRED,
             serde_json::json!({"error": "org_id required", "upgrade": {"tier": "pro", "feature": feature}}),
         ));
     }
-    let ent = subscriptions::resolve_entitlement(org_id, caller, Some(feature));
+    if let Some(service) = &state.account_entitlements {
+        require_org_member(&caller.sub, org_id)?;
+        let ent = service.resolve(caller).await;
+        if ent.has_feature(feature) {
+            return Ok(FeatureGrant {
+                rate_multiplier: ent.rate_multiplier(),
+            });
+        }
+        let tier = entitlements::min_plan_for_feature(feature).unwrap_or("pro");
+        return Err((
+            StatusCode::PAYMENT_REQUIRED,
+            serde_json::json!({"error": "account entitlement required", "upgrade": {"tier": tier, "feature": feature}}),
+        ));
+    }
+    let ent = subscriptions::resolve_entitlement(org_id, &caller.sub, Some(feature));
     if ent.valid && ent.features.get(feature) == Some(true) {
-        return Ok(ent);
+        return Ok(FeatureGrant {
+            rate_multiplier: ent.rate_multiplier,
+        });
     }
     let tier = plans::FeatureSet::min_tier_for(feature).unwrap_or(plans::TIER_PRO);
     Err((
@@ -906,8 +947,28 @@ fn require_feature(
 
 /// Authenticate and return the caller identity (token or session sub).
 /// Every billing handler binds records to this identity (owner).
-fn authed_caller(headers: &HeaderMap) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
-    require_auth(headers).map_err(|_| {
+async fn authed_caller(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
+    state
+        .auth
+        .authenticate(headers)
+        .await
+        .map(|user| user.sub)
+        .map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+        })
+}
+
+async fn authed_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<auth::AuthenticatedUser, (StatusCode, Json<serde_json::Value>)> {
+    state.auth.authenticate(headers).await.map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "unauthorized"})),
@@ -943,10 +1004,11 @@ async fn plans_handler() -> impl IntoResponse {
 }
 
 async fn create_sub_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateSubPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -975,8 +1037,12 @@ async fn create_sub_handler(
     }
 }
 
-async fn get_sub_handler(headers: HeaderMap, Query(params): Query<SubQuery>) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn get_sub_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<SubQuery>,
+) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1003,11 +1069,12 @@ async fn get_sub_handler(headers: HeaderMap, Query(params): Query<SubQuery>) -> 
 }
 
 async fn change_sub_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<ChangeSubPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1041,11 +1108,12 @@ async fn change_sub_handler(
 }
 
 async fn cancel_sub_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<CancelSubPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1069,8 +1137,12 @@ async fn cancel_sub_handler(
     }
 }
 
-async fn activate_sub_handler(headers: HeaderMap, Path(id): Path<String>) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+async fn activate_sub_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1094,11 +1166,12 @@ async fn activate_sub_handler(headers: HeaderMap, Path(id): Path<String>) -> imp
 }
 
 async fn seats_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(payload): Json<SeatsPayload>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_caller(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1122,13 +1195,18 @@ async fn seats_handler(
 }
 
 async fn entitlement_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<EntitlementQuery>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_user(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
+    if let Some(service) = &state.account_entitlements {
+        let entitlement = service.resolve(&caller).await;
+        return (StatusCode::OK, Json(entitlement)).into_response();
+    }
     let Some(org_id) = params.org_id.filter(|s| !s.trim().is_empty()) else {
         return (
             StatusCode::BAD_REQUEST,
@@ -1144,8 +1222,34 @@ async fn entitlement_handler(
             .into_response();
     }
     // Owner-gated inside resolve: strangers see the free shape.
-    let ent = subscriptions::resolve_entitlement(&org_id, &caller, params.feature.as_deref());
+    let ent = subscriptions::resolve_entitlement(&org_id, &caller.sub, params.feature.as_deref());
     (StatusCode::OK, Json(ent)).into_response()
+}
+
+async fn refresh_entitlement_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let caller = match authed_user(&state, &headers).await {
+        Ok(caller) => caller,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(service) = &state.account_entitlements else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match service.refresh(&caller).await {
+        Ok(entitlement) => (StatusCode::OK, Json(entitlement)).into_response(),
+        Err(entitlements::RefreshError::RateLimited { retry_after_secs }) => {
+            let retry_after = HeaderValue::from_str(&retry_after_secs.to_string())
+                .unwrap_or_else(|_| HeaderValue::from_static("1"));
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(header::RETRY_AFTER, retry_after)],
+                Json(serde_json::json!({"error": "refresh rate limited"})),
+            )
+                .into_response()
+        }
+    }
 }
 
 async fn billing_webhook_handler() -> impl IntoResponse {
@@ -1159,10 +1263,11 @@ async fn billing_webhook_handler() -> impl IntoResponse {
 }
 
 async fn export_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<ExportQuery>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_user(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1175,7 +1280,7 @@ async fn export_handler(
     };
     // Team gate (SIEM export) + per-org rate budget × plan multiplier.
     // Caller must own the org: no spending someone else's plan.
-    let ent = match require_feature(&org_id, &caller, "siem_export") {
+    let ent = match require_feature(&state, &org_id, &caller, "siem_export").await {
         Ok(e) => e,
         Err((s, b)) => return (s, Json(b)).into_response(),
     };
@@ -1204,8 +1309,8 @@ async fn publish_policy_handler(
     Json(payload): Json<PublishPolicyPayload>,
 ) -> impl IntoResponse {
     // Auth already checked via middleware; double-check for direct handler tests.
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1318,8 +1423,8 @@ async fn get_policy_handler(
     Path(version): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1362,11 +1467,12 @@ async fn get_policy_handler(
 }
 
 async fn ingest_audit_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(mut payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1429,11 +1535,12 @@ fn parse_time_bound(
 }
 
 async fn stats_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<StatsQueryParams>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1527,11 +1634,12 @@ fn audit_record_view(r: &audit::AuditRecord) -> serde_json::Value {
 }
 
 async fn list_audit_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<ListAuditParams>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1629,11 +1737,12 @@ async fn list_audit_handler(
 /// reconnects (honoring Last-Event-ID) after `retry: 5000`. No long-lived
 /// connection, no new deps — true streaming is a follow-up.
 async fn audit_stream_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Query(params): Query<ListAuditParams>,
 ) -> impl IntoResponse {
-    let caller = match require_auth(&headers) {
-        Ok(c) => c,
+    let caller = match state.auth.authenticate(&headers).await {
+        Ok(user) => user.sub,
         Err(_) => {
             return (
                 StatusCode::UNAUTHORIZED,
@@ -1715,10 +1824,11 @@ async fn audit_stream_handler(
 }
 
 async fn dry_run_handler(
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let caller = match authed_caller(&headers) {
+    let caller = match authed_user(&state, &headers).await {
         Ok(c) => c,
         Err((s, b)) => return (s, b).into_response(),
     };
@@ -1752,7 +1862,7 @@ async fn dry_run_handler(
         .get("org_id")
         .and_then(|v| v.as_str())
         .unwrap_or("default");
-    let ent = match require_feature(scope_org, &caller, "dry_run") {
+    let ent = match require_feature(&state, scope_org, &caller, "dry_run").await {
         Ok(e) => e,
         Err((s, b)) => return (s, Json(b)).into_response(),
     };
@@ -1853,37 +1963,47 @@ fn app_router(state: AppState) -> Router {
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
         .max_age(std::time::Duration::from_secs(600));
-    Router::new()
+    let legacy_mode = state.auth.is_legacy();
+    let router = Router::new()
         .route("/", get(api_console_handler))
         .route("/ui", get(api_console_handler))
         .route("/health", get(health_handler))
-        .route("/v1/auth/signup", post(email_signup_handler))
-        .route("/v1/auth/login", post(email_login_handler))
-        .route("/v1/auth/github/device", post(github_device_handler))
-        .route("/v1/auth/github/poll", post(github_poll_handler))
-        .route("/v1/auth/github/validate", post(github_validate_handler))
-        .route("/v1/auth/google/url", post(google_url_handler))
-        .route("/v1/auth/google/callback", post(google_callback_handler))
-        .route("/v1/auth/google/verify", post(google_verify_handler))
         .route("/v1/orgs", post(create_org_handler).get(list_orgs_handler))
         .route("/v1/orgs/:id", get(get_org_handler))
         .route("/v1/policy/publish", post(publish_policy_handler))
         .route("/v1/policy/:version", get(get_policy_handler))
-        .route("/v1/plans", get(plans_handler))
-        .route("/v1/subscriptions", post(create_sub_handler))
-        .route("/v1/subscriptions", get(get_sub_handler))
-        .route("/v1/subscriptions/:id/change", post(change_sub_handler))
-        .route("/v1/subscriptions/:id/cancel", post(cancel_sub_handler))
-        .route("/v1/subscriptions/:id/activate", post(activate_sub_handler))
-        .route("/v1/subscriptions/:id/seats", post(seats_handler))
         .route("/v1/entitlement", get(entitlement_handler))
         .route("/v1/audit/export", get(export_handler))
-        .route("/v1/billing/webhook", post(billing_webhook_handler))
         .route("/v1/audit/ingest", post(ingest_audit_handler))
         .route("/v1/audit", get(list_audit_handler))
         .route("/v1/audit/stream", get(audit_stream_handler))
         .route("/v1/stats", get(stats_handler))
-        .route("/v1/policy/dry-run", post(dry_run_handler))
+        .route("/v1/policy/dry-run", post(dry_run_handler));
+    let router = if legacy_mode {
+        router
+            .route("/v1/plans", get(plans_handler))
+            .route("/v1/subscriptions", post(create_sub_handler))
+            .route("/v1/subscriptions", get(get_sub_handler))
+            .route("/v1/subscriptions/:id/change", post(change_sub_handler))
+            .route("/v1/subscriptions/:id/cancel", post(cancel_sub_handler))
+            .route("/v1/subscriptions/:id/activate", post(activate_sub_handler))
+            .route("/v1/subscriptions/:id/seats", post(seats_handler))
+            .route("/v1/billing/webhook", post(billing_webhook_handler))
+            .route("/v1/auth/signup", post(email_signup_handler))
+            .route("/v1/auth/login", post(email_login_handler))
+            .route("/v1/auth/github/device", post(github_device_handler))
+            .route("/v1/auth/github/poll", post(github_poll_handler))
+            .route("/v1/auth/github/validate", post(github_validate_handler))
+            .route("/v1/auth/google/url", post(google_url_handler))
+            .route("/v1/auth/google/callback", post(google_callback_handler))
+            .route("/v1/auth/google/verify", post(google_verify_handler))
+    } else {
+        router.route(
+            "/v1/entitlements/refresh",
+            post(refresh_entitlement_handler),
+        )
+    };
+    router
         .layer(RequestBodyLimitLayer::new(1024 * 1024))
         .layer(TimeoutLayer::new(std::time::Duration::from_secs(10)))
         .layer(RateLimitLayer)
@@ -1900,15 +2020,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    session::ensure_session_secret_at_startup()
-        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
     policy::ensure_signing_key_at_startup()
         .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
 
+    let http = http_client()
+        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
+    let auth = AuthService::from_env(http.clone())
+        .await
+        .map_err(|error| std::io::Error::other(format!("backend startup refused: {error}")))?;
+    let account_entitlements = if auth.is_legacy() {
+        None
+    } else {
+        Some(Arc::new(
+            entitlements::AccountEntitlementService::from_env(http.clone()).map_err(|error| {
+                std::io::Error::other(format!("backend startup refused: {error}"))
+            })?,
+        ))
+    };
     let state = AppState {
         policy_store: Arc::new(PolicyStore::new()),
         oauth: Arc::new(oauth_config::OAuthConfig::from_env()),
-        http: http_client(),
+        http,
+        auth: Arc::new(auth),
+        account_entitlements,
     };
     let app = app_router(state);
 
@@ -1929,13 +2063,16 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{HeaderValue, Request, StatusCode};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tower::ServiceExt; // for oneshot
 
     fn test_state() -> AppState {
         AppState {
             policy_store: Arc::new(PolicyStore::new()),
             oauth: Arc::new(oauth_config::OAuthConfig::disabled()),
-            http: http_client(),
+            http: http_client().unwrap(),
+            auth: Arc::new(AuthService::legacy()),
+            account_entitlements: None,
         }
     }
 
@@ -1943,8 +2080,84 @@ mod tests {
         AppState {
             policy_store: Arc::new(PolicyStore::new()),
             oauth: Arc::new(cfg),
-            http: http_client(),
+            http: http_client().unwrap(),
+            auth: Arc::new(AuthService::legacy()),
+            account_entitlements: None,
         }
+    }
+
+    #[derive(Clone)]
+    struct AccountApiState {
+        calls: Arc<AtomicUsize>,
+        subjects: Arc<Mutex<Vec<String>>>,
+        unavailable: Arc<AtomicUsize>,
+    }
+
+    async fn account_entitlement_api(
+        State(state): State<AccountApiState>,
+        Path(sub): Path<String>,
+    ) -> impl IntoResponse {
+        state.calls.fetch_add(1, Ordering::SeqCst);
+        state
+            .subjects
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(sub.clone());
+        if state.unavailable.load(Ordering::SeqCst) != 0 {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+        (
+            StatusCode::OK,
+            [(header::CACHE_CONTROL, "private, max-age=60")],
+            Json(serde_json::json!({"entitlements":[{
+                "product":"guard","plan":"team","limits":{},"status":"active",
+                "validUntil":"2099-01-01T00:00:00Z","source":"default",
+                "sourceId":"default:guard","owner":{"type":"user","id":sub}
+            }]})),
+        )
+            .into_response()
+    }
+
+    async fn account_state_for_sub(sub: &str) -> (AppState, AccountApiState) {
+        let api_state = AccountApiState {
+            calls: Arc::new(AtomicUsize::new(0)),
+            subjects: Arc::new(Mutex::new(Vec::new())),
+            unavailable: Arc::new(AtomicUsize::new(0)),
+        };
+        let api = Router::new()
+            .route("/v1/users/:sub/entitlements", get(account_entitlement_api))
+            .with_state(api_state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, api).await.unwrap() });
+        let service = entitlements::AccountEntitlementService::test(
+            reqwest::Url::parse(&format!("http://{address}/")).unwrap(),
+            Duration::from_millis(20),
+            Duration::from_secs(30),
+            16,
+        );
+        let user = auth::AuthenticatedUser {
+            sub: sub.to_string(),
+            email: None,
+            email_verified: None,
+            token_iat: Some(chrono::Utc::now().timestamp()),
+            token_exp: Some(chrono::Utc::now().timestamp() + 300),
+            entitlements: None,
+        };
+        (
+            AppState {
+                policy_store: Arc::new(PolicyStore::new()),
+                oauth: Arc::new(oauth_config::OAuthConfig::disabled()),
+                http: http_client().unwrap(),
+                auth: Arc::new(AuthService::test_account(user)),
+                account_entitlements: Some(Arc::new(service)),
+            },
+            api_state,
+        )
+    }
+
+    async fn account_state() -> (AppState, AccountApiState) {
+        account_state_for_sub("account-subject").await
     }
 
     #[allow(dead_code)]
@@ -2683,6 +2896,197 @@ mod tests {
     }
 
     // ── Billing handler tests ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn account_mode_entitlement_and_refresh_are_caller_scoped() {
+        let _guard = test_sync::lock();
+        let (state, api) = account_state().await;
+        let (status, _) = get_json(app_router(state.clone()), "/v1/entitlement", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (status, body) = get_json(
+            app_router(state.clone()),
+            "/v1/entitlement?org_id=attacker-controlled",
+            Some("test-account"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["plan"], "team");
+
+        let (status, body) = post_json(
+            app_router(state.clone()),
+            "/v1/entitlements/refresh?sub=victim",
+            Some("test-account"),
+            serde_json::json!({"sub":"victim"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["plan"], "team");
+        assert!(api
+            .subjects
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .all(|subject| subject == "account-subject"));
+
+        let (status, _) = post_json(
+            app_router(state),
+            "/v1/entitlements/refresh",
+            Some("test-account"),
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn account_mode_does_not_expose_local_billing_or_webhook_routes() {
+        let _guard = test_sync::lock();
+        let (state, _) = account_state().await;
+        let (status, _) = get_json(app_router(state.clone()), "/v1/plans", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = post_json(
+            app_router(state.clone()),
+            "/v1/subscriptions",
+            Some("test-account"),
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = post_json(
+            app_router(state),
+            "/v1/billing/webhook",
+            None,
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn proves_ask_on_account_entitlement_network_failure() {
+        let _guard = test_sync::lock();
+        let (state, api) = account_state().await;
+        register_test_org("owned", "account-subject");
+        api.unavailable.store(1, Ordering::SeqCst);
+        let (status, body) = post_json(
+            app_router(state),
+            "/v1/policy/dry-run",
+            Some("test-account"),
+            serde_json::json!({"org_id":"owned","bundle":{"version":"1"},"history_ids":[]}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+        assert_eq!(body["upgrade"]["feature"], "dry_run");
+    }
+
+    #[tokio::test]
+    async fn account_mode_subject_ownership_blocks_every_cross_org_route() {
+        let _guard = test_sync::lock();
+        clear_org_store();
+        audit::clear_audit_store();
+        let (owner_state, _) = account_state_for_sub("account-owner").await;
+        let (attacker_state, _) = account_state_for_sub("account-attacker").await;
+        register_test_org("org-account-owned", "account-owner");
+
+        let (status, created) = post_json(
+            app_router(owner_state.clone()),
+            "/v1/orgs",
+            Some("test-account"),
+            serde_json::json!({"org_name":"account org","owner_id":"account-attacker"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(created["owner_id"], "account-owner");
+
+        let (status, policy) = post_json(
+            app_router(owner_state.clone()),
+            "/v1/policy/publish",
+            Some("test-account"),
+            serde_json::json!({"org_id":"org-account-owned","content":"ask on unknown"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let version = policy["version"].as_str().unwrap();
+        let (status, _) = post_json(
+            app_router(owner_state.clone()),
+            "/v1/audit/ingest",
+            Some("test-account"),
+            serde_json::json!({
+                "org_id":"org-account-owned","redacted_event":"redacted command",
+                "decision":"ask","latency_ms":1
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        for uri in [
+            "/v1/orgs/org-account-owned".to_string(),
+            format!("/v1/policy/{version}?org_id=org-account-owned"),
+            "/v1/audit?org_id=org-account-owned".to_string(),
+            "/v1/audit/stream?org_id=org-account-owned".to_string(),
+            "/v1/audit/export?org_id=org-account-owned".to_string(),
+            "/v1/stats?org_id=org-account-owned".to_string(),
+        ] {
+            let (status, _) = get_json(
+                app_router(attacker_state.clone()),
+                &uri,
+                Some("test-account"),
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        }
+
+        for (uri, body) in [
+            (
+                "/v1/policy/publish",
+                serde_json::json!({"org_id":"org-account-owned","content":"allow"}),
+            ),
+            (
+                "/v1/audit/ingest",
+                serde_json::json!({
+                    "org_id":"org-account-owned","redacted_event":"redacted attacker",
+                    "decision":"allow","latency_ms":1
+                }),
+            ),
+            (
+                "/v1/policy/dry-run",
+                serde_json::json!({
+                    "org_id":"org-account-owned","bundle":{"version":"1"},"history_ids":[]
+                }),
+            ),
+        ] {
+            let (status, _) = post_json(
+                app_router(attacker_state.clone()),
+                uri,
+                Some("test-account"),
+                body,
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        }
+
+        let (status, body) =
+            get_json(app_router(attacker_state), "/v1/orgs", Some("test-account")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["total"], 0);
+
+        let (status, _) = get_json(
+            app_router(owner_state.clone()),
+            &format!("/v1/policy/{version}?org_id=org-account-owned"),
+            Some("test-account"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, body) = get_json(
+            app_router(owner_state),
+            "/v1/stats?org_id=org-account-owned",
+            Some("test-account"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["ask"], 1);
+    }
 
     fn billing_token() -> String {
         test_token("test:billing")

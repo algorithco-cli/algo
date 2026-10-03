@@ -83,6 +83,16 @@ export interface Entitlement {
   upgrade_hint: string | null;
 }
 
+export interface AccountEntitlement {
+  product: "guard";
+  plan: string;
+  status: string;
+  valid_until: string | null;
+  limits: Record<string, unknown>;
+  features: Partial<PlanFeatures>;
+  source: string;
+}
+
 export interface UpgradeHint {
   tier: string;
   feature: string;
@@ -576,11 +586,34 @@ export function fetchEntitlement(
   );
 }
 
-/* ---------- localStorage persistence (token + org id; never log values) ---------- */
+export function fetchAccountEntitlement(
+  token: string,
+): Promise<AccountEntitlement> {
+  return apiFetch<AccountEntitlement>("/api/v1/entitlement", token);
+}
+
+export function refreshAccountEntitlement(
+  token: string,
+): Promise<AccountEntitlement> {
+  return apiFetch<AccountEntitlement>("/api/v1/entitlements/refresh", token, {
+    method: "POST",
+  });
+}
+
+/* ---------- session persistence ---------- */
 
 const TOKEN_KEY = "algo-billing-token";
 const ORG_KEY = "algo-billing-org";
 export const GUARD_SESSION_EVENT = "algo-guard-session-change";
+let accountAccessToken = "";
+
+export function isAccountMode(): boolean {
+  const mode = import.meta.env?.VITE_GUARD_AUTH_MODE || "account";
+  if (mode !== "legacy" && mode !== "account") {
+    throw new Error("VITE_GUARD_AUTH_MODE must be legacy or account");
+  }
+  return mode === "account";
+}
 
 function announceSessionChange(): void {
   try {
@@ -591,6 +624,15 @@ function announceSessionChange(): void {
 }
 
 export function loadStoredToken(): string {
+  if (isAccountMode()) {
+    try {
+      // Remove residue from an earlier legacy-mode build during rollout.
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+    return accountAccessToken;
+  }
   try {
     return window.localStorage.getItem(TOKEN_KEY) ?? "";
   } catch {
@@ -599,6 +641,18 @@ export function loadStoredToken(): string {
 }
 
 export function saveStoredToken(token: string): void {
+  if (isAccountMode()) {
+    // Account access tokens are deliberately process-memory only. A reload
+    // clears this module and triggers a new top-level OIDC redirect.
+    try {
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+    accountAccessToken = token;
+    announceSessionChange();
+    return;
+  }
   try {
     if (token) window.localStorage.setItem(TOKEN_KEY, token);
     else window.localStorage.removeItem(TOKEN_KEY);

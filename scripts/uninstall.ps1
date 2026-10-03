@@ -5,6 +5,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$algo = Join-Path $InstallDir "algo.exe"
+if (Test-Path -LiteralPath $algo -PathType Leaf) {
+    # Remove the native credential before deleting the executable that knows
+    # its keyring service/user key. Fail closed: never claim a complete
+    # uninstall if the operating-system vault could not be cleaned.
+    & $algo logout
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not remove Algorithco account credentials; binaries were preserved"
+    }
+}
+
 if (-not $KeepPath) {
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $parts = @($userPath -split ";" | Where-Object {

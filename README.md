@@ -16,7 +16,7 @@
 ## Contents
 
 - [CLI](#cli)
-- [Run everything locally](#run-everything-locally-no-docker)
+- [Run Guard locally](#run-guard-locally)
 - [Decision pipeline (L0 → L4)](#decision-pipeline-l0--l4)
 - [Repo layout](#repo-layout--dependency-dag)
 - [Build & test per package](#build--test-per-package)
@@ -51,17 +51,22 @@ The installer copies the three executables to `%USERPROFILE%\.algo\bin` and adds
 | `algo login` | OAuth device flow for team/cloud features (Phase 3). |
 | `algo policy` | View / dry-run policy bundles. |
 
-## Run everything locally (no Docker)
+## Run Guard locally
 
 Three processes, all verified working:
 
 | Service | How to run | URL |
 |---|---|---|
-| Backend (`algo-backend`, in-memory, no cloud account needed) | `cargo run --manifest-path backend/Cargo.toml` | `http://127.0.0.1:8080/` (API console) |
+| Backend (`algo-backend`, in-memory) | Configure account mode, then `cargo run --manifest-path backend/Cargo.toml` | `http://127.0.0.1:8080/` (API console) |
 | Web (static docs/marketing site) | `cd web && npm run preview` | `http://127.0.0.1:3007/` |
 | Dashboard (static team SPA) | `cd dashboard && npm run preview` | `http://localhost:4173/` |
 
 Requires Rust stable, Node ≥ 20, and `npm install` (`npm ci`) inside `web/` and `dashboard/` first.
+Account mode is the backend/web default and requires the environment documented
+in [`docs/ACCOUNT_INTEGRATION.md`](docs/ACCOUNT_INTEGRATION.md). Local policy
+evaluation and CLI use remain offline-capable without an account. To exercise
+the real local account stack as well, use the documented manual E2E runner;
+legacy backend/web auth remains available through the explicit rollback flags.
 
 ## Local paths (convention, DECIDED)
 
@@ -110,6 +115,7 @@ Per-crate details live in each package's `README.md`; working agreement in [`AGE
 - Working agreement: [`AGENTS.md`](AGENTS.md)
 - Contributing: [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)
 - Brand tokens: [`design-tokens.css`](design-tokens.css) (Variant 1, single source — no hard-coded hex)
+- Account integration and manual E2E: [`docs/ACCOUNT_INTEGRATION.md`](docs/ACCOUNT_INTEGRATION.md)
 
 ## Status (Phase 0)
 
