@@ -1,6 +1,8 @@
 import * as React from "react";
+import { accountLogout } from "../lib/accountAuth";
 import {
   GUARD_SESSION_EVENT,
+  isAccountMode,
   loadStoredOrgId,
   loadStoredToken,
   saveStoredOrgId,
@@ -10,7 +12,8 @@ import { sessionProfileFromToken } from "../lib/guard";
 
 function snapshot(): { token: string; orgId: string } {
   const token = loadStoredToken();
-  const profile = sessionProfileFromToken(token);
+  const accountMode = isAccountMode();
+  const profile = sessionProfileFromToken(token, accountMode);
   const expired = profile?.expiresAt
     ? profile.expiresAt <= Math.floor(Date.now() / 1000)
     : false;
@@ -38,13 +41,20 @@ export function useGuardSession() {
     saveStoredOrgId(orgId);
   }, []);
   const logout = React.useCallback(() => {
-    saveStoredToken("");
     saveStoredOrgId("");
+    if (isAccountMode()) {
+      void accountLogout().catch(() => {
+        // Local credentials are cleared before discovery; a remote logout
+        // failure must never restore the session.
+      });
+      return;
+    }
+    saveStoredToken("");
   }, []);
 
   return {
     ...state,
-    profile: sessionProfileFromToken(state.token),
+    profile: sessionProfileFromToken(state.token, isAccountMode()),
     signedIn: state.token !== "",
     selectOrg,
     logout,

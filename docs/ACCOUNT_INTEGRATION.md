@@ -5,6 +5,36 @@ Account mode verifies central ES256 access tokens locally and uses the account
 service as the only source of identity and entitlement truth. Local/offline
 Guard behavior does not require an account.
 
+## Web sign-in (`guard-web`)
+
+Account-mode web builds use the discovered OIDC authorization and token
+endpoints with authorization code + PKCE S256. Each attempt creates random
+`state`, `nonce`, and verifier values; the one-shot login transaction is kept
+in `sessionStorage`, contains no token, and expires after ten minutes. The
+callback compares state, exchanges the code as the public `guard-web` client,
+and verifies the ES256 ID-token signature, issuer, `guard-web` audience,
+expiry, issued-at time, subject, authorized party (for multiple audiences),
+and nonce against discovered JWKS before accepting the access token.
+
+Access, ID, and refresh tokens are process-memory only. They are never written
+to local or session storage. A reload therefore starts a top-level redirect to
+the account service; its SSO session can make that round trip seamless. Logout
+first clears every local token and pending transaction, then navigates to the
+discovered end-session endpoint. No iframe, hidden form, client secret, or
+third-party script is used.
+
+Required build variables are `VITE_GUARD_AUTH_MODE=account`,
+`VITE_ACCOUNT_ISSUER`, `VITE_ACCOUNT_REDIRECT_URI`, and
+`VITE_ACCOUNT_BILLING_URL`. Redirect matching is exact. The account repository
+currently shows `https://guard.algorithco.com/auth/callback` for production;
+local development must register its exact loopback URL separately. The billing
+URL is deliberately configuration, because the account integration docs do
+not publish a billing-page or checkout endpoint. Configure its return URL as
+`/billing?account_return=1`; Guard then calls the caller-only entitlement
+refresh endpoint after the redirect. Pricing and billing display the effective
+backend entitlement and do not expose Guard's legacy price or card UI in
+account mode.
+
 ## Entitlement resolution
 
 1. Use a compact `guard` entry from the verified access token's
@@ -85,6 +115,8 @@ or invent them.
 
 - Provision and rotate the read-only Guard product service credential.
 - Configure real production client redirect URIs.
+- Publish and configure the account billing/checkout URL and its Guard return
+  URL; the current account integration docs do not define one.
 - Decide prices, numeric limits, and offline-license TTL in the account
   service; Guard does not invent them.
 - Choose a legacy-auth removal date after the staged rollout.

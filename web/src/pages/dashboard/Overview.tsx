@@ -2,10 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useGuardSession } from "../../hooks/useGuardSession";
 import {
+  type AccountEntitlement,
   BillingApiError,
+  type Entitlement,
+  fetchAccountEntitlement,
   fetchEntitlement,
   fetchSubscription,
   formatPeriodDate,
+  isAccountMode,
 } from "../../lib/billing";
 import { backendHealth, getOrg, guardKeys, queryStats } from "../../lib/guard";
 
@@ -23,6 +27,7 @@ function queryError(error: unknown): string | null {
 /** Account overview: profile, workspace, subscription, and live usage. */
 export default function DashboardOverview(): JSX.Element {
   const { token, orgId, profile, logout } = useGuardSession();
+  const accountMode = isAccountMode();
   const enabled = token !== "" && orgId !== "";
   const health = useQuery({
     queryKey: guardKeys.health,
@@ -37,13 +42,16 @@ export default function DashboardOverview(): JSX.Element {
   const subscription = useQuery({
     queryKey: ["guard", "subscription", orgId],
     queryFn: () => fetchSubscription(orgId, token),
-    enabled,
+    enabled: enabled && !accountMode,
     retry: false,
   });
-  const entitlement = useQuery({
-    queryKey: ["guard", "entitlement", orgId],
-    queryFn: () => fetchEntitlement(orgId, token),
-    enabled,
+  const entitlement = useQuery<AccountEntitlement | Entitlement>({
+    queryKey: ["guard", "entitlement", accountMode ? "account" : orgId],
+    queryFn: () =>
+      accountMode
+        ? fetchAccountEntitlement(token)
+        : fetchEntitlement(orgId, token),
+    enabled: accountMode ? token !== "" : enabled,
     retry: false,
   });
   const stats = useQuery({
@@ -55,18 +63,29 @@ export default function DashboardOverview(): JSX.Element {
   });
 
   const paid =
-    subscription.data && subscription.data.tier !== "free"
+    !accountMode && subscription.data && subscription.data.tier !== "free"
       ? subscription.data
       : null;
-  const plan = subscription.data?.tier ?? entitlement.data?.tier ?? "free";
+  const plan =
+    subscription.data?.tier ??
+    (accountMode
+      ? (entitlement.data as AccountEntitlement | undefined)?.plan
+      : (entitlement.data as { tier?: string } | undefined)?.tier) ??
+    "free";
   const status =
     subscription.data?.status ?? entitlement.data?.status ?? "none";
+  const accountEntitlement = accountMode
+    ? (entitlement.data as AccountEntitlement | undefined)
+    : undefined;
+  const legacyEntitlement = !accountMode
+    ? (entitlement.data as Entitlement | undefined)
+    : undefined;
   const total = stats.data?.total ?? 0;
   const displayName =
     profile?.name ?? profile?.email ?? profile?.subject ?? "Account";
   const dataError =
     queryError(org.error) ??
-    queryError(subscription.error) ??
+    (!accountMode ? queryError(subscription.error) : null) ??
     queryError(entitlement.error) ??
     queryError(stats.error);
 
@@ -104,7 +123,9 @@ export default function DashboardOverview(): JSX.Element {
         </article>
 
         <article className="card">
-          <h2 className="dash-card-title">Subscription</h2>
+          <h2 className="dash-card-title">
+            {accountMode ? "Entitlement" : "Subscription"}
+          </h2>
           <p className="dash-card-value">
             {titleCase(plan)}{" "}
             <span className="badge badge-allow">{status}</span>
@@ -116,11 +137,13 @@ export default function DashboardOverview(): JSX.Element {
             </p>
           ) : (
             <p className="muted small">
-              No paid subscription for this workspace.
+              {accountMode
+                ? "Billing is managed by your Algorithco account."
+                : "No paid subscription for this workspace."}
             </p>
           )}
           <Link className="dash-card-link" to="/billing">
-            Manage subscription →
+            {accountMode ? "Manage billing" : "Manage subscription"} →
           </Link>
         </article>
 
@@ -166,28 +189,47 @@ export default function DashboardOverview(): JSX.Element {
       <div className="dash-grid-2">
         <article className="card">
           <h2 className="dash-card-title">Plan limits</h2>
-          <dl className="dash-details">
-            <div>
-              <dt>Retention</dt>
-              <dd>{entitlement.data?.retention_days ?? 0} days</dd>
-            </div>
-            <div>
-              <dt>Rate multiplier</dt>
-              <dd>{entitlement.data?.rate_multiplier ?? 1}×</dd>
-            </div>
-            <div>
-              <dt>Max seats</dt>
-              <dd>
-                {entitlement.data?.max_seats === -1
-                  ? "Unlimited"
-                  : (entitlement.data?.max_seats ?? 1)}
-              </dd>
-            </div>
-            <div>
-              <dt>Average latency</dt>
-              <dd>{Math.round(stats.data?.avg_latency_ms ?? 0)} ms</dd>
-            </div>
-          </dl>
+          {accountMode ? (
+            Object.keys(accountEntitlement?.limits ?? {}).length > 0 ? (
+              <dl className="dash-details">
+                {Object.entries(accountEntitlement?.limits ?? {}).map(
+                  ([name, value]) => (
+                    <div key={name}>
+                      <dt>{name}</dt>
+                      <dd>{String(value)}</dd>
+                    </div>
+                  ),
+                )}
+              </dl>
+            ) : (
+              <p className="muted small">
+                No numeric limits are present in this entitlement.
+              </p>
+            )
+          ) : (
+            <dl className="dash-details">
+              <div>
+                <dt>Retention</dt>
+                <dd>{legacyEntitlement?.retention_days ?? 0} days</dd>
+              </div>
+              <div>
+                <dt>Rate multiplier</dt>
+                <dd>{legacyEntitlement?.rate_multiplier ?? 1}×</dd>
+              </div>
+              <div>
+                <dt>Max seats</dt>
+                <dd>
+                  {legacyEntitlement?.max_seats === -1
+                    ? "Unlimited"
+                    : (legacyEntitlement?.max_seats ?? 1)}
+                </dd>
+              </div>
+              <div>
+                <dt>Average latency</dt>
+                <dd>{Math.round(stats.data?.avg_latency_ms ?? 0)} ms</dd>
+              </div>
+            </dl>
+          )}
         </article>
         <article className="card">
           <h2 className="dash-card-title">Quick actions</h2>
