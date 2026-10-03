@@ -19,7 +19,7 @@ algo-account-auth = { version = "0.1.0", path = "../crates/account-auth", packag
 algo-audit = { version = "0.1.0", path = "../crates/audit", package = "algocli-audit" }
 algo-types = { version = "0.1.0", path = "../../core/crates/types", package = "algocli-types" }
 ratatui = { version = "0.29", features = ["crossterm"] }
-crossterm = { version = "0.28", features = ["event-stream"] }
+crossterm = { version = "0.29", features = ["event-stream"] }
 tokio = { version = "1.53", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
