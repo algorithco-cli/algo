@@ -279,8 +279,19 @@ impl CredentialStore for NativeCredentialStore {
 
     fn delete(&self) -> Result<(), AuthError> {
         let marker_existed = self.marker_path.exists();
-        match self.entry()?.delete_credential() {
+        // Headless Linux CI has no D-Bus secret service. When we never saved
+        // credentials (no marker file) there is nothing to leak, so succeed.
+        // When a marker exists we stay fail-closed: an unavailable store
+        // must fail uninstall rather than report success with a token left
+        // in the OS vault.
+        let entry = match self.entry() {
+            Ok(entry) => entry,
+            Err(_) if !marker_existed => return Ok(()),
+            Err(_) => return Err(AuthError::CredentialStore),
+        };
+        match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(_) if !marker_existed => {}
             Err(_) => return Err(AuthError::CredentialStore),
         }
         if marker_existed {
