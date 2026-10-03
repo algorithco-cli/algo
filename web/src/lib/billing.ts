@@ -608,7 +608,7 @@ export const GUARD_SESSION_EVENT = "algo-guard-session-change";
 let accountAccessToken = "";
 
 export function isAccountMode(): boolean {
-  const mode = import.meta.env?.VITE_GUARD_AUTH_MODE || "legacy";
+  const mode = import.meta.env?.VITE_GUARD_AUTH_MODE || "account";
   if (mode !== "legacy" && mode !== "account") {
     throw new Error("VITE_GUARD_AUTH_MODE must be legacy or account");
   }

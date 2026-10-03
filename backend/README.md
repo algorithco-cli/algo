@@ -17,8 +17,8 @@ Product code lives here (in-memory MVP).
 
 ## Authentication modes
 
-`GUARD_AUTH_MODE=legacy|account` selects authentication. The default remains
-`legacy` during the staged account-service rollout.
+`GUARD_AUTH_MODE=legacy|account` selects authentication. The default is
+`account`; set `legacy` explicitly only for the documented rollback path.
 
 In `account` mode, the backend discovers the central Algorithco account
 service from `GUARD_ACCOUNT_ISSUER`, fetches its ES256 JWKS, and verifies
@@ -42,10 +42,11 @@ JWKS outage.
 
 | Var | Purpose |
 |---|---|
-| `GUARD_AUTH_MODE` | `legacy` or `account`; default `legacy` until the final rollout PR |
+| `GUARD_AUTH_MODE` | `legacy` or `account`; default `account` (`legacy` is the rollback flag) |
 | `GUARD_ACCOUNT_ISSUER` | required in account mode; exact HTTPS issuer (loopback HTTP allowed for local tests) |
 | `GUARD_ACCOUNT_AUDIENCES` | required exact-match comma list; current bridge value `guard-web,guard-cli` |
 | `GUARD_ACCOUNT_CLOCK_SKEW_SECS` | expiry/not-before/future-issued-at leeway, `0..300`; default `5` |
+| `GUARD_ACCOUNT_CA_CERT` | optional path to one additional PEM root for local account-service Compose only; TLS verification stays enabled |
 | `GUARD_ACCOUNT_SERVICE_KEY` | required in account mode; read-only, Guard-product-scoped `alg_sk_...` credential; provide through the deployment secret manager |
 | `ENTITLEMENT_CACHE_MAX_TTL_SECS` | requested hard cache ceiling, `1..300`; default `300`, capped to the account contract's stricter 60-second `max-age` |
 | `ENTITLEMENT_REFRESH_MIN_INTERVAL_SECS` | per-subject minimum interval for user refresh, `1..3600`; default `30` |
