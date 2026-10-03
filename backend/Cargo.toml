@@ -36,7 +36,7 @@ regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-base64 = "0.22"
+base64 = "0.23"
 
 # Optional Postgres scaffolding (MVP uses in-memory HashMap, compile-checked when enabled)
 # sqlx = { version = "0.8", features = ["postgres", "rustls", "chrono", "uuid"], optional = true }
