@@ -350,11 +350,11 @@ describe("apiPath backend routing", () => {
 describe("web auth rollout mode", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("defaults to legacy and accepts account explicitly", () => {
+  it("defaults to account and keeps legacy as an explicit rollback", () => {
     vi.stubEnv("VITE_GUARD_AUTH_MODE", "");
-    expect(isAccountMode()).toBe(false);
-    vi.stubEnv("VITE_GUARD_AUTH_MODE", "account");
     expect(isAccountMode()).toBe(true);
+    vi.stubEnv("VITE_GUARD_AUTH_MODE", "legacy");
+    expect(isAccountMode()).toBe(false);
   });
 
   it("rejects an invalid mode instead of falling back to legacy", () => {

@@ -10,7 +10,7 @@ export default function Security(): JSX.Element {
         eyebrow="Trust center"
         title="Security"
         summary="The product controls, release checks, and reporting path that protect a local command guard."
-        reviewed="September 28, 2026"
+        reviewed="October 3, 2026"
       >
         <section>
           <h2>Fail-safe decisions</h2>
@@ -27,6 +27,23 @@ export default function Security(): JSX.Element {
             mode-gated, redacted before transport where configured, and visible
             through the audit tooling described in the{" "}
             <Link to="/docs/privacy-security">privacy and security guide</Link>.
+          </p>
+        </section>
+        <section>
+          <h2>Account boundary</h2>
+          <p>
+            Cloud and team features use the central Algorithco account service
+            for identity and entitlements. The browser keeps tokens in memory;
+            the CLI keeps them in the operating-system credential vault; and the
+            Guard backend verifies access tokens against discovered ES256 keys.
+            Guard does not store prices, subscriptions, payment details, or
+            billing webhook events.
+          </p>
+          <p>
+            Authentication fails closed. Entitlement outages fall back to a
+            still-valid last-known entitlement or the free tier, and cannot
+            change an <code>allow</code>, <code>ask</code>, or <code>deny</code>{" "}
+            policy decision.
           </p>
         </section>
         <section>

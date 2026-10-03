@@ -10,7 +10,7 @@ export default function Privacy(): JSX.Element {
         eyebrow="Privacy"
         title="Privacy policy"
         summary="How algorithco guard handles command context, audit data, website activity, and optional network features."
-        reviewed="October 2, 2026"
+        reviewed="October 3, 2026"
       >
         <section>
           <h2>1. Scope</h2>
@@ -87,6 +87,14 @@ export default function Privacy(): JSX.Element {
             Hosted-service legal entity, processors, locations, retention
             periods, and contact details remain publication TODOs before general
             availability.
+          </p>
+          <p>
+            For entitlement lookup, the backend sends the account service the
+            opaque account subject in the documented request path and a
+            read-only Guard service credential. Command text, policy input, and
+            local audit contents are not part of that request. The backend keeps
+            bounded JWKS and entitlement caches in memory; it does not register
+            a billing webhook or persist billing events.
           </p>
         </section>
         <section>

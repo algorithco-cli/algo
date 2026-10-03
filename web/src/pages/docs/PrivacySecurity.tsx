@@ -20,6 +20,22 @@ export default function PrivacySecurity(): JSX.Element {
           </p>
         </section>
         <section>
+          <h2>Account and cloud features</h2>
+          <p>
+            Account mode is the default for cloud and team features, but local
+            policy evaluation remains available offline. Web tokens remain in
+            memory and native tokens remain in the operating-system credential
+            vault. The backend sends only the verified account subject and its
+            read-only product credential when resolving an entitlement; it does
+            not send command text or local audit content in that lookup.
+          </p>
+          <p>
+            Authentication failures are unauthenticated. Entitlement failures
+            use a still-valid cached result or the free tier and never alter a
+            policy decision.
+          </p>
+        </section>
+        <section>
           <h2>Before enabling egress</h2>
           <ol>
             <li>
